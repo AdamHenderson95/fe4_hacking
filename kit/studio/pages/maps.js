@@ -1,5 +1,6 @@
 // Maps: paint chapter maps with the game's own tiles; drag castles, villages and units into place.
-import { api, h, app, toast, refreshSession } from '../app.js';
+import { api, h, app, toast, refreshSession, go } from '../app.js';
+import { openEventAt } from './events.js';
 
 const TOOLS = [
   ['select', 'Select', 'V', 'Select and drag castles, villages and units', 'M4 3l11 6-5 1.5L8 16z'],
@@ -8,7 +9,7 @@ const TOOLS = [
   ['pick', 'Pick', 'I', 'Pick a tile, or drag to copy a block of tiles', 'M14 3l3 3-2 2-3-3z M12 5l3 3-7 7H5v-3z'],
 ];
 const ZOOMS = [1, 1.5, 2, 3, 4];
-const ARMY_COLORS = ['#3B6FD8', '#C8343F', '#D9822B', '#8A4FC2', '#2E9A5B', '#1F8A8A', '#8B6A3E', '#B83E8C'];
+export const ARMY_COLORS = ['#3B6FD8', '#C8343F', '#D9822B', '#8A4FC2', '#2E9A5B', '#1F8A8A', '#8B6A3E', '#B83E8C'];
 const TERRAIN_TINT = {
   0: '#6B5A4A', 7: '#8C7458', 2: '#A2673A', 1: '#1F5A2A', 4: '#2F8A3C', 5: '#1D4FA8', 6: '#3E86D6', 8: '#E0C26A',
   9: '#E1A92C', 10: '#E1A92C', 12: '#E1A92C', 13: '#B9852A', 14: '#9C8E6E', 15: '#C9C1AE', 18: '#3CC4D6', 22: '#3CC4D6',
@@ -16,11 +17,11 @@ const TERRAIN_TINT = {
 };
 const AREA_COLORS = ['#E5484D', '#3E63DD', '#30A46C', '#F76B15', '#8E4EC6', '#12A594'];
 // castle / village footprints from the game's table at $87:F455: (dx1, dy1, dx2, dy2)
-const FOOT = { castle: [-1, -1, 1, 2], village: [-1, -1, 1, 0], site1: [0, 0, 1, 0] };
+export const FOOT = { castle: [-1, -1, 1, 2], village: [-1, -1, 1, 0], site1: [0, 0, 1, 0] };
 
 const st = {
   ch: null, tool: 'select', zoom: 2, stamp: { w: 1, h: 1, tiles: [0] }, palZoom: 1,
-  layers: { grid: true, terrain: false, areas: false, sites: true, units: true },
+  layers: { grid: true, terrain: false, areas: false, sites: true, units: true, events: true },
   hidden: new Set(), terrainFilter: '', sel: null,
 };
 
@@ -59,7 +60,7 @@ export async function mapsPage(root) {
       h('span', { class: 'mzoom', id: 'mzoom' }),
       h('button', { class: 'mtool', title: 'Zoom in (+)', 'aria-label': 'Zoom in', onclick: () => zoomBy(1) }, '+')),
     h('div', { class: 'mlayers', role: 'group', 'aria-label': 'Show' },
-      [['grid', 'Grid'], ['terrain', 'Terrain'], ['areas', 'Area flags'], ['sites', 'Castles & villages'], ['units', 'Units']].map(([k, label]) =>
+      [['grid', 'Grid'], ['terrain', 'Terrain'], ['areas', 'Area flags'], ['sites', 'Castles & villages'], ['units', 'Units'], ['events', 'Event areas']].map(([k, label]) =>
         h('button', { class: 'chip', 'aria-pressed': String(st.layers[k]), onclick: e => { st.layers[k] = !st.layers[k]; e.currentTarget.setAttribute('aria-pressed', String(st.layers[k])); drawOverlay(); drawObjects(); } }, label))));
 
   const base = h('canvas', { class: 'mbase' });
@@ -195,6 +196,12 @@ export async function mapsPage(root) {
     const s = 16 * st.zoom;
     objs.replaceChildren();
     objs.classList.toggle('live', st.tool === 'select');
+    if (st.layers.events) for (const a of M.areas || []) {
+      const e = h('div', { class: 'mevarea', title: `${a.who} reaches (${a.x1}, ${a.y1})–(${a.x2}, ${a.y2}): open the event`,
+        style: `left:${a.x1 * s}px;top:${a.y1 * s}px;width:${(a.x2 - a.x1 + 1) * s}px;height:${(a.y2 - a.y1 + 1) * s}px` },
+      h('button', { type: 'button', onpointerdown: e => e.stopPropagation(), onclick: () => { openEventAt(M.ch, a.line); go('events'); } }, `⌖ ${a.who}`));
+      objs.append(e);
+    }
     if (st.layers.sites) for (const L of M.locations) {
       const f = FOOT[L.kind] || [0, 0, 0, 0];
       const x = Number(L.x) + f[0], y = Number(L.y) + f[1], w = f[2] - f[0] + 1, hh = f[3] - f[1] + 1;

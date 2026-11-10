@@ -36,7 +36,7 @@ import fe4locations                # noqa: E402
 from fe4project import Project, load_settings, save_settings   # noqa: E402
 
 APP = 'Builder of the Holy War'
-VERSION = '19'
+VERSION = '20'
 STATIC = os.path.join(KIT, 'studio')
 
 # ---------------------------------------------------------------- state
@@ -682,7 +682,24 @@ def api_map(b, q):
     return {'ch': ch, 'title': CHAPTER_TITLES[ch] if ch < len(CHAPTER_TITLES) else '', 'width': m.WIDTH,
             'height': (len(m.words) + m.WIDTH - 1) // m.WIDTH, 'words': m.words, 'terrain': terrain,
             'terrainNames': {str(k): v for k, v in TERRAIN_NAMES.items()}, 'impassable': sorted(IMPASSABLE),
-            'locations': locs, 'deploy': [lists[k] for k in sorted(lists)]}
+            'locations': locs, 'deploy': [lists[k] for k in sorted(lists)], 'areas': chapter_areas(ch)}
+
+
+def chapter_areas(ch):
+    """Area events (condition $0B) of a chapter: [{file, line, unit, who, x1, y1, x2, y2}]."""
+    try:
+        name = chapter_file(ch)
+    except KeyError:
+        return []
+    com = commenter() if rom_data() is not None else None
+    out = []
+    for cnd, steps in chapter_triggers(name):
+        b = cmd_bytes(cnd)
+        if b[0] == 0x0B and len(b) >= 8:
+            u = b[2] | b[3] << 8
+            out.append({'file': name, 'line': cnd['line'], 'unit': u, 'x1': b[4], 'y1': b[5], 'x2': b[6], 'y2': b[7],
+                        'who': 'Anyone' if u == 0xFFFF else (com.unit(u).rsplit('(', 1)[0].strip() if com else f'Unit {u}')})
+    return out
 
 
 def api_paint(b, q):

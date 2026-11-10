@@ -47,6 +47,8 @@ default browser). The editor runs on your PC only: nothing is sent anywhere.
      status line under the map names the terrain under the pointer.
    - Units come onto the map in groups (deploy lists) as the chapter goes on;
      the **Units** panel shows or hides each group.
+   - **Event areas** outlines each area event of the chapter (*Sigurd
+     reaches …*); with the Select tool, click its label to open the event.
    - **Area flags** shows bits stored with each map cell above the tile
      number. The game uses them (what for isn't known yet); painting keeps
      them as they are.
@@ -85,6 +87,10 @@ default browser). The editor runs on your PC only: nothing is sent anywhere.
      *raise a stat*, *units arrive*), remove steps with ×, or **Delete
      event**. Messages only a deleted event used go with it. Every one of
      these is one undo step.
+   - Area events show a picture of their part of the map. Click it (or
+     **Pick on map**) and drag a box across the chapter map, with castles,
+     villages, starting units and the chapter's other areas drawn on it.
+     New area events have the same picker.
    - Talk events show whether the pair is in the Talk menu, with a button
      to add or remove it. Changing who talks keeps the menu entry in step.
 6. **Items, shops & villages**, in three tabs:

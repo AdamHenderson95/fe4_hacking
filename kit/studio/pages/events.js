@@ -2,6 +2,7 @@
 // bubbles with portraits, measured with the game's own glyph widths.
 import { api, h, app, toast, refreshSession, loadTables, go } from '../app.js';
 import { setMapChapter } from './maps.js';
+import { pickArea, areaPreview, forgetMaps } from './mappick.js';
 
 const st = { ch: null, sel: null, filter: 'all', q: '', codes: false };
 const COND = new Set([0x02, 0x04, 0x05, 0x07, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x16, 0x1A, 0x21]);
@@ -19,6 +20,7 @@ let people = null, text = null;
 export function openEventAt(ch, line) { st.ch = ch; st.q = ''; st.pendingLine = line; }
 
 export async function eventsPage(root) {
+  forgetMaps();
   [people, text] = await Promise.all([
     people || api('people').then(r => r.people),
     text || api('textinfo'),
@@ -240,6 +242,7 @@ export async function eventsPage(root) {
       card.append(h('section', { class: 'evwhen' }, h('h3', {}, 'When'),
         condFields(g.cond),
         (b[0] === 0x04 || b[0] === 0x16) ? talkMenuLine(g.cond, b) : null,
+        b[0] === 0x0B && b.length >= 8 ? areaLine(g.cond, b) : null,
         KNOWN_COND.has(b[0]) ? null : h('p', { class: 'hint' }, 'What this condition checks isn\'t known yet. Its bytes can still be changed below.'),
         rawBytes(g.cond)));
     }
@@ -253,6 +256,22 @@ export async function eventsPage(root) {
     if (g.cond && g.editable) then.append(addStepBar(g));
     card.append(then);
     detail.append(card);
+  }
+
+  // area events: a picture of the area, and the map picker
+  function areaLine(c, b) {
+    const r = { x1: b[4], y1: b[5], x2: b[6], y2: b[7] };
+    const who = (b[2] | b[3] << 8) === 0xFFFF ? 'any unit' : (person(b[2] | b[3] << 8)?.name || 'the unit');
+    const pick = async () => {
+      const n = await pickArea(E.ch, { rect: r, unitName: who, exceptLine: c.line });
+      if (!n) return;
+      const nb = bytesOf(c.hex);
+      [nb[4], nb[5], nb[6], nb[7]] = [n.x1, n.y1, n.x2, n.y2];
+      await writeCmd(c, nb, null);
+    };
+    return h('div', { class: 'evarea' }, areaPreview(E.ch, r, pick),
+      h('div', {}, h('p', { class: 'hint' }, `From (${r.x1}, ${r.y1}) to (${r.x2}, ${r.y2}), ${r.x2 - r.x1 + 1} × ${r.y2 - r.y1 + 1} tiles.`),
+        h('button', { class: 'btn btn-line', onclick: pick }, 'Pick on map')));
   }
 
   // talk events need an entry in the chapter's Talk list, or the map menu never offers "Talk"
@@ -370,6 +389,12 @@ export async function eventsPage(root) {
       }
       if (kind === 'area') {
         const u = unitIn('Who', lordLabel, true), x1 = numIn('Left x', 0), y1 = numIn('Top y', 0), x2 = numIn('Right x', 5), y2 = numIn('Bottom y', 5);
+        const boxes = [...fieldsBox.querySelectorAll('input.num')];
+        fieldsBox.append(h('button', { class: 'btn btn-line pick-btn', type: 'button', onclick: async () => {
+          const cur = { x1: x1(), y1: y1(), x2: x2(), y2: y2() };
+          const r = await pickArea(E.ch, { rect: cur, unitName: fieldsBox.querySelector('input[aria-label="Who"]')?.value.replace(/\s*\(\d+\)$/, '') || 'the unit' });
+          if (r) [r.x1, r.y1, r.x2, r.y2].forEach((v, i) => { boxes[i].value = v; });
+        } }, 'Pick on map'));
         read = () => ({ unit: u(), x1: x1(), y1: y1(), x2: x2(), y2: y2() });
       }
       if (kind === 'battle') { const a = unitIn('Fighting', 'anyone', true), b = unitIn('Against (speaks)'); read = () => ({ a: a(), b: b() }); }
