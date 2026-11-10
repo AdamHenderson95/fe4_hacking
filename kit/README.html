@@ -1,0 +1,1186 @@
+<!doctype html><html><head><meta charset="utf-8"><title>fe4kit manual</title>
+<style>
+body{font:15px/1.55 "Segoe UI",system-ui,sans-serif;max-width:920px;margin:32px auto;padding:0 20px;color:#1d1d1f;background:#fff}
+h1{font-size:28px} h2{margin-top:2em;border-bottom:1px solid #ddd;padding-bottom:4px} h3{margin-top:1.6em}
+code{background:#f2f2f4;padding:1px 4px;border-radius:3px;font:13px Consolas,monospace}
+pre{background:#f2f2f4;padding:12px;border-radius:6px;overflow:auto} pre code{background:none;padding:0}
+table{border-collapse:collapse;margin:12px 0} th,td{border:1px solid #ddd;padding:5px 9px;vertical-align:top;text-align:left}
+th{background:#f6f6f8}
+</style></head><body><h1>fe4kit: FE4 hacking toolkit (Project Naga ROM)</h1>
+<p>Make hacks and randomized games of Fire Emblem: Genealogy of the Holy War
+(the Project Naga translation). You need your own copy of the ROM; the tools
+read everything out of it and never ship any of the game.</p>
+<h2>Builder of the Holy War, the editor (Windows)</h2>
+<p>Run <strong><code>BuilderOfTheHolyWar.exe</code></strong>. Nothing to install. It opens <strong>Builder of
+the Holy War</strong> in its own window (it uses the Edge browser that comes with
+Windows, in app mode; if Edge isn't there it uses Chrome, or opens in your
+default browser). The editor runs on your PC only: nothing is sent anywhere.
+(Up to kit v15 the editor was called FE4 Studio and the program FE4KitEditor.exe.)</p>
+<ol>
+<li><strong>Project → Choose your ROM…</strong>, then <strong>New project…</strong> picks a folder and
+   a name; the editor reads the whole game into that project folder. Open
+   an existing project with <strong>Open a project folder…</strong> or from <strong>Recent</strong>.</li>
+<li><strong>Characters</strong> shows every unit as a portrait (read from your ROM). Pick
+   one to open their sheet, laid out like the game's status screen:</li>
+<li>name, class, level, gender, leadership stars and gold;</li>
+<li><strong>Fighting skill</strong>: each stat's total (the class base plus the unit's
+     own value) with a bar, the unit's own value and its growth;</li>
+<li><strong>Holy blood</strong>: minor or major for each of the 13 bloodlines;</li>
+<li><strong>Items</strong> (it warns when two units are given the same item),
+     <strong>Skills</strong> (click to give or take away), <strong>Love</strong> partners and the
+     game IDs.</li>
+<li><strong>Children</strong> have their own sheet: the parent, who passes on the holy
+     weapon, how much of the parents' growths and stats they inherit, and
+     the skills they can inherit.</li>
+<li><strong>Classes</strong>: bases, growths, weapon ranks, movement, flying and class
+   skills, with the units that use each class.</li>
+<li><strong>Maps</strong>: each chapter's map drawn with the game's own tiles, with its
+   castles, villages and units on top.</li>
+<li><strong>Paint</strong> (B): pick a tile in the <strong>Tiles</strong> panel and paint. Drag across
+     several tiles in the panel to paint them as a block (a house, a castle
+     wall). Right-click (or Alt+click) on the map picks the tile under the
+     pointer. The <strong>terrain</strong> list in the Tiles panel shows only the tiles of
+     one terrain (all the forest tiles, all the water tiles…).</li>
+<li><strong>Fill</strong> (G) fills the area of the same tile that you click.</li>
+<li><strong>Pick</strong> (I): click to pick one tile, or drag over the map to copy a
+     block of tiles and paint it elsewhere.</li>
+<li><strong>Select</strong> (V): click a castle, village or unit to see it and change
+     its position, AI orders or village gold; drag it to move it. Clicking
+     the ground shows its terrain.</li>
+<li>The terrain comes with the tile: painting water makes the cell water
+     for the game too. <strong>Show → Terrain</strong> colours the map by terrain; the
+     status line under the map names the terrain under the pointer.</li>
+<li>Units come onto the map in groups (deploy lists) as the chapter goes on;
+     the <strong>Units</strong> panel shows or hides each group.</li>
+<li><strong>Area flags</strong> shows bits stored with each map cell above the tile
+     number. The game uses them (what for isn't known yet); painting keeps
+     them as they are.</li>
+<li>Zoom with − / + or Ctrl+mouse wheel; drag with the middle mouse button
+     (or Shift+drag) to move around.</li>
+<li><strong>Events &amp; dialogue</strong>: each chapter's script as a list of events in
+   plain words: <em>Turn 3</em>, <em>Sigurd talks to Ayra</em>, <em>Someone visits village 5</em>,
+   <em>Midir fights Gerrard</em>, <em>Sigurd reaches (12, 38)–(17, 43)</em>, … with the
+   first line of what's said. Filter by talks, turns, villages, battles and
+   areas, or <strong>search all dialogue</strong> in the game.</li>
+<li><strong>When</strong>: the condition's settings as fields (the turn, who talks to
+     whom, which village, the area's corners, who fights whom). Pick people
+     from a list of names.</li>
+<li><strong>Then</strong>: the steps that follow. <em>Play scene N</em> and <em>Show a message</em>
+     open the conversation right there; <em>Units arrive: deploy list N</em> has a
+     <strong>See them on the map</strong> button; items given, stat boosts and army
+     changes have their own fields.</li>
+<li><strong>Conversations</strong> are speech bubbles with the speakers' portraits, left
+     and right as in the game. Each bubble is one box of text (one button
+     press): type into it, Enter starts a new line. Click a portrait to
+     change who speaks. Under each box, a gauge measures the widest line
+     with the game's own letter widths: the box holds 224 pixels and 3 lines.
+     Letters the game has: A–Z, a–z, 0–9, space and <code>. , : ? ! ' - " á é ö</code>.</li>
+<li><strong>Show codes</strong> shows the whole message with its control codes for
+     anything else (new boxes, pauses, portraits coming and going).</li>
+<li>Steps and conditions whose meaning isn't known yet say so; their bytes
+     can still be changed under <strong>Bytes</strong> (same length).</li>
+<li>Changes are checked as you type (a value out of range turns red and
+   says why). <strong>Undo / Redo</strong> (Ctrl+Z / Ctrl+Y) cover every change (a whole
+   paint stroke or fill is one step); <strong>Save</strong> (Ctrl+S) writes the project
+   files.</li>
+<li><strong>Build ROM</strong> writes the hacked ROM plus a shareable <code>.ips</code> patch next to
+   the project folder. <strong>Test play</strong> (F6) builds it and opens it straight
+   away in the FE4 PC port (FE4Port.zip), without your mods and with its own
+   saves. The editor finds FE4.exe when the kit sits in the port's <code>fe4kit</code>
+   folder (as it comes in FE4Port.zip) or next to it; otherwise it asks once.</li>
+<li>On the Project page, <strong>Add unit stats to the map box</strong> puts the PC port's
+   MT / HIT / AS / AVO box into the ROMs and patches you build, so players
+   on emulators get it too (the port can still switch it off).</li>
+</ol>
+<p>Items, shops and villages come to the editor next. Until then they're in
+the <strong>classic editor</strong> (link on the Project page, or run
+<code>BuilderOfTheHolyWar.exe classic</code>), as is adding or removing event steps
+(by hand in the <code>.evt</code> files, see below): pick a page on the left, select a row, edit it in the panel on the right and press Apply. Its
+Build menu also has <strong>Test generation 2</strong>, which writes a copy whose New Game
+opens on chapter 6, and <strong>Test play generation 2 in the PC port</strong>.</p>
+<p><strong>Maps in projects from kit v15 or older:</strong> those kits read the chapter 5 and
+endgame maps wrongly (and drew the chapter 9 map picture with the wrong
+tiles). The editor re-reads those two maps from your ROM when it opens the
+project, as long as they haven't been edited; building still works with the
+old files either way.</p>
+<p>The project folder is plain CSV and text files, so you can also edit it in a
+spreadsheet. The editor, the classic editor and the Python scripts below all
+read the same projects. Run the editor from Python with <code>python fe4studio.py</code>.</p>
+<h2>Randomizer</h2>
+<p>The <strong>Randomizer</strong> page (or <code>BuilderOfTheHolyWar.exe rando ROM out.smc --preset standard</code>)
+makes a randomized ROM, an <code>.ips</code> patch and a spoiler log, from the clean game
+or from your own hack.</p>
+<table>
+<thead>
+<tr>
+<th>Option</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Growth rates</td>
+<td>vary each growth, redistribute the same total, or pick freely between a min and max</td>
+</tr>
+<tr>
+<td>Personal base stats</td>
+<td>vary or redistribute each character's stat bonuses</td>
+</tr>
+<tr>
+<td>Playable classes</td>
+<td>a random class of the same tier and gender; starting weapons change to match</td>
+</tr>
+<tr>
+<td>Keep Sigurd, Seliph and Julia / dancers</td>
+<td>story units and dancers keep their class</td>
+</tr>
+<tr>
+<td>Healers stay healers</td>
+<td>units who start with staves get a class that can use them</td>
+</tr>
+<tr>
+<td>Holy blood keeps its weapon</td>
+<td>major blood (Lewyn's Forseti, Quan's Gáe Bolg…) and carried holy weapons stay usable. Children follow the parent they're tied to</td>
+</tr>
+<tr>
+<td>Personal skills</td>
+<td>random personal skills, plus extra ones</td>
+</tr>
+<tr>
+<td>Skills from later games</td>
+<td>Aether, Galeforce, Vengeance, Great Shield, Lifetaker, Pray, Counter… join the pool</td>
+</tr>
+<tr>
+<td>Random minor holy blood</td>
+<td>generation-1 units may gain a minor blood, which their children inherit</td>
+</tr>
+<tr>
+<td>Child parents</td>
+<td><code>split</code> gives each sibling a different mother. <code>any_parent</code> ties children to fathers too, e.g. Ced to Lewyn and Fee to Ayra</td>
+</tr>
+<tr>
+<td>Children per parent</td>
+<td>at most this many children per parent</td>
+</tr>
+<tr>
+<td>Inheritance weights</td>
+<td>how much of each parent the children get</td>
+</tr>
+<tr>
+<td>Love affinities</td>
+<td>random starting love and growth for every pair</td>
+</tr>
+<tr>
+<td>Weapon stats</td>
+<td>Mt, Hit and Wt of ordinary weapons vary</td>
+</tr>
+<tr>
+<td>Enemy classes</td>
+<td>generic enemies get a class that moves on the same terrain; their weapons follow</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li><strong>Presets:</strong> <code>light</code>, <code>standard</code> and <code>chaos</code>.</li>
+<li><strong>Seeds:</strong> the same seed and options always make the same ROM.</li>
+<li><strong>Substitutes:</strong> a substitute always shares a weapon type with the child it
+  replaces, because they share their starting items.</li>
+</ul>
+<h2>Command line (Python 3, no extra packages)</h2>
+<pre><code>python fe4hack.py extract  &quot;Fire Emblem....smc&quot;  myhack          # once: dump editable CSVs
+python fe4hack.py build    &quot;Fire Emblem....smc&quot;  myhack  myhack.smc  --ips myhack.ips
+python fe4hack.py build    &quot;Fire Emblem....smc&quot;  myhack  myhack.smc  --hover-stats   # with the unit stats box
+python fe4hack.py diff     &quot;Fire Emblem....smc&quot;  myhack.smc     # see exactly what changed
+python fe4rando.py &quot;Fire Emblem....smc&quot; rando.smc --seed 42 --preset chaos --opt parents=any_parent
+python fe4rando.py --list                                        # every randomizer option
+python fe4rando.py --list-tsv options.tsv                        # the same, for other programs
+python fe4rando.py ... --log run.txt                             # output and errors to a file
+</code></pre>
+<p><code>BuilderOfTheHolyWar.exe extract|build|diff|rando …</code> takes the same arguments.</p>
+<p>Play the ROM in the FE4 PC port or any SNES emulator: Snes9x, bsnes or
+RetroArch. The <code>.ips</code> file is a shareable patch, since it contains only your
+changes; PC port players drop it in their <code>mods</code> folder. The PC port also
+runs this randomizer from its own menu (Mods → Randomizer).</p>
+<h2>What you can edit</h2>
+<table>
+<thead>
+<tr>
+<th>File</th>
+<th>Rows</th>
+<th>Contents</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>units_playable.csv</code></td>
+<td>46</td>
+<td>Gen 1 characters and gen 2 substitutes: starting HP/stats, class, level, authority, gold, growths, skills, holy blood, starting items</td>
+</tr>
+<tr>
+<td><code>units_children.csv</code></td>
+<td>17+</td>
+<td>Seliph, Leif, Altena and the other children: class, level, starting items, and generation 2: whose child each one is, what they inherit, their substitute. New children can be added</td>
+</tr>
+<tr>
+<td><code>lovers.csv</code></td>
+<td>503</td>
+<td>Starting love and love growth per turn for every couple the game tracks</td>
+</tr>
+<tr>
+<td><code>gen2_rules.csv</code></td>
+<td>3</td>
+<td>Children's gold and the cap on inherited stats</td>
+</tr>
+<tr>
+<td><code>units_npc.csv</code></td>
+<td>53</td>
+<td>Named NPCs and bosses with full personal data (Eldigan and others)</td>
+</tr>
+<tr>
+<td><code>units_generic.csv</code></td>
+<td>453</td>
+<td>Class-based enemies and bosses (Gerrard, DiMaggio…): class, level, authority, items</td>
+</tr>
+<tr>
+<td><code>deploy.csv</code></td>
+<td>1328</td>
+<td>Where every unit spawns: list.entry, unit ID, X/Y, AI orders, army slot, leader flag</td>
+</tr>
+<tr>
+<td><code>classes.csv</code></td>
+<td>72</td>
+<td>Base stats, class growths, weapon ranks (A/B/C/-), movement</td>
+</tr>
+<tr>
+<td><code>items.csv</code></td>
+<td>106</td>
+<td>Weapons and staves: Mt, Hit, Wt, range, uses, price, rank, effectiveness, special effects</td>
+</tr>
+<tr>
+<td><code>rings.csv</code></td>
+<td>16</td>
+<td>Rings: price, stat bonus, skill bits</td>
+</tr>
+<tr>
+<td><code>item_instances.csv</code></td>
+<td>141</td>
+<td>Which item type each physical item in the campaign is</td>
+</tr>
+<tr>
+<td><code>events/chNN_*.evt</code></td>
+<td>2,643</td>
+<td>Each chapter's opening script and trigger list: turn, talk, area, battle and death conditions; scenes to run; deployments</td>
+</tr>
+<tr>
+<td><code>events/scenes.evt</code></td>
+<td>12,170</td>
+<td>All 562 cutscenes and conversations</td>
+</tr>
+<tr>
+<td><code>events/dialogue.txt</code></td>
+<td>785</td>
+<td>Every message those scripts show, as editable text</td>
+</tr>
+<tr>
+<td><code>locations.csv</code></td>
+<td>132</td>
+<td>Every castle and village: position, castle name, castle-town facilities, armory stock, village gold</td>
+</tr>
+<tr>
+<td><code>arena.csv</code></td>
+<td>71</td>
+<td>Arena opponents for each chapter and rank</td>
+</tr>
+<tr>
+<td><code>armies.csv</code></td>
+<td>72</td>
+<td>Every army: name, member units, castles it holds</td>
+</tr>
+<tr>
+<td><code>ai_orders.evt</code></td>
+<td>737</td>
+<td>Enemy AI programs: which castle to seize, which turn to march, what to attack</td>
+</tr>
+<tr>
+<td><code>skills.csv</code></td>
+<td>29+</td>
+<td>Every skill: who has it, activation rates and effect numbers, plus new skills from later games (Aether, Galeforce, Great Shield…) with their Skills-menu entries</td>
+</tr>
+<tr>
+<td><code>names.csv</code></td>
+<td>810</td>
+<td>Character, class, item and castle names as shown in game</td>
+</tr>
+<tr>
+<td><code>maps/chNN_*.csv</code></td>
+<td>12 maps</td>
+<td>Each battlefield as a 64-column grid of tile numbers, with a <code>.png</code> preview and a <code>_tiles.png</code> tile sheet</td>
+</tr>
+</tbody>
+</table>
+<h2>Column conventions</h2>
+<ul>
+<li><strong><code>index</code></strong> is the unit ID in the unit files and <code>list.entry</code> in <code>deploy.csv</code>.</li>
+<li><strong>Rows</strong> can be edited in every file. Rows can also be added to <code>units_generic.csv</code>,
+  <code>units_children.csv</code> and <code>deploy.csv</code>, and removed from <code>deploy.csv</code> (see "Adding new things").</li>
+<li><strong><code>portrait</code></strong> (all four unit files) is the face a unit shows. Write a number or
+  another unit's name to borrow theirs, e.g. <code>Lex</code>.</li>
+<li><strong>Unit stats</strong> (<code>str</code> … <code>res</code>) are bonuses added to the class bases, which is how FE4 itself works. <code>hp</code> and <code>lck</code> are absolute.</li>
+<li><strong>Item columns</strong></li>
+<li>Playable and children files use item <strong>instance</strong> numbers (see <code>item_instances.csv</code>).</li>
+<li>NPC and generic files use item <strong>type</strong> numbers (see <code>items.csv</code>).</li>
+<li><code>255</code> = empty.</li>
+<li><strong>Skills</strong> are written by name, separated by <code>;</code>: <code>Pursuit;Astra;Sol</code>. Names follow <code>skills.csv</code>. Use <code>bit3</code> and so on for unnamed bits.</li>
+<li><strong>Holy blood</strong> is written like <code>Baldur:major;Naga:minor</code>.</li>
+<li><strong>Weapon ranks</strong> are <code>A</code>, <code>B</code>, <code>C</code>, <code>-</code>, or <code>*</code> for holy weapons.</li>
+<li><strong>Columns starting with <code>_</code></strong> are for reference only and ignored on build.</li>
+<li><strong>Names:</strong> the <code>_name</code> columns are reference only. Rename things in <code>names.csv</code>.</li>
+</ul>
+<h2>Events and dialogue</h2>
+<p><strong><code>.evt</code> lines</strong> look like this:</p>
+<pre><code>86C8A7: 02 00 00 00 01 00      ; COND_TURN      turn 1
+908106: 30 FF 18 00            ; RUN_SCENE      scene 24
+</code></pre>
+<ul>
+<li>Edit the hex bytes; the part after <code>;</code> is a comment.</li>
+<li>An edited command must keep its length. To add or remove commands, see
+  "Adding new things".</li>
+<li>Examples of edits: change which scene a talk or visit triggers, the turn a
+  reinforcement wave arrives, a deploy list number, or a unit ID in a condition.</li>
+<li>Names ending in <code>?</code> are educated guesses.</li>
+<li><code>OP_xx</code> / <code>SC_xx</code> commands aren't identified yet, but they still edit safely.</li>
+</ul>
+<p><strong><code>dialogue.txt</code></strong> holds one block per message:</p>
+<pre><code>@602487  ; ch00 908141 TALK
+{07}{00 3D}{00 3F 07 00}{09}Urgh...{02}
+Milady, I...{02}
+Forgive me...{08}{01}
+</code></pre>
+<ul>
+<li>Change the words freely, and make a message as long as you like.</li>
+<li>Changed messages are moved into empty ROM space.</li>
+<li>Every script that uses the message is repointed.</li>
+<li>Keep the <code>{..}</code> control codes:</li>
+<li><code>{02}</code> = new line</li>
+<li><code>{08}</code> = wait for button</li>
+<li><code>{06}</code>/<code>{07}</code> = left/right speaker</li>
+<li><code>{00 3F pp 00}</code> = portrait</li>
+<li><code>{01}</code> = end</li>
+<li>Line breaks in the file itself are ignored.</li>
+<li>Lines in the game box fit about 44 characters.</li>
+</ul>
+<h2>Maps</h2>
+<ul>
+<li><strong>Easiest:</strong> the <strong>Maps</strong> page of Builder of the Holy War (above).</li>
+<li><strong>Without the editor:</strong> open <code>map_editor.html</code> in a browser. Load a chapter's
+  <code>maps/chNN_*.csv</code> and its <code>chNN_*_tiles.png</code>, then paint:</li>
+<li>Click a tile, or drag across the tile sheet to pick a block such as a castle.</li>
+<li>Right-click the map to copy tiles from it.</li>
+<li><strong>Fill box</strong> paints a rectangle.</li>
+<li>Save the CSV back into <code>maps/</code>.</li>
+<li><strong>By hand:</strong> edit the CSV values directly. Each number is a tile from the
+  tile sheet, counted left to right, top to bottom, 32 per row.</li>
+<li><strong>Rules:</strong></li>
+<li>Keep the same number of cells (every map is 64 × 64).</li>
+<li>The bits above the tile number (<code>value &gt;&gt; 10</code>) are per-cell area flags; keep them.</li>
+<li>Terrain follows the tile, so water tiles block walking.</li>
+<li>Edited maps are recompressed and stored in free ROM space automatically.</li>
+<li><strong>Previews:</strong> PNGs need Pillow (<code>pip install pillow</code>). Everything else needs only Python.</li>
+</ul>
+<h2>Castles and villages</h2>
+<p><code>locations.csv</code> has one row per castle or village in each chapter.</p>
+<table>
+<thead>
+<tr>
+<th>Column</th>
+<th>Applies to</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>x</code>, <code>y</code></td>
+<td>both</td>
+<td>A castle's seize point, or the spot you stand on to visit a village</td>
+</tr>
+<tr>
+<td><code>castle_id</code></td>
+<td>castles</td>
+<td>The castle's name, from the game's list of 46 castles</td>
+</tr>
+<tr>
+<td><code>facilities</code></td>
+<td>castles</td>
+<td>Castle-town buttons, separated by <code>;</code>: <code>Armory</code>, <code>Pawnbroker</code>, <code>Blacksmith</code>, <code>Supply</code>, <code>Augury</code>, <code>Arena</code>. Use <code>-</code> for none</td>
+</tr>
+<tr>
+<td><code>shop</code></td>
+<td>castles</td>
+<td>What the Armory sells: item <strong>instance</strong> numbers separated by <code>;</code> (see <code>item_instances.csv</code>). Usually only the chapter's first castle has one</td>
+</tr>
+<tr>
+<td><code>gold</code></td>
+<td>villages</td>
+<td>Gold paid on the first visit, 1–50000 (the game's default is 5000 for every village)</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li><strong>The map is separate:</strong> the castle or village graphics are map tiles, so
+  paint them in the map painter too when you move one.</li>
+<li><strong>Previews:</strong> map PNGs outline each location, labelled with its index.</li>
+<li><strong>Shop rules:</strong></li>
+<li>Each item instance is a single physical item, so a shop sells one of each.</li>
+<li>An item only goes on sale if nobody owns it yet when the chapter starts.</li>
+<li>The <code>Armory</code> button must be in <code>facilities</code> for the shop to be reachable.
+    The Prologue has neither by default, but both can be added.</li>
+<li>Shops can be longer than the original; extra space comes from free space
+    in the same ROM bank (about 300–2,500 bytes per chapter group).</li>
+<li><strong>Village gold</strong> only changes the first-visit payout. Brigands still loot it as normal.</li>
+<li><strong>Limits:</strong> rows can't be added yet, and a castle can't become a village.</li>
+</ul>
+<h3>What a village gives besides gold</h3>
+<p>Item and stat rewards are scene commands in <code>events/scenes.evt</code>. Find the
+scene from the village's <code>COND_VISIT</code> line in the chapter's <code>.evt</code> file:</p>
+<pre><code>B18627: 4A 57 FF FF 7B   ; EVENT  GIVE_ITEM visitor gets Speed ring(#123)
+9D914C: 4A 70 FF 05 01   ; EVENT  STAT_UP visitor Def +1
+</code></pre>
+<ul>
+<li><code>GIVE_ITEM</code>: the last byte is the item instance. <code>FF FF</code> means the visiting unit.</li>
+<li><code>STAT_UP</code>: the bytes are the unit (<code>FF</code> = visitor), the stat (0 HP, 1 Str,
+  2 Mag, 3 Skl, 4 Spd, 5 Def, 6 Res, 7 Lck) and the amount.</li>
+</ul>
+<h2>Arena</h2>
+<p><code>arena.csv</code> lists the 7 arena opponents for each chapter.</p>
+<ul>
+<li><strong><code>melee</code> / <code>ranged</code></strong> are unit IDs. The game uses the <code>ranged</code> opponent
+  when your fighter's weapon reaches 2 or more spaces.</li>
+<li><strong>Changing an opponent's stats:</strong> opponents are ordinary units, so their
+  class, level and weapons are in <code>units_generic.csv</code> (IDs 480 onward).</li>
+<li><strong>Rank 8 rows</strong> are fallbacks. If the rank 7 opponent has already joined
+  your army, the game uses rank 8 instead. That is how chapter 2's Holyn is
+  replaced by Chaimos once he joins.</li>
+<li><strong>New arenas:</strong> the Prologue and chapter 6 have no arena. Add 7 rows for
+  that chapter, and add <code>Arena</code> to its home castle's <code>facilities</code>.</li>
+</ul>
+<h2>Armies and enemy AI</h2>
+<p>FE4 groups units into armies, for example "Evans" (Gandolf's Verdane force)
+or "Jungby". Three files work together:</p>
+<ul>
+<li><strong>Which army a unit is in:</strong> in <code>deploy.csv</code>, <code>army_slot</code> puts the unit in
+  one of the chapter's army slots (0 is always you). The chapter's opening
+  script fills the slots with <code>SET_ARMY</code> lines, such as
+  <code>4B 01 02 ; slot 1 = army 2</code>.</li>
+<li><strong><code>armies.csv</code>:</strong> one row per army.</li>
+<li><code>name</code>: the castle name it uses.</li>
+<li><code>members</code>: units that join it when it's set up. Sigurd's army lists Sigurd, Noish, Alec and Arden.</li>
+<li><code>castles</code>: location indices it holds from the start. When two armies
+    claim the same castle, the one set up later wins.</li>
+<li><code>_orders</code>: how many AI programs it has.</li>
+<li><strong>How a unit behaves:</strong> <code>orders</code> in <code>deploy.csv</code> picks one of its army's
+  programs (1, 2, …; 0 = stands still). The programs are in <code>ai_orders.evt</code>:</li>
+</ul>
+<pre><code>== army 2 orders 2 @9081A8
+9081A8: 1F 03 AE 81   ; IF_TURN_GOTO      turn &gt;= 3 -&gt; 81AE
+9081AC: 0A            ; ATTACK_IN_REACH
+9081AD: FF            ; END
+9081AE: 06 01 01      ; SEIZE_CASTLE      location 1 (Jungby)
+9081B1: 06 00 01      ; SEIZE_CASTLE      location 0 (Chalphy)
+9081B4: 18            ; ATTACK_ANY
+</code></pre>
+<p>Each turn a unit runs its program from the top, and the first command that
+  can act does. This one means "until turn 3, only attack what's in reach;
+  from turn 3, march on Jungby, then Chalphy, then attack anyone". Change
+  <code>03</code> to <code>01</code> and that group marches on turn 1.
+- <strong>Useful commands:</strong></p>
+<table>
+<thead>
+<tr>
+<th>Command</th>
+<th>Bytes</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>SEIZE_CASTLE</code></td>
+<td><code>06 loc mode</code></td>
+<td>march on and take an enemy castle</td>
+</tr>
+<tr>
+<td><code>GUARD_CASTLE</code></td>
+<td><code>07 loc mode</code></td>
+<td>go back to and hold one of its own castles</td>
+</tr>
+<tr>
+<td><code>RAID_VILLAGE</code></td>
+<td><code>08 loc</code></td>
+<td>destroy a village</td>
+</tr>
+<tr>
+<td><code>RAID_ANY_VILLAGE</code></td>
+<td><code>17</code></td>
+<td>destroy any village</td>
+</tr>
+<tr>
+<td><code>ATTACK_IN_REACH</code></td>
+<td><code>0A</code></td>
+<td>attack only what it can reach this turn</td>
+</tr>
+<tr>
+<td><code>ATTACK_ANY</code></td>
+<td><code>18</code></td>
+<td>go after any enemy</td>
+</tr>
+<tr>
+<td><code>ATTACK_UNIT</code></td>
+<td><code>0D unit</code></td>
+<td>target one unit (word)</td>
+</tr>
+<tr>
+<td><code>MOVE_TO</code></td>
+<td><code>09 flag bit x y</code></td>
+<td>walk to (x, y) unless the event flag is set; set it on arrival</td>
+</tr>
+<tr>
+<td><code>IF_TURN_GOTO</code></td>
+<td><code>1F turn addr</code></td>
+<td>jump once the turn number is reached</td>
+</tr>
+<tr>
+<td><code>IF_FLAG_GOTO</code> / <code>IF_NOT_FLAG_GOTO</code></td>
+<td><code>20</code>/<code>21 flag bit addr</code></td>
+<td>jump on an event flag</td>
+</tr>
+<tr>
+<td><code>GOTO</code></td>
+<td><code>01 addr</code></td>
+<td>jump</td>
+</tr>
+<tr>
+<td><code>STOP</code> / <code>END</code></td>
+<td><code>00</code> / <code>FF</code></td>
+<td>do nothing more this turn</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li><strong>Editing rules:</strong> the same as the other <code>.evt</code> files (see "Adding new things").
+  Jump addresses are the low 16 bits of an address in
+  the same bank.</li>
+<li><strong>Old projects:</strong> older <code>deploy.csv</code> files use <code>army</code> and <code>faction</code> for
+  <code>orders</code> and <code>army_slot</code>, and they still build.</li>
+</ul>
+<h2>Skills</h2>
+<p><code>skills.csv</code> has one row per skill. Rows 1–29 are FE4's own skills; add rows
+from id 30 up for new ones.</p>
+<h3>Who has a skill</h3>
+<table>
+<thead>
+<tr>
+<th>Column</th>
+<th>Gives the skill to</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>personal_bit</code></td>
+<td>units that list it in their <code>skills</code> column</td>
+<td>24 bits; 22 and 23 are free</td>
+</tr>
+<tr>
+<td><code>class_bit</code></td>
+<td>classes that list it in <code>classes.csv</code> <code>skills</code></td>
+<td>16 bits; 13–15 are free</td>
+</tr>
+<tr>
+<td><code>item_bit</code></td>
+<td>anyone carrying an item/ring that lists it</td>
+<td>16 bits; 13–15 are free</td>
+</tr>
+<tr>
+<td><code>units</code></td>
+<td>these units, e.g. <code>Sigurd;Ayra;769</code></td>
+<td>new skills only, no bit needed</td>
+</tr>
+<tr>
+<td><code>classes</code></td>
+<td>these classes, e.g. <code>Swordmaster;Bow Knight</code></td>
+<td>new skills only, no bit needed</td>
+</tr>
+</tbody>
+</table>
+<p>Bits are scarce, so for new skills use <code>units</code> and <code>classes</code>. They take names
+or index numbers. Write the index when a name repeats: Finn has two records,
+so he is <code>5</code> or <code>34</code>.</p>
+<h3>FE4's own skills</h3>
+<p><code>stat</code>, <code>amount</code> and <code>amount2</code> tune the built-in effects:</p>
+<table>
+<thead>
+<tr>
+<th>Skill</th>
+<th>What the numbers mean</th>
+<th>Game default</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Astra, Luna, Sol</td>
+<td>activation % = <code>stat</code> × <code>amount</code> / 100 + <code>amount2</code></td>
+<td>Skl × 100 + 0</td>
+</tr>
+<tr>
+<td>Wrath</td>
+<td>crit % when HP ≤ half</td>
+<td>100</td>
+</tr>
+<tr>
+<td>Charm</td>
+<td>hit/avoid bonus given to nearby allies</td>
+<td>10</td>
+</tr>
+<tr>
+<td>Miracle</td>
+<td>below <code>amount</code> HP, avoid + (<code>amount</code> − HP) × <code>amount2</code></td>
+<td>11, 10</td>
+</tr>
+<tr>
+<td>Renewal</td>
+<td>heals <code>amount</code> + random(<code>amount2</code>) HP per turn</td>
+<td>5, 6</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li><strong><code>weapons</code>:</strong> in FE4, Astra, Luna and Sol only trigger with swords. Set
+  <code>weapons</code> to <code>any</code> and they trigger with any weapon except staves. Leave it
+  blank, or set <code>sword</code>, to keep FE4's rule.</li>
+<li><strong><code>stat</code>:</strong> Str, Mag, Skl, Spd, Def, Res or Lck.</li>
+</ul>
+<h3>New skills (id 30+)</h3>
+<p>The <code>effect</code> column picks what a new skill does.</p>
+<p><strong><code>stat</code>:</strong> a permanent stat bonus, <code>stat</code> + <code>amount</code> (1–30), e.g. <code>Str</code> <code>5</code>.
+It shows on the status page like a ring.</p>
+<p><strong><code>combat</code>:</strong> battle bonuses, written in <code>bonus</code> with an optional <code>when</code>.</p>
+<table>
+<thead>
+<tr>
+<th>Column</th>
+<th>Values</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>bonus</code></td>
+<td><code>atk</code>, <code>def</code>, <code>hit</code>, <code>avoid</code>, <code>crit</code>, <code>speed</code> with + or −, separated by <code>;</code>. Prefix <code>foe_</code> to change the enemy's number instead.</td>
+</tr>
+<tr>
+<td><code>when</code></td>
+<td>blank = always, <code>attacking</code> (you started the fight), <code>defending</code>, <code>hp&lt;=50</code>, <code>hp&lt;=25</code>, <code>hp_full</code>, <code>ally_near</code></td>
+</tr>
+</tbody>
+</table>
+<p><code>ally_near</code> turns the skill into an aura: allies within 3 spaces of the skill
+holder get the bonus, but the holder doesn't. The bonuses show in the battle
+forecast. Examples:</p>
+<table>
+<thead>
+<tr>
+<th>Skill</th>
+<th><code>bonus</code></th>
+<th><code>when</code></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Death Blow</td>
+<td><code>atk+6</code></td>
+<td><code>attacking</code></td>
+</tr>
+<tr>
+<td>Darting Blow</td>
+<td><code>speed+5</code></td>
+<td><code>attacking</code></td>
+</tr>
+<tr>
+<td>Defiant Str</td>
+<td><code>atk+7</code></td>
+<td><code>hp&lt;=25</code></td>
+</tr>
+<tr>
+<td>Fortune</td>
+<td><code>foe_crit-100</code></td>
+<td></td>
+</tr>
+<tr>
+<td>Hit +20</td>
+<td><code>hit+20</code></td>
+<td></td>
+</tr>
+<tr>
+<td>Rally</td>
+<td><code>atk+3;def+3</code></td>
+<td><code>ally_near</code></td>
+</tr>
+</tbody>
+</table>
+<p><strong>Skills from later games.</strong> The activation rate is <code>stat</code> × <code>amount</code> / 100 +
+<code>amount2</code>, like Astra; blank columns use the defaults below. <code>stat</code> can also
+be <code>Lv</code> or <code>none</code>. <code>power</code> is the effect's strength.</p>
+<table>
+<thead>
+<tr>
+<th><code>effect</code></th>
+<th>What it does</th>
+<th>Default rate</th>
+<th><code>power</code></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>aether</code></td>
+<td>ignores defence and heals the damage dealt (Sol + Luna)</td>
+<td>Skl × 50%</td>
+<td></td>
+</tr>
+<tr>
+<td><code>ignis</code></td>
+<td>damage + a stat</td>
+<td>Skl</td>
+<td><code>Def 50</code> (half Def)</td>
+</tr>
+<tr>
+<td><code>colossus</code></td>
+<td>damage + a stat</td>
+<td>Str</td>
+<td><code>Str 100</code></td>
+</tr>
+<tr>
+<td><code>vengeance</code></td>
+<td>damage + HP lost</td>
+<td>Skl × 200%</td>
+<td><code>50</code> (half)</td>
+</tr>
+<tr>
+<td><code>deadeye</code></td>
+<td>damage × power %</td>
+<td>Skl × 50%</td>
+<td><code>200</code></td>
+</tr>
+<tr>
+<td><code>lethality</code></td>
+<td>defeats the enemy outright</td>
+<td>Skl × 25%</td>
+<td></td>
+</tr>
+<tr>
+<td><code>sure_strike</code></td>
+<td>attacks always hit</td>
+<td>Skl</td>
+<td></td>
+</tr>
+<tr>
+<td><code>great_shield</code></td>
+<td>blocks a hit completely (Pavise effect)</td>
+<td>Lv</td>
+<td></td>
+</tr>
+<tr>
+<td><code>aegis</code></td>
+<td>damage × power % from magic or ranged hits</td>
+<td>Skl</td>
+<td><code>50</code></td>
+</tr>
+<tr>
+<td><code>pray</code></td>
+<td>survive a deadly hit with 1 HP (needs 2+ HP)</td>
+<td>Lck</td>
+<td></td>
+</tr>
+<tr>
+<td><code>counter</code></td>
+<td>the attacker takes the same damage when hitting from 1 space (never below 1 HP)</td>
+<td>always</td>
+<td><code>100</code></td>
+</tr>
+<tr>
+<td><code>galeforce</code></td>
+<td>player units: after defeating an enemy, act again</td>
+<td>always</td>
+<td></td>
+</tr>
+<tr>
+<td><code>lifetaker</code></td>
+<td>after defeating an enemy, heal power % of max HP</td>
+<td>always</td>
+<td><code>50</code></td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li><strong>When they trigger:</strong> attack skills work like Astra/Luna/Sol. They are rolled
+  when the unit's attack starts, apply to that whole attack, always hit, and
+  show Luna's or Sol's battle effect. Defensive skills roll on each hit.</li>
+<li><strong>Nihil:</strong> blocks both attack and defensive skills from the other side.</li>
+<li><strong>Weapons:</strong> new attack skills work with any weapon except staves. Set
+  <code>weapons</code> to <code>sword</code> for FE4's swords-only rule.</li>
+<li><strong>Counter:</strong> its damage shows on the map after the battle, not in the battle
+  animation.</li>
+</ul>
+<h3>The Skills menu</h3>
+<p>New skills appear in the map menu's Skills list, after FE4's 18. Each one gets
+its name, an icon, a type and a help text, and the bearers are listed just
+like FE4's own skills.</p>
+<table>
+<thead>
+<tr>
+<th>Column</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>menu</code></td>
+<td><code>no</code> hides the skill</td>
+</tr>
+<tr>
+<td><code>icon</code></td>
+<td>borrow a listed skill's icon (<code>Pavise</code>, <code>Luna</code>, <code>Charm</code>…), or use one of the six unused ones, <code>spare1</code>–<code>spare6</code></td>
+</tr>
+<tr>
+<td><code>type</code></td>
+<td><code>Combat</code>, <code>Field</code> or <code>Sword</code></td>
+</tr>
+<tr>
+<td><code>description</code></td>
+<td>help text, wrapped to 3 lines; <code>/</code> forces a line break. Defaults to a short description of the effect.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Limits:</strong>
+- The menu holds 32 rows, so up to 14 new skills can be listed.
+- The names share 57 spaces 8 pixels wide. A name like "Vengeance" uses 7 and
+  "Rally" uses 3, and a name can be at most 56 pixels.
+- Help text is limited to 3 lines of about 96 pixels each. The build tells you
+  when something doesn't fit.</p>
+<h3>Other limits</h3>
+<ul>
+<li>New skills don't show yet in the row of skill icons on a unit's status page.</li>
+<li>Changing the names of FE4's own skills in the menu isn't supported yet.</li>
+<li>The effects of Pavise, Adept, Vantage, Accost, Pursuit and Paragon are fixed.
+  Who has them can still be changed.</li>
+</ul>
+<h2>Generation 2</h2>
+<p>Everything about who the children are and what they get from their parents
+is in <code>units_children.csv</code>, <code>lovers.csv</code> and <code>gen2_rules.csv</code>.</p>
+<h3>How children are born</h3>
+<p>At the end of chapter 5 FE4 makes each married mother's two children, then
+sends the generation-1 cast away. The kit replaces that step:</p>
+<ul>
+<li>Any unit can be a child's <strong><code>parent</code></strong>, father or mother. The other parent
+  is whoever that unit married. FE4's pairs are the defaults: Ulster and
+  Larcei are Ayra's, Ced and Fee are Erin's, and so on.</li>
+<li>To tie Ced to Lewyn instead of Erin, write <code>Lewyn</code> in Ced's <code>parent</code>. Ced is
+  then Lewyn's son with whoever Lewyn marries. Fee stays Erin's daughter.</li>
+<li>A parent can have any number of children: give several rows the same parent.</li>
+<li>Children are made in row order, one couple at a time.</li>
+</ul>
+<h3><code>units_children.csv</code> columns</h3>
+<table>
+<thead>
+<tr>
+<th>Column</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>parent</code></td>
+<td>the unit the child is tied to (name or ID)</td>
+</tr>
+<tr>
+<td><code>always</code></td>
+<td><code>yes</code>: born even if that parent has died. FE4 does this for Deirdre and Ethlyn. The parent still has to have married</td>
+</tr>
+<tr>
+<td><code>born_flag</code></td>
+<td>event flag set when the child is born. Scripts test it to choose the child or the substitute. Fixed for FE4's own children; new children get one from 128 up when left blank</td>
+</tr>
+<tr>
+<td><code>substitute</code></td>
+<td>who appears instead when the child isn't born (Rodolbahn for Ulster, …)</td>
+</tr>
+<tr>
+<td><code>joins</code></td>
+<td>for new children: the chapter (6–11) whose opening adds them to Seliph's army</td>
+</tr>
+<tr>
+<td><code>inherit_skills</code></td>
+<td>which of the parents' personal skills pass down, e.g. <code>Pursuit;Astra</code>. Blank on FE4's own children means none; blank on a new child means all</td>
+</tr>
+<tr>
+<td><code>growth_father</code>, <code>growth_mother</code></td>
+<td>percent of each parent's growth rates the child gets. FE4: 100 from the same-gender parent, 50 from the other</td>
+</tr>
+<tr>
+<td><code>stats_father</code>, <code>stats_mother</code></td>
+<td>percent of each parent's stats added to the child's base. FE4: 20 and 10</td>
+</tr>
+<tr>
+<td><code>heir</code></td>
+<td><code>father</code> or <code>mother</code>: whose holy blood passes in full and whose items the child inherits</td>
+</tr>
+</tbody>
+</table>
+<p>Example (Ced as Lewyn's son, with more of his father's growths):</p>
+<pre><code>index,_name,...,parent,always,born_flag,substitute,joins,inherit_skills,growth_father,growth_mother,...
+53,Ced,...,Lewyn,,25,Hawke,,Pursuit;Adept;...,120,50,...
+</code></pre>
+<h3>New children</h3>
+<p>Add a row to <code>units_children.csv</code> with the next free ID (769, or after your new
+generic units). Fill in at least <code>class</code>, <code>level</code>, <code>gender</code>, <code>parent</code> and <code>joins</code>.
+Blank cells get defaults.</p>
+<ul>
+<li><strong><code>name_id</code></strong> defaults to an empty name slot (570–575). Name it in
+  <code>names.csv</code>, e.g. <code>character,570,Kian</code>. The build stops if a new unit has no name.</li>
+<li><strong><code>portrait</code>:</strong> borrow one, e.g. <code>Lex</code>.</li>
+<li><strong><code>slot</code></strong> (the army and love slot) defaults to the substitute's slot, or to
+  128 (none) if there is no substitute.</li>
+<li><strong>Joining:</strong> <code>joins</code> adds the child at the start of that chapter (or the
+  substitute, if the child wasn't born). The commands go into the chapter's
+  opening scene. To recruit them some other way, write your own events and
+  test the child's <code>born_flag</code>.</li>
+</ul>
+<p>Limits of new children:</p>
+<ul>
+<li><strong>Saves.</strong> FE4's save slot is nearly full at the start of chapter 6: about
+  1,900 of its 1,982 bytes with the usual 17 children. Every extra child who
+  is born adds about 50 bytes, so one extra child fits. More than that can
+  break saving. The build prints a note when more than 18 children can be born.
+  Substitutes cost nothing extra.</li>
+<li><strong>Love.</strong> New children have no love slot, so they can't fall in love or have
+  lover conversations.</li>
+<li><strong>Unit lists.</strong> Lists such as the Unit list draw names from a pre-drawn sheet,
+  and generation 2's sheet has room for about 5 more tiles (one short name).</li>
+<li>Any further names show blank in those lists only. Status pages, battles
+    and dialogue show them normally.</li>
+<li>Renamed characters are redrawn in their sheet when they fit.</li>
+<li><strong>Memory.</strong> FE4 keeps children in a heap that holds exactly 17. Extra
+  children go in the generation-1 heap, which the departing cast frees.</li>
+</ul>
+<h3>Substitutes</h3>
+<p>Changing <code>substitute</code> puts the new unit wherever a script picks between the
+child and the substitute, such as the chapter-6 opening.</p>
+<ul>
+<li>Conversations written for the old substitute still use the old one. Edit
+  those in <code>events/</code> if needed.</li>
+<li>A generation-1 character used as a substitute shows a wrong name in unit
+  lists, because the lists use generation 2's name sheet.</li>
+</ul>
+<h3><code>lovers.csv</code></h3>
+<p>One row per woman–man pair the game tracks. Generation-1 women pair with
+generation-1 men, and generation-2 women with generation-2 men.</p>
+<table>
+<thead>
+<tr>
+<th>Column</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>start</code></td>
+<td>love at the start of the chapter, in points: <code>0</code>–<code>2530</code> in steps of 10, <code>499</code>, or <code>no</code> (never)</td>
+</tr>
+<tr>
+<td><code>growth</code></td>
+<td>love gained every turn they stand near each other; negative values lower it</td>
+</tr>
+</tbody>
+</table>
+<p>At 500 points they become lovers.</p>
+<h3><code>gen2_rules.csv</code></h3>
+<table>
+<thead>
+<tr>
+<th>Rule</th>
+<th>FE4</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>gold_divisor</code></td>
+<td>10</td>
+<td>a child's gold = (mother's + father's) / this + <code>gold_base</code></td>
+</tr>
+<tr>
+<td><code>gold_base</code></td>
+<td>2000</td>
+<td></td>
+</tr>
+<tr>
+<td><code>stat_cap</code></td>
+<td>15</td>
+<td>highest inherited Str, Mag, Skl, Spd, Def and Res (not HP or Luck)</td>
+</tr>
+</tbody>
+</table>
+<h3>Testing generation 2 quickly</h3>
+<p><code>dev/ch6start.py</code> makes a test copy of your built ROM whose New Game opens
+straight on chapter 6, with the generation-1 cast married as you choose:</p>
+<pre><code>python dev/ch6start.py myhack.smc test6.smc --marry Lewyn-Ayra,Lex-Erin --single Bridget
+</code></pre>
+<p>The children are born through the real transition, with your parent links and
+rules. Generation-1 stats are their starting values, so the children come out
+weaker than in a full playthrough.</p>
+<h2>Names</h2>
+<p><code>names.csv</code> has one row per name the game draws. Change the <code>name</code> column to rename it.</p>
+<table>
+<thead>
+<tr>
+<th><code>kind</code></th>
+<th><code>id</code> is</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>character</code></td>
+<td>the <code>name_id</code> from the unit files (Sigurd = 0)</td>
+</tr>
+<tr>
+<td><code>class</code></td>
+<td>the class number (<code>classes.csv</code> index)</td>
+</tr>
+<tr>
+<td><code>item</code></td>
+<td>the item number (<code>items.csv</code> / <code>rings.csv</code> index)</td>
+</tr>
+<tr>
+<td><code>castle</code></td>
+<td>the castle number (<code>castle_id</code> in <code>locations.csv</code>)</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li><strong>How it works:</strong> Project Naga stores English names as pre-drawn pictures,
+  so the build draws the new name with the game's own name font. That font
+  was lifted from the existing names and re-draws them pixel-for-pixel. The
+  new picture goes into free space.</li>
+<li>Castles are drawn in all five places they appear, including the map's
+    terrain window.</li>
+<li>The class and item text tables are updated too.</li>
+<li><strong>Characters you can use:</strong> letters, digits, spaces and <code>. , ' - ! ? : / &amp; ( )</code>.</li>
+<li><strong>Length limits:</strong> the build stops if a name is too wide for its window.
+  Roughly 7–9 letters, depending on the letters.</li>
+</ul>
+<table>
+<thead>
+<tr>
+<th>Kind</th>
+<th>Widest</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Characters</td>
+<td>7 tiles (56 px)</td>
+</tr>
+<tr>
+<td>Classes</td>
+<td>8 tiles</td>
+</tr>
+<tr>
+<td>Items</td>
+<td>9 tiles</td>
+</tr>
+<tr>
+<td>Castles</td>
+<td>7 tiles</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li><strong>Several slots per name:</strong> generic units share names such as "Verdane", and
+  each slot is renamed separately. To rename one enemy group, give its units
+  a <code>name_id</code> of their own.</li>
+<li><strong>Empty slots:</strong> character slots 570–575 are empty and listed too. Use
+  them to name new units.</li>
+<li><strong>Unit lists:</strong> the Unit list and similar screens use a separate pre-drawn
+  sheet per generation. Renamed player characters are redrawn there too, when
+  the sheet has room (see "Generation 2").</li>
+<li><strong>Not covered:</strong> names inside dialogue are ordinary text in
+  <code>events/dialogue.txt</code>.</li>
+</ul>
+<h2>Adding new things</h2>
+<p><strong>New enemies in a chapter.</strong> Add rows to <code>deploy.csv</code> with the next entry
+number in a list, e.g. <code>0.34</code> and <code>0.35</code> after the Prologue's <code>0.33</code>.</p>
+<ul>
+<li>Fill in every column. <code>army_slot</code> 1 is the Prologue's Verdane army, and
+  <code>orders</code> 0 makes a unit stand still.</li>
+<li>To remove an entry, delete its row.</li>
+<li>Each list is spawned by an event <code>DEPLOY</code> command, so its units appear when
+  that command runs. List 0 is the Prologue's opening army.</li>
+<li>Lists that grow move into free space automatically (about 4.6 KB is free).
+  New list numbers can't be added.</li>
+</ul>
+<p><strong>New unit types.</strong> Add rows to <code>units_generic.csv</code> with IDs from 769 up:
+769, 770, … (new children in <code>units_children.csv</code> share the same numbering).</p>
+<ul>
+<li>IDs 570–768 aren't units: the game's scripts use them for the portraits of
+  people who only talk (narrators, villagers). The kit keeps them that way.</li>
+<li>Projects from before v12 that start at 570 still build, with a note.</li>
+<li>Saves now keep unit IDs in 10 bits instead of 9, so units past 511 survive
+    saving and loading. That makes saves from an earlier build of your hack
+    unreadable.</li>
+<li>Copy <code>char_id</code> and <code>name_id</code> from the unit you based it on, e.g. <code>69</code> and <code>68</code>
+  for a Verdane axe fighter. Menus take the name from <code>name_id</code>, and the
+  battle screen takes it from name slot <code>char_id − 1</code>.</li>
+<li>Then use the new ID in <code>deploy.csv</code>, <code>arena.csv</code> or <code>armies.csv</code>.</li>
+<li>About 30 new units fit.</li>
+</ul>
+<p><strong>New script commands.</strong> In any <code>.evt</code> file (<code>events/chNN_*.evt</code>,
+<code>events/scenes.evt</code>, <code>ai_orders.evt</code>), a line starting with <code>+</code> adds a
+command after the line above it, and deleting a line removes a command:</p>
+<pre><code>908040: 30 FF 01 00   ; RUN_SCENE scene 1
++ 57 01 00 7B         ; new: Sigurd starts with the Speed ring
+908044: FF FF         ; END
+</code></pre>
+<ul>
+<li>A block that changes size is moved into free space and everything that
+  starts it is repointed. That means the chapter header, the scene table or
+  the army's orders list.</li>
+<li>Jumps inside the block are fixed up. Write jump targets as the original
+  addresses shown in the file.</li>
+<li>The build checks each new command against the game's own length rules and
+  names the line if one is wrong.</li>
+<li>Some AI programs share code with one listed earlier, marked
+  "(shared, listed above)". Add commands to the earlier program instead.</li>
+</ul>
+<h2>Also included</h2>
+<ul>
+<li><strong><code>ROM_MAP.md</code>:</strong> every offset and field, how each one was verified, and the engine routines found so far.</li>
+<li><strong><code>map_editor.html</code>:</strong> the map painter described above, also usable as a hosted page.</li>
+<li><strong><code>fe4locations.py</code>:</strong> castles, villages, shops, village gold and arenas.</li>
+<li><strong><code>fe4armies.py</code>:</strong> armies and the enemy AI program decoder.</li>
+<li><strong><code>fe4names.py</code>, <code>fe4font.py</code>:</strong> name drawing and the name font.</li>
+<li><strong><code>fe4skills.py</code>:</strong> skill tables, effect numbers and the hooks for rates and new skills.</li>
+<li><strong><code>fe4skillfx.py</code>:</strong> the engine code for new skills: combat bonuses, attack and defensive skills, kill triggers, and the extra <code>units</code>/<code>classes</code> lists.</li>
+<li><strong><code>fe4skillmenu.py</code>:</strong> the Skills menu extension: names, icons, help text and bearers.</li>
+<li><strong><code>fe4studio.py</code>, <code>studio/</code>:</strong> Builder of the Holy War, the visual editor: a small local web server with the interface in <code>studio/</code> (fonts: Pirata One and Alegreya Sans, SIL Open Font License, see <code>studio/fonts/</code>).</li>
+<li><strong><code>fe4gfx.py</code>:</strong> pictures for the editor without Pillow: portraits (tables at <code>$8B:9A88</code>, <code>$8A:B4F9</code>, <code>$8A:B7E1</code>) and each chapter's tile sheet with its terrain.</li>
+<li><strong><code>fe4project.py</code>:</strong> project files with undo, shared by both editors.</li>
+<li><strong><code>fe4editor.py</code>:</strong> the app's entry point and the classic table editor (<code>BuilderOfTheHolyWar.exe</code> is this, packaged for Windows).</li>
+<li><strong><code>fe4rando.py</code>:</strong> the randomizer.</li>
+<li><strong><code>fe4gen2.py</code>:</strong> generation 2: parent links, inheritance, new children, substitutes, love tables.</li>
+<li><strong><code>asm65816.py</code>:</strong> the small 65816 assembler those hooks are written with.</li>
+<li><strong><code>fe4maps.py</code>, <code>fe4lz.py</code>:</strong> map export/import and the game's compression format.</li>
+<li><strong><code>fe4events.py</code>:</strong> the event/scene/dialogue decoder used by <code>extract</code> and <code>build</code>.</li>
+<li><strong><code>cpu65816.py</code>:</strong> a small 65816 CPU emulator. It measures command lengths by running the game's own handlers.</li>
+<li><strong><code>dis65816.py</code>:</strong> a 65816 disassembler for reading the game's code: <code>python dis65816.py rom.smc 848397 40 --m16 --x16</code>.</li>
+<li><strong><code>dev/</code>:</strong> the headless test harness used to verify edits, <code>ch6start.py</code> (see "Generation 2"), plus <code>snes9x_trace.patch</code>.</li>
+<li>The patch adds read, write and exec tracing to Snes9x (upstream commit <code>1bcc369</code>).</li>
+<li>It's how the engine routines in <code>ROM_MAP.md</code> were located.</li>
+<li>To build it, apply the patch, then run <code>make</code> in <code>snes9x/libretro</code>.</li>
+</ul></body></html>

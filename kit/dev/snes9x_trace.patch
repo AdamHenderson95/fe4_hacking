@@ -1,0 +1,152 @@
+diff --git a/cpuexec.cpp b/cpuexec.cpp
+index ae00a5f..ee58958 100644
+--- a/cpuexec.cpp
++++ b/cpuexec.cpp
+@@ -5,6 +5,7 @@
+ \*****************************************************************************/
+ 
+ #include "snes9x.h"
++#include "trace.h"
+ #include "memmap.h"
+ #include "cpuops.h"
+ #include "dma.h"
+@@ -146,8 +147,10 @@ void S9xMainLoop (void)
+ 			uint8				Op;
+ 			struct	SOpcodes	*Opcodes;
+ 
++			if (trace_on) trace_pc = Registers.PBPC;
+ 			if (CPU.PCBase)
+ 			{
++				if (trace_on) trace_exec(CPU.PCBase + Registers.PCw);
+ 				Op = CPU.PCBase[Registers.PCw];
+ 				CPU.Cycles += CPU.MemSpeed;
+ 				Opcodes = ICPU.S9xOpcodes;
+diff --git a/getset.h b/getset.h
+index ec55ea9..dad1315 100644
+--- a/getset.h
++++ b/getset.h
+@@ -16,6 +16,7 @@
+ #include "seta.h"
+ #include "bsx.h"
+ #include "msu1.h"
++#include "trace.h"
+ 
+ #define addCyclesInMemoryAccess \
+ 	if (!CPU.InDMAorHDMA) \
+@@ -63,6 +64,7 @@ inline uint8 S9xGetByte (uint32 Address)
+ 
+ 	if (GetAddress >= (uint8 *) CMemory::MAP_LAST)
+ 	{
++		if (trace_on) trace_read(GetAddress + (Address & 0xffff), 1);
+ 		byte = *(GetAddress + (Address & 0xffff));
+ 		addCyclesInMemoryAccess;
+ 		return (byte);
+@@ -192,6 +194,7 @@ inline uint16 S9xGetWord (uint32 Address, enum s9xwrap_t w = WRAP_NONE)
+ 
+ 	if (GetAddress >= (uint8 *) CMemory::MAP_LAST)
+ 	{
++		if (trace_on) trace_read(GetAddress + (Address & 0xffff), 2);
+ 		word = READ_WORD(GetAddress + (Address & 0xffff));
+ 		addCyclesInMemoryAccess_x2;
+ 		return (word);
+@@ -325,6 +328,7 @@ inline void S9xSetByte (uint8 Byte, uint32 Address)
+ 
+ 	if (SetAddress >= (uint8 *) CMemory::MAP_LAST)
+ 	{
++		if (trace_on) trace_write(SetAddress + (Address & 0xffff), 1);
+ 		*(SetAddress + (Address & 0xffff)) = Byte;
+ 		addCyclesInMemoryAccess;
+ 		return;
+@@ -465,6 +469,7 @@ inline void S9xSetWord (uint16 Word, uint32 Address, enum s9xwrap_t w = WRAP_NON
+ 
+ 	if (SetAddress >= (uint8 *) CMemory::MAP_LAST)
+ 	{
++		if (trace_on) trace_write(SetAddress + (Address & 0xffff), 2);
+ 		WRITE_WORD(SetAddress + (Address & 0xffff), Word);
+ 		addCyclesInMemoryAccess_x2;
+ 		return;
+diff --git a/libretro/Makefile.common b/libretro/Makefile.common
+index ccb29c3..9f5e785 100644
+--- a/libretro/Makefile.common
++++ b/libretro/Makefile.common
+@@ -23,6 +23,7 @@ SOURCES_CXX := $(CORE_DIR)/apu/apu.cpp \
+ 				 $(CORE_DIR)/controls.cpp \
+ 				 $(CORE_DIR)/cpu.cpp \
+ 				 $(CORE_DIR)/cpuexec.cpp \
++				 $(CORE_DIR)/trace.cpp \
+ 				 $(CORE_DIR)/cpuops.cpp \
+ 				 $(CORE_DIR)/crosshairs.cpp \
+ 				 $(CORE_DIR)/dma.cpp \
+diff --git a/libretro/link.T b/libretro/link.T
+index 9e82b5d..23c05d4 100644
+--- a/libretro/link.T
++++ b/libretro/link.T
+@@ -1,4 +1,5 @@
+ {
+    global: retro_*;
++      fe4_*;
+    local: *;
+ };
+diff --git a/trace.cpp b/trace.cpp
+new file mode 100644
+index 0000000..261b569
+--- /dev/null
++++ b/trace.cpp
+@@ -0,0 +1,42 @@
++// Read/write/exec tracing for reverse engineering (fe4 project).
++#include "snes9x.h"
++#include "memmap.h"
++#include "trace.h"
++#include <string.h>
++static void trace_ram_read(const uint8_t *p, int n);
++int      trace_on = 0;
++uint32_t trace_pc = 0;
++static uint32_t rom_reader[0x800000];   // last PC+1 that read each ROM byte
++static uint8_t  rom_exec[0x800000];     // opcode-fetch flags
++static uint32_t ram_writer[0x20000];    // last PC+1 that wrote each WRAM byte
++static uint32_t ram_reader[0x20000];    // last PC+1 that read each WRAM byte
++void trace_read(const uint8_t *p, int n) {
++    if (p >= Memory.ROM && p < Memory.ROM + 0x800000) {
++        size_t o = p - Memory.ROM;
++        for (int i = 0; i < n && o + i < 0x800000; i++) rom_reader[o + i] = trace_pc + 1;
++    } else trace_ram_read(p, n);
++}
++static void trace_ram_read(const uint8_t *p, int n) {
++    if (p >= Memory.RAM && p < Memory.RAM + 0x20000) {
++        size_t o = p - Memory.RAM;
++        for (int i = 0; i < n && o + i < 0x20000; i++) ram_reader[o + i] = trace_pc + 1;
++    }
++}
++void trace_write(const uint8_t *p, int n) {
++    if (p >= Memory.RAM && p < Memory.RAM + 0x20000) {
++        size_t o = p - Memory.RAM;
++        for (int i = 0; i < n && o + i < 0x20000; i++) ram_writer[o + i] = trace_pc + 1;
++    }
++}
++void trace_exec(const uint8_t *p) {
++    if (p >= Memory.ROM && p < Memory.ROM + 0x800000) rom_exec[p - Memory.ROM] = 1;
++}
++extern "C" {
++void     fe4_trace_enable(int on) { trace_on = on; }
++void     fe4_trace_clear(void) { memset(rom_reader, 0, sizeof rom_reader); memset(rom_exec, 0, sizeof rom_exec); memset(ram_writer, 0, sizeof ram_writer); memset(ram_reader, 0, sizeof ram_reader); }
++uint32_t *fe4_trace_rom_reader(void) { return rom_reader; }
++uint8_t  *fe4_trace_rom_exec(void) { return rom_exec; }
++uint32_t *fe4_trace_ram_writer(void) { return ram_writer; }
++uint32_t *fe4_trace_ram_reader(void) { return ram_reader; }
++uint32_t  fe4_cpu_pc(void) { return Registers.PBPC; }
++}
+diff --git a/trace.h b/trace.h
+new file mode 100644
+index 0000000..1c21bfa
+--- /dev/null
++++ b/trace.h
+@@ -0,0 +1,9 @@
++#ifndef _TRACE_H_
++#define _TRACE_H_
++#include <stdint.h>
++extern int      trace_on;
++extern uint32_t trace_pc;
++void trace_read(const uint8_t *p, int n);
++void trace_write(const uint8_t *p, int n);
++void trace_exec(const uint8_t *p);
++#endif

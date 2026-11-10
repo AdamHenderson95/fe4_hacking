@@ -1,0 +1,29 @@
+# Never commit game data: ROMs, saves, patches made from them, extracted projects
+*.sfc
+*.smc
+*.fig
+*.swc
+*.srm
+*.state
+*.ips
+*.bps
+*.ups
+*.cov
+cache/
+saves/
+_testplay/
+projects/
+# build output
+*.exe
+*.dll
+*.o
+*.zip
+port/work/
+port/win/
+port/ext/
+port/dist/
+kit/build/
+kit/dist/
+*.spec
+__pycache__/
+*.pyc

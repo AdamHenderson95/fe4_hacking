@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Builder of the Holy War</title>
+<link rel="stylesheet" href="app.css">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M8 1l2 5h5l-4 3 2 6-5-4-5 4 2-6-4-3h5z' fill='%23B98B2F'/%3E%3C/svg%3E">
+</head>
+<body>
+<div class="app">
+  <nav class="side" aria-label="Editor sections">
+    <div class="brand">
+      <span class="brand-mark">Builder of<br>the Holy War</span>
+      <span class="brand-project" id="projectName">No project open</span>
+    </div>
+    <ul class="nav" id="nav">
+      <li><a href="#home" data-page="home">Project</a></li>
+      <li><a href="#characters" data-page="characters">Characters</a></li>
+      <li><a href="#classes" data-page="classes">Classes</a></li>
+      <li><a href="#maps" data-page="maps">Maps</a></li>
+      <li><a href="#events" data-page="events">Events &amp; dialogue</a></li>
+      <li class="soon"><a href="#items" data-page="items">Items, shops &amp; villages</a></li>
+    </ul>
+    <div class="side-actions">
+      <button class="btn btn-quiet" id="btnSave" title="Save (Ctrl+S)">Save</button>
+      <button class="btn btn-quiet" id="btnBuild" title="Build the ROM and .ips patch">Build ROM</button>
+      <button class="btn btn-gilt" id="btnPlay" title="Build and open in the FE4 PC port (F6)">Test play</button>
+    </div>
+  </nav>
+  <main class="main">
+    <header class="topbar">
+      <h1 class="page-title" id="pageTitle"></h1>
+      <div class="topbar-tools">
+        <span class="dirty" id="dirty" hidden>Unsaved changes</span>
+        <button class="icon-btn" id="btnUndo" title="Undo (Ctrl+Z)" aria-label="Undo"><svg viewBox="0 0 20 20"><path d="M8 4 3 9l5 5M3.5 9H12a5 5 0 0 1 0 10h-2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+        <button class="icon-btn" id="btnRedo" title="Redo (Ctrl+Y)" aria-label="Redo"><svg viewBox="0 0 20 20"><path d="m12 4 5 5-5 5M16.5 9H8a5 5 0 0 0 0 10h2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+      </div>
+    </header>
+    <div class="page" id="page"></div>
+  </main>
+</div>
+<div class="job" id="job" hidden>
+  <div class="job-head"><span id="jobTitle"></span><button class="icon-btn" id="jobClose" aria-label="Close">&times;</button></div>
+  <pre class="job-log" id="jobLog"></pre>
+</div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<script type="module" src="app.js"></script>
+</body>
+</html>
