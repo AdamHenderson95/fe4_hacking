@@ -266,7 +266,7 @@ The class name table skips class 10 (female Paladin), so names for class IDs
 | 1 | category (0 weapon, 1 staff) |
 | 2 | uses |
 | 3–4 | price |
-| 5 | holy-blood lock (Tyrfing 1, Naga 2, …) |
+| 5 | holy-blood lock: 1–13 = bloodline in `fe4lib.BLOODS` order (Tyrfing 1 Baldur, Naga 2, Gungnir 3 Dain, … Mystletainn 12 Hezul, Loptyr 13); 14 Shield sword, 15 Barrier sword (their Def/Res bonus slots, guess) |
 | 6 | staff effect |
 | 7 | rank (0 A, 1 B, 2 C, 255 ★) |
 | 8 | bonus flags |
@@ -277,7 +277,7 @@ The class name table skips class 10 (female Paladin), so names for class IDs
 | 13 | Wt |
 | 14–15 | range min/max |
 | 16 | effective-against flags (2 fliers, 8 armor) |
-| 17–18 | special effect + argument (brave, status edge, magic sword spell, …) |
+| 17–18 | special effect + argument: 1 magic sword casts item [arg] at range, 2 magic sword drains like [arg] (Earth sword → Nosferatu), 3 Nosferatu drain, 4 brave, 5 siege tome/ballista, 6 status edge (arg 4 silence, 5 sleep, 6 berserk), 7 Loptyr, 8 Naga (arg 84 Loptyr), 9 Hel, 10 Miracle sword — from the game's own items |
 
 Each weapon type has three "broken" IDs (one per rank), but Naga's name table
 has a single name for each set. `fe4lib.item_names()` handles the mismatch.

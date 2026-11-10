@@ -339,6 +339,53 @@ textarea.fe4box.bad { border-color: #E1606F; }
 .speaker-grid button:hover { background: var(--vellum-2); }
 .speaker-grid img { width: 48px; height: 64px; image-rendering: pixelated; background: var(--night); border-radius: 2px; }
 .speaker-grid span { max-width: 64px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* ---- items, shops & villages ---- */
+.page:has(.itpage) { overflow: hidden; }
+.itpage { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+.ittabs { padding: 10px 28px 0; }
+.itbody { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.itbody > .split { flex: 1; height: auto; }
+.itlist button { flex-direction: column; justify-content: flex-start; gap: 0; padding: 6px 16px; }
+.itlist .sub em { font-style: normal; color: var(--verdigris); }
+.itgroup { padding: 12px 16px 4px; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+.in.itname { font-size: 24px; font-weight: 700; letter-spacing: -.015em; padding: 2px 8px; max-width: 360px; background: transparent; border-color: transparent; }
+.in.itname:hover, .in.itname:focus { background: #fff; border-color: var(--line); }
+.itgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 8px 12px; margin-bottom: 6px; }
+.itgrid.wide { grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); }
+.itgrid.tight { grid-template-columns: 1fr 70px; gap: 6px; margin: 6px 0 2px; }
+.copies { display: flex; flex-direction: column; gap: 8px; }
+.copy { display: grid; grid-template-columns: 38px 1fr; gap: 2px 8px; align-items: start; padding-bottom: 8px; border-bottom: 1px solid var(--line); font-size: 14px; }
+.copy b { color: var(--muted); }
+.copy .sub { color: var(--muted); }
+.copy select { grid-column: 2; }
+.copy-add { margin-top: 6px; }
+.itshops { overflow: auto; padding: 16px 28px 60px; }
+.ittools { display: flex; gap: 10px; margin-bottom: 6px; }
+.ittools select { width: auto; min-width: 200px; }
+.itsec { font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 18px 0 10px; }
+.itcards { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 12px; }
+.itcard { background: var(--vellum); border: 1px solid var(--line); border-radius: var(--r-md); padding: 14px 16px 16px; display: flex; flex-direction: column; gap: 10px; }
+.itcard-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.itcard h4 { margin: 0; font-size: 16px; font-weight: 700; }
+.itcard .sub, .stock .sub, .fighter .sub { color: var(--muted); font-size: 13px; }
+.itcard > .btn { align-self: flex-start; padding: 3px 12px; font-size: 14px; }
+.stock { display: flex; flex-direction: column; gap: 4px; }
+.stock-head { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; font-size: 14px; }
+.stock-row { display: grid; grid-template-columns: 1fr auto auto 26px; gap: 8px; align-items: center; font-size: 14px; padding: 3px 0; border-bottom: 1px solid var(--line); }
+.stock .in { margin-top: 4px; }
+.warn { color: var(--blood); font-size: 13px; font-weight: 600; }
+.x { border: 0; background: none; cursor: pointer; font-size: 18px; line-height: 1; color: var(--muted); border-radius: 4px; width: 26px; height: 26px; }
+.x:hover { background: var(--blood-soft); color: var(--blood); }
+.gifts-head { font-size: 14px; }
+.gift { display: flex; align-items: center; gap: 8px; font-size: 14px; flex-wrap: wrap; }
+.gift > span:first-child { min-width: 150px; color: var(--muted); }
+.gift select { width: auto; flex: 1; }
+.gift .num { width: 64px; }
+.arena { display: grid; grid-template-columns: 56px 1fr 1fr; gap: 10px 14px; align-items: start; max-width: 980px; margin-top: 10px; }
+.arena > b { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+.arena .rank { font-weight: 700; font-size: 20px; padding-top: 4px; }
+.fighter { background: var(--vellum); border: 1px solid var(--line); border-radius: var(--r-sm); padding: 8px 10px; }
+
 @media (max-width: 900px) {
   .evedit { grid-template-columns: 1fr; height: auto; }
   .page:has(.evedit) { overflow: auto; }

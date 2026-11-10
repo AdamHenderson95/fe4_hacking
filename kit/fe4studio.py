@@ -35,7 +35,7 @@ import fe4events                   # noqa: E402
 from fe4project import Project, load_settings, save_settings   # noqa: E402
 
 APP = 'Builder of the Holy War'
-VERSION = '17'
+VERSION = '18'
 STATIC = os.path.join(KIT, 'studio')
 
 # ---------------------------------------------------------------- state
@@ -196,11 +196,34 @@ NUMERIC.update({f: (0, 255) for f in ['base_hp', 'base_str', 'base_mag', 'base_s
 NUMERIC.update({'x': (0, 63), 'y': (0, 63), 'orders': (0, 255), 'leader_flag': (0, 255), 'army_slot': (0, 255),
                 'char_id': (0, 65535), 'gold': (0, 65535)})
 NUMERIC.update({'price': (0, 65535), 'level': (1, 30), 'gender': (0, 1), 'authority': (0, 5), 'move': (1, 15)})
+NUMERIC.update({'blood_lock': (0, 15), 'staff_effect': (0, 255), 'weapon_type': (0, 9), 'effective': (0, 255),
+                'special': (0, 255), 'special_arg': (0, 255), 'item_type': (0, 121), 'stat_bonus': (0, 255),
+                'melee': (0, 65535), 'ranged': (0, 65535)})
 
 
 def check_value(table, field, value):
     """Returns (value, warning) or raises ValueError with a message for the person."""
     v = value.strip() if isinstance(value, str) else str(value)
+    if table == 'locations' and field == 'gold':
+        if v == '':
+            return v, None
+        if not v.isdigit() or not 1 <= int(v) <= 50000:
+            raise ValueError('Village gold is 1 to 50,000.')
+        return str(int(v)), None
+    if table == 'locations' and field == 'facilities':
+        import fe4locations
+        try:
+            fe4locations._fac_parse(v)
+        except ValueError as e:
+            raise ValueError(str(e))
+        return v or '-', None
+    if table == 'locations' and field == 'shop':
+        parts = [x.strip() for x in v.split(';') if x.strip()]
+        if not all(x.isdigit() and int(x) < L.INSTANCE_COUNT for x in parts):
+            raise ValueError(f'A shop lists item copies 0 to {L.INSTANCE_COUNT - 1}.')
+        if len(set(parts)) != len(parts):
+            raise ValueError('Each item copy exists once, so a shop can\'t sell the same copy twice.')
+        return ';'.join(parts), None
     if field in NUMERIC:
         lo, hi = NUMERIC[field]
         if not v.lstrip('-').isdigit():
@@ -220,6 +243,13 @@ def check_value(table, field, value):
             if b not in L.BLOODS or k not in ('minor', 'major'):
                 raise ValueError(f'"{p}": holy blood is written like Baldur:major;Naga:minor.')
         return ';'.join(parts), None
+    if field == 'skills' and table in ('items', 'rings'):
+        st_ = project().table('skills')
+        ok = {r['name'] for r in (st_.rows if st_ else []) if (r.get('item_bit') or '').strip() != ''}
+        bad = [s_ for s_ in v.split(';') if s_ and s_ not in ok]
+        if bad:
+            raise ValueError('Items can\'t carry ' + ', '.join(bad) + '. Item skills: ' + ', '.join(sorted(ok)) + '.')
+        return v, None
     if field == 'skills':
         known = set(project().skill_names())
         bad = [s for s in v.split(';') if s and s not in known]
@@ -924,6 +954,121 @@ def api_dsearch(b, q):
     return {'results': out}
 
 
+# ---------------------------------------------------------------- items, shops and villages
+COND_OPS = {0x02, 0x04, 0x05, 0x07, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x16, 0x1A, 0x21}
+
+
+def gift_of(name, c):
+    """A GIVE_ITEM or STAT_UP command as a dict, or None. Scenes run them through EVENT ($4A)."""
+    b = cmd_bytes(c)
+    o = 1 if name == 'scenes.evt' and len(b) > 1 and b[0] == 0x4A else 0
+    if name == 'scenes.evt' and not o:
+        return None
+    if len(b) >= o + 4 and b[o] == 0x57:
+        u = b[o + 1] | b[o + 2] << 8
+        return {'file': name, 'line': c['line'], 'hex': c['hex'], 'kind': 'item', 'pos': o,
+                'unit': None if u == 0xFFFF else u, 'instance': b[o + 3]}
+    if len(b) >= o + 4 and b[o] == 0x70:
+        return {'file': name, 'line': c['line'], 'hex': c['hex'], 'kind': 'stat', 'pos': o,
+                'unit': None if b[o + 1] == 0xFF else b[o + 1], 'stat': b[o + 2], 'amount': b[o + 3]}
+    return None
+
+
+def scene_gifts(sid, idx, seen=None):
+    """Gifts in a scene and the scenes it starts."""
+    seen = seen if seen is not None else set()
+    if sid in seen or sid not in idx['scenes']:
+        return []
+    seen.add(sid)
+    sc = idx['scenes'][sid]
+    out = [dict(g, scene=sid) for g in (gift_of('scenes.evt', c) for c in sc['block']['cmds']) if g]
+    for t in sc['runs']:
+        out += scene_gifts(t, idx, seen)
+    return out
+
+
+def chapter_triggers(name):
+    """[(condition command, [steps])] of a chapter file's trigger blocks."""
+    f = need_project().evt(name)
+    out = []
+    for blk in f.blocks():
+        if blk['label'] == 'init':
+            continue
+        cur = None
+        for c in blk['cmds']:
+            b = cmd_bytes(c)
+            if b and b[0] in COND_OPS:
+                cur = (c, [])
+                out.append(cur)
+            elif cur:
+                cur[1].append(c)
+    return out
+
+
+def api_villages(b, q):
+    """Each village and castle of a chapter with what visiting it gives."""
+    p = need_project()
+    ch = int(q.get('ch', ['0'])[0])
+    name = next((f for f in p.evt_files() if f.startswith('ch%02d_' % ch)), None)
+    idx = story_index()
+    visits = {}
+    for cond, steps in (chapter_triggers(name) if name else []):
+        cb = cmd_bytes(cond)
+        if cb[0] != 0x0A or len(cb) < 6:
+            continue
+        loc = cb[4] | cb[5] << 8
+        v = {'line': cond['line'], 'file': name, 'scenes': [], 'gifts': []}
+        for c in steps:
+            sb = cmd_bytes(c)
+            if sb and sb[0] == 0x30 and len(sb) >= 4:
+                sid = sb[2] | sb[3] << 8
+                v['scenes'].append(sid)
+                v['gifts'] += scene_gifts(sid, idx)
+            g = gift_of(name, c)
+            if g:
+                v['gifts'].append(g)
+        visits.setdefault(loc, []).append(v)
+    return {'ch': ch, 'file': name, 'visits': {str(k): v for k, v in visits.items()}}
+
+
+def api_itemuse(b, q):
+    """Where each item instance is: who starts with it, which shop sells it, which event gives it."""
+    p = need_project()
+    use = {}
+
+    def add(inst, what):
+        if inst is not None and 0 <= inst < 255:
+            use.setdefault(str(inst), []).append(what)
+    for t in ('units_playable', 'units_children'):
+        tb = p.table(t)
+        for i, r in enumerate(tb.rows if tb else []):
+            for k in ('item1', 'item2', 'item3'):
+                v = (r.get(k) or '').strip()
+                if v.isdigit() and int(v) != 255:
+                    add(int(v), {'kind': 'unit', 'table': t, 'row': i, 'name': r.get('_name') or ''})
+    lt = p.table('locations')
+    for i, r in enumerate(lt.rows if lt else []):
+        for v in (r.get('shop') or '').split(';'):
+            if v.strip().isdigit():
+                add(int(v), {'kind': 'shop', 'ch': int(r['chapter']), 'name': r.get('_castle_name') or 'castle', 'row': i})
+    idx = story_index()
+    for name in p.evt_files():
+        f = p.evt(name)
+        for blk in f.blocks():
+            for c in blk['cmds']:
+                g = gift_of(name, c)
+                if g and g['kind'] == 'item':
+                    if name == 'scenes.evt':
+                        m = re.match(r'scene\s+(\d+)', blk['label'])
+                        sid = int(m.group(1)) if m else None
+                        chs = sorted(int(x[2:4]) for x in idx['chapter_scenes'].get(sid, ()))
+                    else:
+                        sid, chs = None, [int(name[2:4])] if name.startswith('ch') else []
+                    add(g['instance'], {'kind': 'event', 'chapters': chs, 'scene': sid, 'file': name, 'line': c['line'],
+                                        'unit': g['unit']})
+    return {'use': use}
+
+
 
 API = {('GET', 'session'): api_session, ('POST', 'ping'): api_ping, ('GET', 'table'): api_table,
        ('POST', 'tables'): api_tables, ('POST', 'set'): api_set, ('POST', 'undo'): api_undo,
@@ -933,7 +1078,7 @@ API = {('GET', 'session'): api_session, ('POST', 'ping'): api_ping, ('GET', 'tab
        ('POST', 'dialog'): api_dialog, ('POST', 'quit'): api_quit, ('POST', 'classic'): api_classic,
        ('POST', 'setmany'): api_setmany, ('GET', 'people'): api_people, ('GET', 'textinfo'): api_textinfo, ('GET', 'events'): api_events,
        ('GET', 'chapters'): api_chapters, ('GET', 'scene'): api_scene, ('POST', 'messages'): api_messages,
-       ('POST', 'msg'): api_msg, ('POST', 'evtcmd'): api_evtcmd, ('GET', 'dsearch'): api_dsearch, ('GET', 'maps'): api_maps, ('GET', 'map'): api_map, ('POST', 'paint'): api_paint}
+       ('POST', 'msg'): api_msg, ('POST', 'evtcmd'): api_evtcmd, ('GET', 'dsearch'): api_dsearch, ('GET', 'villages'): api_villages, ('GET', 'itemuse'): api_itemuse, ('GET', 'maps'): api_maps, ('GET', 'map'): api_map, ('POST', 'paint'): api_paint}
 
 
 # ---------------------------------------------------------------- window

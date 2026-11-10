@@ -74,23 +74,41 @@ default browser). The editor runs on your PC only: nothing is sent anywhere.
      anything else (new boxes, pauses, portraits coming and going).
    - Steps and conditions whose meaning isn't known yet say so; their bytes
      can still be changed under **Bytes** (same length).
-6. Changes are checked as you type (a value out of range turns red and
+6. **Items, shops & villages**, in three tabs:
+   - **Weapons & items**: every weapon, staff and ring, grouped by type.
+     Rename it, and set Might, Hit, Weight, range, uses, price, rank, weapon
+     type, what it's effective against, its special effect (brave, magic
+     sword spell, status edge…), which holy blood it needs, and the skills
+     it gives while equipped. **Copies in the game** lists each of the
+     item's numbered copies (FE4 has 141) with who starts with it, which
+     shop sells it and which event gives it; any copy can be turned into
+     another item, and unused copies can be turned into this one.
+   - **Shops & villages**, per chapter: each castle's town buttons (Armory,
+     Pawnbroker, Blacksmith, Supply, Augury, Arena) and what its Armory
+     sells (add or remove item copies; it warns when someone already starts
+     with a copy, since that copy won't go on sale). Each village's gold and
+     what visiting gives (the item, or the stat and amount), with a link to
+     the visit event.
+   - **Arena**: the seven opponents per chapter for melee and ranged
+     fighters, with each opponent's class and level.
+7. Changes are checked as you type (a value out of range turns red and
    says why). **Undo / Redo** (Ctrl+Z / Ctrl+Y) cover every change (a whole
    paint stroke or fill is one step); **Save** (Ctrl+S) writes the project
    files.
-7. **Build ROM** writes the hacked ROM plus a shareable `.ips` patch next to
+8. **Build ROM** writes the hacked ROM plus a shareable `.ips` patch next to
    the project folder. **Test play** (F6) builds it and opens it straight
    away in the FE4 PC port (FE4Port.zip), without your mods and with its own
    saves. The editor finds FE4.exe when the kit sits in the port's `fe4kit`
    folder (as it comes in FE4Port.zip) or next to it; otherwise it asks once.
-8. On the Project page, **Add unit stats to the map box** puts the PC port's
+9. On the Project page, **Add unit stats to the map box** puts the PC port's
    MT / HIT / AS / AVO box into the ROMs and patches you build, so players
    on emulators get it too (the port can still switch it off).
 
-Items, shops and villages come to the editor next. Until then they're in
-the **classic editor** (link on the Project page, or run
-`BuilderOfTheHolyWar.exe classic`), as is adding or removing event steps
-(by hand in the `.evt` files, see below): pick a page on the left, select a row, edit it in the panel on the right and press Apply. Its
+The **classic editor** (link on the Project page, or run
+`BuilderOfTheHolyWar.exe classic`) still has every table as rows, for the
+few things the new editor doesn't show yet (AI orders, armies, love
+growth). Adding or removing event steps is done by hand in the `.evt` files
+(see below). In the classic editor, pick a page on the left, select a row, edit it in the panel on the right and press Apply. Its
 Build menu also has **Test generation 2**, which writes a copy whose New Game
 opens on chapter 6, and **Test play generation 2 in the PC port**.
 

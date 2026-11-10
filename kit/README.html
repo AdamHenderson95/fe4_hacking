@@ -79,6 +79,23 @@ default browser). The editor runs on your PC only: nothing is sent anywhere.
      anything else (new boxes, pauses, portraits coming and going).</li>
 <li>Steps and conditions whose meaning isn't known yet say so; their bytes
      can still be changed under <strong>Bytes</strong> (same length).</li>
+<li><strong>Items, shops &amp; villages</strong>, in three tabs:</li>
+<li><strong>Weapons &amp; items</strong>: every weapon, staff and ring, grouped by type.
+     Rename it, and set Might, Hit, Weight, range, uses, price, rank, weapon
+     type, what it's effective against, its special effect (brave, magic
+     sword spell, status edge…), which holy blood it needs, and the skills
+     it gives while equipped. <strong>Copies in the game</strong> lists each of the
+     item's numbered copies (FE4 has 141) with who starts with it, which
+     shop sells it and which event gives it; any copy can be turned into
+     another item, and unused copies can be turned into this one.</li>
+<li><strong>Shops &amp; villages</strong>, per chapter: each castle's town buttons (Armory,
+     Pawnbroker, Blacksmith, Supply, Augury, Arena) and what its Armory
+     sells (add or remove item copies; it warns when someone already starts
+     with a copy, since that copy won't go on sale). Each village's gold and
+     what visiting gives (the item, or the stat and amount), with a link to
+     the visit event.</li>
+<li><strong>Arena</strong>: the seven opponents per chapter for melee and ranged
+     fighters, with each opponent's class and level.</li>
 <li>Changes are checked as you type (a value out of range turns red and
    says why). <strong>Undo / Redo</strong> (Ctrl+Z / Ctrl+Y) cover every change (a whole
    paint stroke or fill is one step); <strong>Save</strong> (Ctrl+S) writes the project
@@ -92,10 +109,11 @@ default browser). The editor runs on your PC only: nothing is sent anywhere.
    MT / HIT / AS / AVO box into the ROMs and patches you build, so players
    on emulators get it too (the port can still switch it off).</li>
 </ol>
-<p>Items, shops and villages come to the editor next. Until then they're in
-the <strong>classic editor</strong> (link on the Project page, or run
-<code>BuilderOfTheHolyWar.exe classic</code>), as is adding or removing event steps
-(by hand in the <code>.evt</code> files, see below): pick a page on the left, select a row, edit it in the panel on the right and press Apply. Its
+<p>The <strong>classic editor</strong> (link on the Project page, or run
+<code>BuilderOfTheHolyWar.exe classic</code>) still has every table as rows, for the
+few things the new editor doesn't show yet (AI orders, armies, love
+growth). Adding or removing event steps is done by hand in the <code>.evt</code> files
+(see below). In the classic editor, pick a page on the left, select a row, edit it in the panel on the right and press Apply. Its
 Build menu also has <strong>Test generation 2</strong>, which writes a copy whose New Game
 opens on chapter 6, and <strong>Test play generation 2 in the PC port</strong>.</p>
 <p><strong>Maps in projects from kit v15 or older:</strong> those kits read the chapter 5 and

@@ -14,6 +14,9 @@ const FILTERS = [['all', 'All'], ['talk', 'Talks'], ['turn', 'Turns'], ['visit',
 
 let people = null, text = null;
 
+/** Open the events page on the event whose condition or step is on that line of the chapter script. */
+export function openEventAt(ch, line) { st.ch = ch; st.q = ''; st.pendingLine = line; }
+
 export async function eventsPage(root) {
   [people, text] = await Promise.all([
     people || api('people').then(r => r.people),
@@ -49,6 +52,11 @@ export async function eventsPage(root) {
     for (const b of E.blocks) for (const c of b.cmds) { const k = talkKey(bytesOf(c.hex), false); if (k) keys.add(k); }
     msgs = keys.size ? await api('messages', { keys: [...keys] }) : {};
     groups = makeGroups(E.blocks);
+    if (st.pendingLine !== undefined) {
+      const g = groups.find(x => x.cond?.line === st.pendingLine || x.steps.some(c => c.line === st.pendingLine));
+      if (g) st.sel = g.id;
+      st.pendingLine = undefined;
+    }
     if (!groups.some(g => g.id === st.sel)) st.sel = groups.find(g => g.kind !== 'start')?.id ?? groups[0]?.id ?? null;
     drawFilters(); drawList(); drawDetail();
   }
