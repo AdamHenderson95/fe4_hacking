@@ -86,7 +86,7 @@ class MapGrid:
         self._saved = list(self.words)
 
 
-EVT_LINE = re.compile(r'^(\s*)([0-9A-Fa-f]{6}|\+)(\s*:?\s*)([0-9A-Fa-f ]+?)(\s*)(;.*)?$')
+EVT_LINE = re.compile(r'^(\s*)([0-9A-Fa-f]{6}|\+)(\s*:?\s*)((?:[0-9A-Fa-f]{2}|@N\d{5})(?:\s+(?:[0-9A-Fa-f]{2}|@N\d{5}))*)(\s*)(;.*)?$')
 EVT_HEAD = re.compile(r'^==\s*(.*?)\s*@([0-9A-Fa-f]{6})')
 
 
@@ -118,7 +118,7 @@ class EvtFile:
             m = EVT_LINE.match(line)
             if m:
                 cur['cmds'].append({'line': i, 'addr': None if m.group(2) == '+' else m.group(2).upper(),
-                                    'hex': ' '.join(m.group(4).upper().split()),
+                                    'hex': ' '.join(t if t.startswith('@') else t.upper() for t in m.group(4).split()),
                                     'comment': (m.group(6) or '').lstrip(';').strip()})
         return out
 
@@ -170,6 +170,12 @@ class Dialogue:
     def dirty(self):
         return self.text != self._saved
 
+    def new_key(self):
+        n = 1
+        while 'N%05d' % n in self.text:
+            n += 1
+        return 'N%05d' % n
+
     @staticmethod
     def file_lines(text):
         """The text as file lines: a break after each {02} and {01}; no line may be blank or start with ';'."""
@@ -206,6 +212,7 @@ class Project:
         self.evts = {}
         self._dialogue = None
         self.undo_stack = []      # [[op, ...]]: ('cell', table, row, field, old, new) | ('map', ch, i, old, new)
+        #                           | ('rows', table, start, old_rows, new_rows)
         #                           | ('evt', file, line, old, new) | ('msg', key, old, new)
         self.redo_stack = []
 
@@ -278,6 +285,29 @@ class Project:
             f = self.evt(name)
             f.lines[i] = old if back else new
             f.version += 1
+        elif op[0] == 'lines':
+            _, name, i, old, new = op
+            f = self.evt(name)
+            a, b = (new, old) if back else (old, new)
+            assert f.lines[i:i + len(a)] == list(a), 'event file changed under an undo step'
+            f.lines[i:i + len(a)] = list(b)
+            f.version += 1
+        elif op[0] == 'rows':                  # ('rows', table, start, old rows, new rows)
+            _, table, i, old, new = op
+            t = self.table(table)
+            a, b = (new, old) if back else (old, new)
+            assert t.rows[i:i + len(a)] == [dict(r) for r in a], 'table changed under an undo step'
+            t.rows[i:i + len(a)] = [dict(r) for r in b]
+            t.dirty = True
+        elif op[0] in ('msgadd', 'msgdel'):
+            _, key, where, text = op
+            d = self.dialogue()
+            if back == (op[0] == 'msgadd'):
+                d.order.remove(key)
+                del d.text[key], d.where[key]
+            else:
+                d.order.append(key)
+                d.text[key], d.where[key] = text, where
         else:
             _, key, old, new = op
             self.dialogue().text[key] = old if back else new
@@ -335,6 +365,21 @@ class Project:
             ops.append(op)
         self._record(ops)
         return ops
+
+    def edit(self, ops):
+        """Apply a list of ('lines', file, start, old, new) / ('msgadd', key, where, text) /
+        ('evt', ...) ops as one undo step; line numbers are as they are when each op runs."""
+        done = []
+        try:
+            for op in ops:
+                self._apply(op)
+                done.append(op)
+        except Exception:
+            for op in reversed(done):
+                self._apply(op, back=True)
+            raise
+        self._record(done)
+        return done
 
     def set_message(self, key, text):
         d = self.dialogue()

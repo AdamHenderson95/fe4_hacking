@@ -79,6 +79,19 @@ default browser). The editor runs on your PC only: nothing is sent anywhere.
      anything else (new boxes, pauses, portraits coming and going).</li>
 <li>Steps and conditions whose meaning isn't known yet say so; their bytes
      can still be changed under <strong>Bytes</strong> (same length).</li>
+<li><strong>+ New event</strong> adds a talk, a turn event, a village visit, an area
+     someone reaches, a battle quote or a death quote. Each new event comes
+     with a fresh conversation to write in; new talks get their own scene
+     and an entry in the chapter's <strong>Talk menu</strong>, so the map menu offers
+     <em>Talk</em> for that pair until the talk has played. New turn events on a
+     turn that already plays a scene add their message to that scene (the
+     game plays one scene per check).</li>
+<li>Add steps to an event (<em>someone says something</em>, <em>give an item</em>,
+     <em>raise a stat</em>, <em>units arrive</em>), remove steps with ×, or <strong>Delete
+     event</strong>. Messages only a deleted event used go with it. Every one of
+     these is one undo step.</li>
+<li>Talk events show whether the pair is in the Talk menu, with a button
+     to add or remove it. Changing who talks keeps the menu entry in step.</li>
 <li><strong>Items, shops &amp; villages</strong>, in three tabs:</li>
 <li><strong>Weapons &amp; items</strong>: every weapon, staff and ring, grouped by type.
      Rename it, and set Might, Hit, Weight, range, uses, price, rank, weapon
@@ -310,6 +323,11 @@ runs this randomizer from its own menu (Mods → Randomizer).</p>
 <td>Arena opponents for each chapter and rank</td>
 </tr>
 <tr>
+<td><code>talks.csv</code></td>
+<td>42</td>
+<td>Each chapter's Talk menu: which unit can Talk to which, until which event flag is set</td>
+</tr>
+<tr>
 <td><code>armies.csv</code></td>
 <td>72</td>
 <td>Every army: name, member units, castles it holds</td>
@@ -387,6 +405,44 @@ Forgive me...{08}{01}
 <li>Line breaks in the file itself are ignored.</li>
 <li>Lines in the game box fit about 44 characters.</li>
 </ul>
+<p><strong><code>talks.csv</code></strong> is the map menu's Talk list for each chapter:</p>
+<table>
+<thead>
+<tr>
+<th>column</th>
+<th>meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>chapter</code></td>
+<td>0–11</td>
+</tr>
+<tr>
+<td><code>flag</code></td>
+<td>the event flag the talk event sets; once set, <em>Talk</em> is no longer offered</td>
+</tr>
+<tr>
+<td><code>from</code></td>
+<td>unit who talks, or <code>any</code></td>
+</tr>
+<tr>
+<td><code>to</code></td>
+<td>unit talked to</td>
+</tr>
+<tr>
+<td><code>needs</code></td>
+<td>empty = always; <code>gold10000</code> = only while the talker has 10,000 gold (hiring Beowulf)</td>
+</tr>
+<tr>
+<td><code>flag_chapter</code></td>
+<td>the chapter whose flags hold <code>flag</code> (normally the same chapter)</td>
+</tr>
+</tbody>
+</table>
+<p>A row only makes <em>Talk</em> appear. What happens is the chapter's talk event
+(<code>COND_TALK</code> <code>04</code>, or <code>16</code> from chapter 6 on) with the same units and flag.
+Same-army talks need both; the editor's <strong>+ New event</strong> writes both.</p>
 <h2>Maps</h2>
 <ul>
 <li><strong>Easiest:</strong> the <strong>Maps</strong> page of Builder of the Holy War (above).</li>
@@ -1176,6 +1232,19 @@ command after the line above it, and deleting a line removes a command:</p>
 <li>Some AI programs share code with one listed earlier, marked
   "(shared, listed above)". Add commands to the earlier program instead.</li>
 </ul>
+<p><strong>New messages.</strong> In <code>events/dialogue.txt</code>, a block headed <code>@N00001</code>
+(<code>@N</code> and five digits) is a new message. Use it in any <code>.evt</code> file by
+writing <code>@N00001</code> where its 3-byte address goes:</p>
+<pre><code>+ 0C @N00001          ; SC_TEXT  a new line of dialogue
+</code></pre>
+<ul>
+<li>The build puts new messages into free space and fills in their addresses.</li>
+<li>The editor makes these for you when you add an event or a step.</li>
+</ul>
+<p><strong>New conversations (scenes).</strong> 88 of the 562 scenes are empty and nothing
+starts them. The editor uses those for new events: it writes the scene in
+<code>scenes.evt</code> under its <code>scene N</code> label and starts it with <code>RUN_SCENE</code>.
+Only one scene plays per event check, so an event should start one scene.</p>
 <h2>Also included</h2>
 <ul>
 <li><strong><code>ROM_MAP.md</code>:</strong> every offset and field, how each one was verified, and the engine routines found so far.</li>

@@ -421,3 +421,96 @@ def apply_arena(rom, path, space=None):
             rom[t + 2 * i:t + 2 * i + 2] = (lsn & 0xFFFF).to_bytes(2, 'little')
         changes += 1
     return changes
+
+
+# ---------------------------------------------------------------- talks.csv
+# Info block +6: the chapter's Talk list.  The map's action menu shows "Talk" when the moving unit
+# and the unit it stands next to match an entry ($87:9E42):
+#   +0 word  chapter whose event flags hold +2 ($86:821F looks the block up in $7E:52B7)
+#   +2 byte  flag: once it is set the entry is skipped (the talk event sets it)
+#   +3 word  unit who talks (FFFF = anyone), +5 word  unit talked to
+#   +7 byte  0 = always, 1 = only while the talker has 10,000 gold or more
+# Ends with FFFF.  The talk itself is an event condition ($04 / $16) with the same units and flag.
+TALK_FIELDS = ['chapter', 'flag', 'from', '_from_name', 'to', '_to_name', 'needs', 'flag_chapter']
+TALK_NEEDS = {0: '', 1: 'gold10000'}
+TALK_NEEDS_INV = {'': 0, 'none': 0, 'gold10000': 1, 'gold': 1}
+
+
+def talk_list(rom, ch):
+    """[(flag_chapter, flag, from, to, needs)] or None when the chapter has no list."""
+    a, fo = info_block(rom, ch)
+    p = _w(rom, fo + 6)
+    if p == 0:
+        return None
+    t = snes_to_file(a & 0xFF0000 | p)
+    out = []
+    while _w(rom, t) != 0xFFFF:
+        out.append((_w(rom, t), rom[t + 2], _w(rom, t + 3), _w(rom, t + 5), rom[t + 7]))
+        t += 8
+        if len(out) > 200:
+            raise ValueError('unterminated talk list in chapter %d' % ch)
+    return out
+
+
+def export_talks(rom, path):
+    import fe4events as EV
+    com = EV.Commenter(rom)
+    nm = lambda u: 'anyone' if u == 0xFFFF else com.unit(u).rsplit('(', 1)[0]  # noqa: E731
+    with open(path, 'w', newline='') as f:
+        w = csv.DictWriter(f, fieldnames=TALK_FIELDS)
+        w.writeheader()
+        for ch in range(CHAPTERS):
+            for fc, flag, a, b, k in talk_list(rom, ch) or []:
+                w.writerow({'chapter': ch, 'flag': '0x%02X' % flag, 'from': 'any' if a == 0xFFFF else a,
+                            '_from_name': nm(a), 'to': b, '_to_name': nm(b),
+                            'needs': TALK_NEEDS.get(k, str(k)), 'flag_chapter': fc})
+    print('wrote', path)
+
+
+def _talk_rows(path):
+    want = {}
+    for ln, row in enumerate(csv.DictReader(open(path, newline='')), start=2):
+        try:
+            ch = int(row['chapter'])
+            flag = int(row['flag'], 0)
+            fr = row['from'].strip().lower()
+            a = 0xFFFF if fr in ('any', 'anyone', '') else int(fr, 0)
+            b = int(row['to'], 0)
+            need = row.get('needs', '').strip().lower()
+            k = TALK_NEEDS_INV[need] if need in TALK_NEEDS_INV else int(need, 0)
+            fc = int(row['flag_chapter'], 0) if row.get('flag_chapter', '').strip() else ch
+        except (ValueError, KeyError) as e:
+            raise SystemExit(f'{path}:{ln}: {e}')
+        if not 0 <= ch < CHAPTERS:
+            raise SystemExit(f'{path}:{ln}: chapter must be 0-{CHAPTERS - 1}')
+        if not 0 <= flag <= 0xFF or not 0 <= k <= 0xFF or not 0 <= fc <= 0xFFFF:
+            raise SystemExit(f'{path}:{ln}: flag, needs and flag_chapter must fit their fields')
+        if not 0 <= a <= 0xFFFF or not 0 <= b < 0xFFFF:
+            raise SystemExit(f'{path}:{ln}: from/to must be unit IDs')
+        want.setdefault(ch, []).append((fc, flag, a, b, k))
+    return want
+
+
+def apply_talks(rom, path, space=None):
+    if not os.path.exists(path):
+        return 0
+    space = space or BankSpace(rom)
+    want = _talk_rows(path)
+    changes = 0
+    for ch in range(CHAPTERS):
+        new = want.get(ch, [])
+        cur = talk_list(rom, ch)
+        if (cur or []) == new:
+            continue
+        a, fo = info_block(rom, ch)
+        bank = a & 0xFF0000
+        data = b''.join(fc.to_bytes(2, 'little') + bytes([flag]) + x.to_bytes(2, 'little') +
+                        y.to_bytes(2, 'little') + bytes([k]) for fc, flag, x, y, k in new) + b'\xff\xff'
+        if cur is not None and len(new) <= len(cur):
+            t = snes_to_file(bank | _w(rom, fo + 6))
+        else:
+            t, sn = space.alloc(bank, len(data))
+            rom[fo + 6:fo + 8] = (sn & 0xFFFF).to_bytes(2, 'little')
+        rom[t:t + len(data)] = data
+        changes += 1
+    return changes

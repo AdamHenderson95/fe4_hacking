@@ -32,10 +32,11 @@ import fe4hack                     # noqa: E402
 import fe4gfx                      # noqa: E402
 import fe4maps                     # noqa: E402
 import fe4events                   # noqa: E402
+import fe4locations                # noqa: E402
 from fe4project import Project, load_settings, save_settings   # noqa: E402
 
 APP = 'Builder of the Holy War'
-VERSION = '18'
+VERSION = '19'
 STATIC = os.path.join(KIT, 'studio')
 
 # ---------------------------------------------------------------- state
@@ -86,6 +87,8 @@ def open_project(d):
         for ch, what in fe4maps.upgrade_v15_maps(rom, os.path.join(d, 'maps')):
             print(f'chapter {ch} map: ' + ('re-read from the ROM (older kits read it wrongly)' if what == 'fixed'
                                            else 'exported by an older kit and edited since; re-export it'))
+        if not os.path.exists(os.path.join(d, 'talks.csv')):     # kits before v19 had no Talk lists
+            fe4locations.export_talks(rom, os.path.join(d, 'talks.csv'))
     state['project'] = Project(d)
     warm_portraits()
     settings['project'] = d
@@ -148,7 +151,7 @@ def port_exe():
 
 # ---------------------------------------------------------------- data for the pages
 TABLES = {'units_playable', 'units_children', 'units_npc', 'units_generic', 'classes', 'items', 'rings',
-          'item_instances', 'skills', 'names', 'lovers', 'gen2_rules', 'deploy', 'locations', 'arena', 'armies'}
+          'item_instances', 'skills', 'names', 'lovers', 'gen2_rules', 'deploy', 'locations', 'arena', 'armies', 'talks'}
 
 
 def unit_portrait(table, row):
@@ -411,11 +414,11 @@ def ops_json(ops):
     """What an undo or redo touched, so the page can reload just that."""
     if ops is None:
         return {'change': None}
-    tables = sorted({o[1] for o in ops if o[0] == 'cell'})
+    tables = sorted({o[1] for o in ops if o[0] in ('cell', 'rows')})
     maps = sorted({o[1] for o in ops if o[0] == 'map'})
     cells = [{'table': o[1], 'row': o[2], 'field': o[3]} for o in ops if o[0] == 'cell'][:50]
-    evts = sorted({o[1] for o in ops if o[0] == 'evt'})
-    msgs = sorted({o[1] for o in ops if o[0] == 'msg'})
+    evts = sorted({o[1] for o in ops if o[0] in ('evt', 'lines')})
+    msgs = sorted({o[1] for o in ops if o[0] in ('msg', 'msgadd', 'msgdel')})
     return {'change': {'tables': tables, 'maps': maps, 'cells': cells, 'events': evts, 'messages': msgs,
                        'count': len(ops)}}
 
@@ -707,19 +710,34 @@ def _ptr(b, i):
     return '%06X' % (b[i] | b[i + 1] << 8 | b[i + 2] << 16)
 
 
-def message_refs(name, b):
-    """Message keys a command shows: (key, kind)."""
+def message_refs(name, b, toks=None):
+    """Message keys a command shows: (key, kind). toks = the command's hex tokens, where a new
+    message is written @Nxxxxx in place of its 3 address bytes."""
     if not b:
         return []
+
+    def at(i):
+        if toks is not None:
+            pos = 0
+            for t in toks:
+                if pos == i and t.startswith('@'):
+                    return t[1:]
+                pos += 3 if t.startswith('@') else 1
+        return _ptr(b, i)
     if name == 'scenes.evt':
         if b[0] in (0x0C, 0x14) and len(b) >= 4:
-            return [(_ptr(b, 1), 'TEXT' if b[0] == 0x0C else 'TEXT_WINDOW')]
+            return [(at(1), 'TEXT' if b[0] == 0x0C else 'TEXT_WINDOW')]
         if b[0] in (0x4A, 0x4D) and len(b) >= 6 and b[1] in (0x31, 0x32):
-            return [(_ptr(b, 3), 'TALK')]
+            return [(at(3), 'TALK')]
         return []
     if b[0] in (0x31, 0x32) and len(b) >= 5:
-        return [(_ptr(b, 2), 'TALK')]
+        return [(at(2), 'TALK')]
     return []
+
+
+def cmd_msg(name, c):
+    r = message_refs(name, cmd_bytes(c), c['hex'].split())
+    return r[0][0] if r else None
 
 
 def scene_refs(name, b):
@@ -729,10 +747,17 @@ def scene_refs(name, b):
 
 
 def cmd_bytes(c):
-    try:
-        return bytes(int(x, 16) for x in c['hex'].split())
-    except ValueError:
-        return b''
+    """The command's bytes; a new message token (@Nxxxxx) counts as three zero bytes."""
+    out = bytearray()
+    for t in c['hex'].split():
+        if t.startswith('@'):
+            out += b'\0\0\0'
+        else:
+            try:
+                out.append(int(t, 16))
+            except ValueError:
+                return b''
+    return bytes(out)
 
 
 _index = {'key': None}
@@ -755,7 +780,7 @@ def story_index():
                 scenes[sid] = {'block': blk, 'messages': [], 'runs': []}
             for c in blk['cmds']:
                 b = cmd_bytes(c)
-                for k, kind in message_refs(name, b):
+                for k, kind in message_refs(name, b, c['hex'].split()):
                     if sid is not None:
                         scenes[sid]['messages'].append(k)
                         msg_uses.setdefault(k, []).append({'scene': sid, 'kind': kind})
@@ -825,7 +850,7 @@ def evt_json(name):
     if f is None:
         raise KeyError(f'no events file {name}')
     return [{'label': blk['label'], 'start': blk['start'],
-             'cmds': [dict(c, name=c['comment'].split(' ')[0] if c['comment'] else '',
+             'cmds': [dict(c, name=c['comment'].split(' ')[0] if c['comment'] else '', msg=cmd_msg(name, c),
                            note=' '.join(c['comment'].split()[1:])) for c in blk['cmds']]}
             for blk in f.blocks()]
 
@@ -850,8 +875,27 @@ def api_events(b, q):
                 sc = idx['scenes'].get(sid)
                 if sc:
                     scenes[sid] = {'messages': sc['messages'], 'runs': sc['runs']}
+    tt = p.table('talks')
+    talks = [list(k[1:]) for k in (_talk_key(r) for r in (tt.rows if tt else [])) if k and k[0] == ch]
     return {'ch': ch, 'title': CHAPTER_TITLES[ch] if ch < len(CHAPTER_TITLES) else name, 'file': name,
-            'blocks': evt_json(name), 'locations': locs, 'scenes': scenes}
+            'blocks': evt_json(name), 'locations': locs, 'scenes': scenes,
+            'talks': talks if tt else None}
+
+
+def api_talkmenu(b, q):
+    """Add or remove the Talk-list entry of the talk event whose condition is on `line`: {file, line, on}."""
+    p = need_project()
+    name, line = b['file'], int(b['line'])
+    if p.table('talks') is None:
+        raise ValueError('This project has no talks.csv; reopen it with this version to add one.')
+    c = next((c for blk in p.evt(name).blocks() for c in blk['cmds'] if c['line'] == line), None)
+    cb = cmd_bytes(c) if c else b''
+    if not name.startswith('ch') or len(cb) < 6 or cb[0] not in (0x04, 0x16):
+        raise ValueError('That line is not a talk event.')
+    ops = {'list': []}
+    talk_row_ops(int(name[2:4]), cb[1], cb[2] | cb[3] << 8, cb[4] | cb[5] << 8, bool(b.get('on')), ops)
+    p.edit(ops['list'])
+    return {'ok': True}
 
 
 def api_chapters(b, q):
@@ -905,6 +949,8 @@ def api_evtcmd(b, q):
     old = next((c for blk in f.blocks() for c in blk['cmds'] if c['line'] == line), None)
     if old is None:
         raise KeyError(f'line {line + 1} of {name} is not a command')
+    if '@' in old['hex']:
+        raise ValueError('This step shows a new message; change its text in the conversation below.')
     try:
         new = bytes(int(x, 16) for x in b['hex'].split())
     except ValueError:
@@ -921,7 +967,26 @@ def api_evtcmd(b, q):
         nm, note = 'END', ''
     else:
         nm, note = fe4events.EV_NAMES.get(new[0], 'OP_%02X' % new[0]), com.ev(new)
-    p.set_command(name, line, hexs, ('%-14s %s' % (nm, note)).rstrip() if name != 'scenes.evt' else ('%-13s %s' % (nm, note)).rstrip())
+    comment = ('%-14s %s' % (nm, note)).rstrip() if name != 'scenes.evt' else ('%-13s %s' % (nm, note)).rstrip()
+    ops = []
+    line_new = f.set_command(line, hexs, comment)
+    if f.lines[line] != line_new:
+        ops.append(('evt', name, line, f.lines[line], line_new))
+    ob = cmd_bytes(old)
+    tb = p.table('talks')
+    if tb and name.startswith('ch') and ob[0] in (0x04, 0x16) and len(ob) >= 6:
+        # keep the chapter's Talk-list entry in step with the talk event
+        okey = (int(name[2:4]), ob[1], ob[2] | ob[3] << 8, ob[4] | ob[5] << 8)
+        for i, r in enumerate(tb.rows):
+            if _talk_key(r) == okey:
+                vals = {'flag': '0x%02X' % new[1], 'from': 'any' if new[2] | new[3] << 8 == 0xFFFF else str(new[2] | new[3] << 8),
+                        'to': str(new[4] | new[5] << 8)}
+                nmf = lambda u: 'anyone' if u == 0xFFFF else com.unit(u).rsplit('(', 1)[0]  # noqa: E731
+                vals['_from_name'], vals['_to_name'] = nmf(new[2] | new[3] << 8), nmf(new[4] | new[5] << 8)
+                for k, v in vals.items():
+                    if k in tb.fields and r.get(k, '') != v:
+                        ops.append(('cell', 'talks', i, k, r.get(k, ''), v))
+    p.edit(ops)
     return {'ok': True, 'hex': hexs, 'name': nm, 'note': note}
 
 
@@ -997,9 +1062,11 @@ def chapter_triggers(name):
         cur = None
         for c in blk['cmds']:
             b = cmd_bytes(c)
-            if b and b[0] in COND_OPS:
+            if b and b[0] in COND_OPS and b[0] not in STRUCT_OPS:
                 cur = (c, [])
                 out.append(cur)
+            elif b and (b[0] in STRUCT_OPS or b == b'\xff\xff'):
+                cur = None                   # the list's structured tail is not part of an event
             elif cur:
                 cur[1].append(c)
     return out
@@ -1069,6 +1136,389 @@ def api_itemuse(b, q):
     return {'use': use}
 
 
+# ---------------------------------------------------------------- adding and removing events
+STRUCT_OPS = {0x20, 0x25, 0x2E, 0x21}     # these start the structured tail of a trigger list
+LORDS = (1, 25)                                               # Sigurd, Seliph (character IDs)
+VILLAGER = 0x2AD                                              # a villager speaker the game uses
+
+
+def _w(n):
+    return '%02X %02X' % (n & 0xFF, n >> 8)
+
+
+def _hx(*parts):
+    return ' '.join(str(p) for p in parts)
+
+
+def chapter_file(ch):
+    p = need_project()
+    name = next((f for f in p.evt_files() if f.startswith('ch%02d_' % ch)), None)
+    if name is None:
+        raise KeyError(f'no events for chapter {ch}')
+    return name
+
+
+def free_flag(name):
+    """An event flag (0-79) nothing in this chapter's script or its scenes uses."""
+    p = need_project()
+    used = set()
+    for blk in p.evt(name).blocks():
+        for c in blk['cmds']:
+            b = cmd_bytes(c)
+            if len(b) > 1 and (b[0] in COND_OPS or b[0] in (0x30, 0x31, 0x32)) and b[1] != 0xFF:
+                used.add(b[1] & 0x7F)
+    idx = story_index()
+    for sid, chs in idx['chapter_scenes'].items():
+        if name in chs and sid in idx['scenes']:
+            for c in idx['scenes'][sid]['block']['cmds']:
+                b = cmd_bytes(c)
+                if len(b) == 2 and b[0] == 0x07:
+                    used.add(b[1] & 0x7F)
+    t = p.table('talks')
+    for r in (t.rows if t else []):
+        if r.get('chapter') == str(int(name[2:4])):
+            try:
+                used.add(int(r['flag'], 0) & 0x7F)
+            except ValueError:
+                pass
+    for n in range(80):
+        if n not in used:
+            return n
+    return 0xFF
+
+
+def _talk_key(r):
+    try:
+        a = r['from'].strip().lower()
+        return (int(r['chapter']), int(r['flag'], 0), 0xFFFF if a in ('any', 'anyone', '') else int(a, 0),
+                int(r['to'], 0))
+    except (ValueError, KeyError):
+        return None
+
+
+def talk_row_ops(ch, flag, a, t, add, ops):
+    """Add (or remove) the chapter's Talk-list entry for a talk event, so the map menu offers "Talk"."""
+    p = need_project()
+    tb = p.table('talks')
+    if tb is None:
+        return
+    key = (ch, flag, a, t)
+    rows = tb.rows
+    hit = [i for i, r in enumerate(rows) if _talk_key(r) == key]
+    if add and not hit:
+        nm = lambda u: 'anyone' if u == 0xFFFF else commenter().unit(u).rsplit('(', 1)[0]  # noqa: E731
+        row = {f: '' for f in tb.fields}
+        row.update({'chapter': str(ch), 'flag': '0x%02X' % flag, 'from': 'any' if a == 0xFFFF else str(a),
+                    '_from_name': nm(a), 'to': str(t), '_to_name': nm(t), 'needs': '', 'flag_chapter': str(ch)})
+        at = max([i + 1 for i, r in enumerate(rows) if _talk_key(r) and _talk_key(r)[0] <= ch] or [0])
+        ops['list'].append(('rows', 'talks', at, [], [row]))
+    elif not add:
+        for i in reversed(hit):
+            ops['list'].append(('rows', 'talks', i, [dict(rows[i])], []))
+
+
+def spare_scenes():
+    """Scenes that are empty (just END) and that nothing starts: free for new conversations."""
+    idx = story_index()
+    started = set(idx['chapter_scenes'])
+    for sc in idx['scenes'].values():
+        started |= set(sc['runs'])
+    out = []
+    for sid in sorted(idx['scenes']):
+        blk = idx['scenes'][sid]['block']
+        if sid not in started and len(blk['cmds']) == 1 and blk['cmds'][0]['hex'] == 'FF FF':
+            out.append(sid)
+    return out
+
+
+def _comment(name, hexs):
+    if '@' in hexs:
+        op = int(hexs.split()[0], 16)
+        nm = {0x0C: 'TEXT', 0x31: 'TALK', 0x32: 'TALK_SCENE'}.get(op, 'OP_%02X' % op)
+        return '%-14s (new message)' % nm
+    b = bytes(int(x, 16) for x in hexs.split())
+    com = commenter()
+    if name == 'scenes.evt':
+        nm, note = com.sc(0, b)
+        return ('%-13s %s' % (nm, note)).rstrip()
+    if b == b'\xff\xff':
+        return 'END'
+    return ('%-14s %s' % (fe4events.EV_NAMES.get(b[0], 'OP_%02X' % b[0]), com.ev(b))).rstrip()
+
+
+def _plus(name, cmds):
+    return [('+ %-24s ; %s' % (h, _comment(name, h))) for h in cmds]
+
+
+def new_scene_ops(cmds, ops):
+    """Claim a spare scene and fill it with cmds (hex strings, ending FF FF). Returns the scene ID."""
+    p = need_project()
+    spare = [s_ for s_ in spare_scenes() if s_ not in ops.get('_claimed', set())]
+    if not spare:
+        raise ValueError('There are no spare scenes left for new conversations.')
+    sid = spare[0]
+    ops.setdefault('_claimed', set()).add(sid)
+    blk = story_index()['scenes'][sid]['block']
+    end = blk['cmds'][0]
+    f = p.evt('scenes.evt')
+    old = f.lines[end['line']]
+    first = '%s: %-24s ; %s' % (end['addr'], cmds[0], _comment('scenes.evt', cmds[0]))
+    ops['list'].append(('lines', 'scenes.evt', end['line'], [old], [first] + _plus('scenes.evt', cmds[1:])))
+    return sid
+
+
+def new_message_op(text, where, ops):
+    d = need_project().dialogue()
+    if d is None:
+        raise ValueError('This project has no events/dialogue.txt.')
+    taken = ops.setdefault('_keys', set())
+    n = 1
+    while 'N%05d' % n in d.text or 'N%05d' % n in taken:
+        n += 1
+    key = 'N%05d' % n
+    taken.add(key)
+    fe4events.text_encode(text)
+    ops['list'].append(('msgadd', key, where, text))
+    return key
+
+
+def portrait_code(cid):
+    return '{00 3F %02X %02X}' % (cid & 0xFF, cid >> 8)
+
+
+def say(cid, line):
+    return '{07}{00 3D}%s{09}%s{08}{01}' % (portrait_code(cid), line)
+
+
+def talk_scene(msg, target, gifts=()):
+    return ['12 E0 00', '34 23 00', 'FD', '0E 70', 'FD', '0C @' + msg, 'FD', '45 18 DE 84', *gifts,
+            '42 %s 00' % _w(target), '45 94 BD 91', 'FD', '12 E0 00', '34 23 00', 'FD', '13', 'FD', 'FF FF']
+
+
+def map_scene(msg, gifts=()):
+    return [*gifts, '12 F7 7F', '0C @' + msg, 'FD', '12 E8 00', 'FD', 'FF FF']
+
+
+def trigger_insert_line(name):
+    """Where a new trigger goes: after the last simple trigger, before the list's structured tail."""
+    f = need_project().evt(name)
+    blk = next((x for x in f.blocks() if x['label'].startswith('triggers')), None)
+    if blk is None or not blk['cmds']:
+        raise ValueError('This chapter has no trigger list.')
+    for c in blk['cmds']:
+        b = cmd_bytes(c)
+        if b == b'\xff\xff' or (b and b[0] in STRUCT_OPS):
+            return c['line']
+    return blk['cmds'][-1]['line']
+
+
+def api_newevent(b, q):
+    """A new trigger in a chapter: {ch, kind, ...}. One undo step; returns the condition's line."""
+    p = need_project()
+    ch = int(b['ch'])
+    name = chapter_file(ch)
+    kind = b['kind']
+    ops = {'list': []}
+    lord = LORDS[1] if ch >= 6 else LORDS[0]
+    u = lambda k, d=None: int(b.get(k, d) if b.get(k, d) is not None else 0xFFFF)  # noqa: E731
+    title = 'new event'
+    if kind == 'talk':
+        a, t = u('a', lord), u('b')
+        flag = free_flag(name)
+        msg = new_message_op('{06}{00 3D}%s{07}{00 3D}%s{06}{09}Write the first line here.{07}{00 1D 10}And the reply here.{08}{01}'
+                             % (portrait_code(a), portrait_code(t)), f'{name[:4]} new talk', ops)
+        sid = new_scene_ops(talk_scene(msg, t), ops)
+        cond = _hx('04' if ch < 6 else '16', '%02X' % flag, _w(a), _w(t), 'FF FF')
+        steps = ['30 FF ' + _w(sid)]
+        talk_row_ops(ch, flag, a, t, True, ops)
+    elif kind == 'visit':
+        loc = int(b['loc'])
+        for cnd, steps in chapter_triggers(name):
+            cb = cmd_bytes(cnd)
+            if cb[0] == 0x0A and cb[4] | cb[5] << 8 == loc:
+                raise ValueError('That village already has a visit event: open it and add to it.')
+        msg = new_message_op(say(VILLAGER, 'Welcome, traveler! Please, take this.'), f'{name[:4]} new village', ops)
+        sid = new_scene_ops(map_scene(msg), ops)
+        cond = _hx('0A FF FF FF', _w(loc))
+        steps = ['30 FF ' + _w(sid)]
+    elif kind == 'turn':
+        turn, who = int(b['turn']), u('who', lord)
+        if not 1 <= turn <= 99:
+            raise ValueError('Turn is 1 to 99.')
+        msg = new_message_op(say(who, 'Write what is said here.'), f'{name[:4]} new turn {turn}', ops)
+        # the game plays one scene at a time: a turn that already has a scene gets the message in it
+        for cnd, steps in chapter_triggers(name):
+            cb = cmd_bytes(cnd)
+            if cb[0] == 0x02 and cb[2:4] == b'\0\0' and cb[4] | cb[5] << 8 == turn:
+                sid = next((cmd_bytes(c)[2] | cmd_bytes(c)[3] << 8 for c in steps if cmd_bytes(c)[:1] == b'\x30'), None)
+                if sid is not None:
+                    add_text_to_scene(sid, msg, ops)
+                    p.edit(ops['list'])
+                    return {'ok': True, 'file': name, 'line': cnd['line'], 'merged': True}
+        sid = new_scene_ops(map_scene(msg), ops)
+        cond = _hx('02', '%02X' % free_flag(name), '00 00', _w(turn))
+        steps = ['30 FF ' + _w(sid)]
+    elif kind == 'area':
+        unit = u('unit', lord)
+        x1, y1, x2, y2 = (int(b[k]) for k in ('x1', 'y1', 'x2', 'y2'))
+        if not all(0 <= v < 64 for v in (x1, y1, x2, y2)):
+            raise ValueError('Corners are 0 to 63.')
+        msg = new_message_op(say(unit if unit != 0xFFFF else lord, 'Write what is said here.'), f'{name[:4]} new area', ops)
+        sid = new_scene_ops(map_scene(msg), ops)
+        cond = _hx('0B', '%02X' % free_flag(name), _w(unit), '%02X %02X %02X %02X' % (min(x1, x2), min(y1, y2), max(x1, x2), max(y1, y2)), 'FF')
+        steps = ['30 FF ' + _w(sid)]
+    elif kind == 'battle':
+        a, t = u('a'), u('b')
+        if t == 0xFFFF:
+            raise ValueError('Choose who the quote is for (the second unit speaks).')
+        msg = new_message_op(say(t, 'Write the battle quote here.'), f'{name[:4]} new battle quote', ops)
+        cond = _hx('0D FF 00 00', _w(a), 'FF FF', _w(t))
+        steps = ['31 %02X @%s 00' % (free_flag(name), msg)]
+    elif kind == 'death':
+        unit = u('unit')
+        if unit == 0xFFFF:
+            raise ValueError('Choose who dies.')
+        msg = new_message_op(say(unit, 'Write the last words here.'), f'{name[:4]} new death quote', ops)
+        cond = _hx('1A', '%02X' % free_flag(name), _w(unit), 'FF FF')
+        steps = ['31 FF @%s 01' % msg]
+    else:
+        raise ValueError(f'unknown event kind {kind}')
+    at = trigger_insert_line(name)
+    f = p.evt(name)
+    ins = _plus(name, [cond] + steps)
+    # insert before line `at`: replace that line with the new lines followed by itself
+    ops['list'].append(('lines', name, at, [f.lines[at]], ins + [f.lines[at]]))
+    p.edit(ops['list'])
+    return {'ok': True, 'file': name, 'line': at, 'title': title}
+
+
+def _group_at(name, line):
+    """(start line, end line exclusive) of the trigger group whose condition is on `line`."""
+    for cond, steps in chapter_triggers(name):
+        if cond['line'] == line:
+            last = steps[-1]['line'] if steps else line
+            return line, last + 1
+    return None
+
+
+def api_delstep(b, q):
+    """Remove one step, or a whole event when the line is its condition."""
+    p = need_project()
+    name, line = b['file'], int(b['line'])
+    f = p.evt(name)
+    if f is None:
+        raise KeyError(f'no events file {name}')
+    cmd = next((c for blk in f.blocks() for c in blk['cmds'] if c['line'] == line), None)
+    if cmd is None:
+        raise KeyError(f'line {line + 1} of {name} is not a command')
+    blk = next(x for x in f.blocks() if any(c['line'] == line for c in x['cmds']))
+    if cmd['hex'] == 'FF FF':
+        raise ValueError('The end marker can\'t be removed.')
+    if len(blk['cmds']) <= 1:
+        raise ValueError('A script needs at least one command.')
+    rng = _group_at(name, line) if name != 'scenes.evt' else None
+    a, z = rng if rng else (line, line + 1)
+    gone = f.lines[a:z]
+    ops = [('lines', name, a, gone, [])]
+    cb = cmd_bytes(cmd)
+    if rng and cb[0] in (0x04, 0x16) and len(cb) >= 6:       # a talk: its Talk-list entry goes too
+        tops = {'list': []}
+        talk_row_ops(int(name[2:4]), cb[1], cb[2] | cb[3] << 8, cb[4] | cb[5] << 8, False, tops)
+        ops += tops['list']
+    # new messages only these lines used go too
+    d = p.dialogue()
+    keys = set(re.findall(r'@(N\d{5})', '\n'.join(gone)))
+    if keys and d:
+        rest = '\n'.join(l for fn in p.evt_files() for i, l in enumerate(p.evt(fn).lines) if not (fn == name and a <= i < z))
+        for k in sorted(keys):
+            if '@' + k not in rest and k in d.text:
+                ops.append(('msgdel', k, d.where[k], d.text[k]))
+    p.edit(ops)
+    return {'ok': True}
+
+
+def api_addstep(b, q):
+    """Add a step to the event whose condition is on `line`: {file, line, kind, ...}."""
+    p = need_project()
+    name, line, kind = b['file'], int(b['line']), b['kind']
+    rng = _group_at(name, line)
+    if rng is None:
+        raise KeyError('That isn\'t an event condition.')
+    f = p.evt(name)
+    cond = next(c for c, _ in chapter_triggers(name) if c['line'] == line)
+    cb = cmd_bytes(cond)
+    ops = {'list': []}
+    ch = int(name[2:4])
+    lord = LORDS[1] if ch >= 6 else LORDS[0]
+    if kind == 'message':
+        who = int(b.get('who') or lord)
+        if cb[0] in (0x0D, 0x0E, 0x1A):            # battle screen: a quote
+            msg = new_message_op(say(who, 'Write what is said here.'), f'{name[:4]} new quote', ops)
+            step = '31 FF @%s %s' % (msg, '01' if cb[0] == 0x1A else '00')
+        else:
+            msg = new_message_op(say(who, 'Write what is said here.'), f'{name[:4]} new message', ops)
+            # an event plays one scene: put the message into the scene it already plays, if any
+            sid = next((cmd_bytes(c)[2] | cmd_bytes(c)[3] << 8 for c in chapter_triggers(name)[[x[0]['line'] for x in
+                        chapter_triggers(name)].index(line)][1] if cmd_bytes(c)[:1] == b'\x30'), None)
+            if sid is not None:
+                add_text_to_scene(sid, msg, ops)
+                p.edit(ops['list'])
+                return {'ok': True, 'file': name, 'line': line}
+            step = '30 FF ' + _w(new_scene_ops(map_scene(msg), ops))
+    elif kind == 'item':
+        inst = int(b['instance'])
+        if not 0 <= inst < L.INSTANCE_COUNT:
+            raise ValueError('Pick an item copy.')
+        unit = int(b.get('unit', 0xFFFF))
+        step = _hx('57', _w(unit), '%02X' % inst)
+    elif kind == 'stat':
+        unit, stat, amt = int(b.get('unit', 0xFF)), int(b['stat']), int(b['amount'])
+        if not (0 <= stat <= 7 and 0 <= amt <= 255 and 0 <= unit <= 255):
+            raise ValueError('Stat 0-7, amount 0-255; the unit must be one of the first 255 characters.')
+        step = '70 %02X %02X %02X' % (unit, stat, amt)
+    elif kind == 'deploy':
+        n = int(b['list'])
+        if not 0 <= n <= 255:
+            raise ValueError('Deploy list is 0 to 255.')
+        step = '4E %02X' % n
+    else:
+        raise ValueError(f'unknown step {kind}')
+    z = rng[1]
+    ops['list'].append(('lines', name, z, [], _plus(name, [step])))
+    p.edit(ops['list'])
+    return {'ok': True, 'file': name, 'line': line}
+
+
+def add_text_to_scene(sid, msg, ops):
+    """Show one more message in a scene: right after its last message (and the YIELD after it),
+    or before its end when it has none."""
+    sc = story_index()['scenes'].get(sid)
+    if sc is None:
+        raise KeyError(f'no scene {sid}')
+    cmds = sc['block']['cmds']
+    at = None
+    for i, c in enumerate(cmds):
+        if cmd_bytes(c)[:1] in (b'\x0c', b'\x14'):
+            at = i + 1
+            if at < len(cmds) and cmds[at]['hex'] == 'FD':
+                at += 1
+    if at is None:
+        at = next(i for i, c in enumerate(cmds) if c['hex'] == 'FF FF')
+        new = ['12 F7 7F', '0C @' + msg, 'FD', '12 E8 00', 'FD']
+    else:
+        new = ['0C @' + msg, 'FD']
+    f = need_project().evt('scenes.evt')
+    ln = cmds[at]['line'] if at < len(cmds) else cmds[-1]['line'] + 1
+    # new lines go before line `ln` (a '+' line adds after the line above it)
+    ops['list'].append(('lines', 'scenes.evt', ln, [], _plus('scenes.evt', new)))
+
+
+def api_eventinfo(b, q):
+    """Spare scenes left, for the new-event dialog."""
+    need_project()
+    return {'spareScenes': len(spare_scenes())}
+
+
 
 API = {('GET', 'session'): api_session, ('POST', 'ping'): api_ping, ('GET', 'table'): api_table,
        ('POST', 'tables'): api_tables, ('POST', 'set'): api_set, ('POST', 'undo'): api_undo,
@@ -1078,7 +1528,8 @@ API = {('GET', 'session'): api_session, ('POST', 'ping'): api_ping, ('GET', 'tab
        ('POST', 'dialog'): api_dialog, ('POST', 'quit'): api_quit, ('POST', 'classic'): api_classic,
        ('POST', 'setmany'): api_setmany, ('GET', 'people'): api_people, ('GET', 'textinfo'): api_textinfo, ('GET', 'events'): api_events,
        ('GET', 'chapters'): api_chapters, ('GET', 'scene'): api_scene, ('POST', 'messages'): api_messages,
-       ('POST', 'msg'): api_msg, ('POST', 'evtcmd'): api_evtcmd, ('GET', 'dsearch'): api_dsearch, ('GET', 'villages'): api_villages, ('GET', 'itemuse'): api_itemuse, ('GET', 'maps'): api_maps, ('GET', 'map'): api_map, ('POST', 'paint'): api_paint}
+       ('POST', 'msg'): api_msg, ('POST', 'evtcmd'): api_evtcmd, ('GET', 'dsearch'): api_dsearch, ('GET', 'villages'): api_villages, ('GET', 'itemuse'): api_itemuse, ('POST', 'newevent'): api_newevent, ('POST', 'talkmenu'): api_talkmenu, ('POST', 'delstep'): api_delstep,
+       ('POST', 'addstep'): api_addstep, ('GET', 'eventinfo'): api_eventinfo, ('GET', 'maps'): api_maps, ('GET', 'map'): api_map, ('POST', 'paint'): api_paint}
 
 
 # ---------------------------------------------------------------- window

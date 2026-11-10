@@ -309,6 +309,14 @@ and 785 messages, with every script decoded to its end.
   `[chapter word][opening-script ptr24][trigger-list ptr24]`.
   - The opening script runs once.
   - The trigger list is a run of `[condition][actions…]`.
+  - Condition flag byte: `$FF` = none; `$00–$4F` = fire once, then set the
+    flag (`$86:99D6` sets, `$86:9A50` tests); `$80|n` = needs flag n, then
+    clears it. Each condition handler also checks the event mode in `$0EBC`
+    (talk = `$0A`).
+  - Ops `$20`/`$25`/`$2E`/`$21` start the list's structured tail; the editor
+    adds new events before it.
+  - Scenes 10 and up include 88 that are empty and unused; the editor
+    writes new conversations there.
   - Per-chapter info pointers at `$86:C760` (12) and the army table at
     `$86:C784` (72) sit beside it.
 
@@ -322,7 +330,7 @@ and 785 messages, with every script decoded to its end.
 | `$0D` | battle starts between units | boss quotes (Gerrard "Go to hell…") |
 | `$1A` | unit dies | Midir's dying line |
 | `$2B` | go-to (word address) | |
-| `$30` | run scene `[once-bit][scene word]` via `$80:C1CB` | |
+| `$30` | run scene `[once-bit][scene word]` via `$80:C1CB` | fails (carry set) while a scene runs (`$171A` ≠ 0): one scene per pass |
 | `$31`/`$32` | show message `[speaker][ptr24][…]` | |
 | `$4B` | set army slot `[slot][army ID]` | V: Prologue slot 1 = army 2 (Evans) |
 | `$4D` | army relation? `[a][b][c]` | |
@@ -531,6 +539,22 @@ adds working Armory and Arena buttons to the Prologue.
   `units_generic.csv` (IDs 480 onward).
 - The Prologue and chapter 6 have no table (pointer 0).
 - Verified: a new Prologue table put Tiburon at rank 1.
+
+### Talk menu (+6) (V)
+
+- Word pointer (same bank) to 8-byte entries ending `$FFFF`; 0 = none (chapter 4):
+  `[flag-chapter word][flag][unit A word, $FFFF = anyone][unit B word][needs]`.
+- `$87:9E42` (called from the map action menu, `$84:8A42` and others) walks the
+  list. A = the moving unit (`$056F`), B = the unit beside it (`$0574`).
+  - `$86:8294` skips the entry once the flag is set: `$86:821F` finds the
+    flag-chapter's block in `$7E:52B7`, `$86:9A50` tests the flag.
+  - needs 0 = always, 1 = the talker has 10,000 gold or more (`$84:9F0D`),
+    e.g. chapter 2's "anyone → Beowulf".
+- The talk itself is a trigger-list condition `$04`/`$16` with the same pair and
+  flag. A `$04` condition without an entry here never fires from the menu.
+- Verified: entries for Sigurd → Noish/Alec/Arden in the Prologue (new list at
+  `$90:F7BE`) made "Talk" appear and the new talk scene play.
+- Kit: `talks.csv`.
 
 ### Other verified edits
 

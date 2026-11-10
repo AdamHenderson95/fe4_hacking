@@ -145,7 +145,8 @@ The fe4kit folder has BuilderOfTheHolyWar.exe, the editor for making your
 own FE4 hacks: characters with their portraits, stats, holy blood, items and
 skills; classes; chapter maps (paint them with the game's tiles, drag
 castles, villages and units into place); chapter events and all the
-dialogue (speech bubbles with portraits); and weapons, rings, shops,
+dialogue (speech bubbles with portraits), including new talks, turn
+events, village visits and battle quotes; and weapons, rings, shops,
 villages and the arena. Its manual is
 fe4kit\README.html. Two things connect it to this port:
   * Test play (F6, or the Test play button) builds your project and opens

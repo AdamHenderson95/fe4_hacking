@@ -74,6 +74,19 @@ default browser). The editor runs on your PC only: nothing is sent anywhere.
      anything else (new boxes, pauses, portraits coming and going).
    - Steps and conditions whose meaning isn't known yet say so; their bytes
      can still be changed under **Bytes** (same length).
+   - **+ New event** adds a talk, a turn event, a village visit, an area
+     someone reaches, a battle quote or a death quote. Each new event comes
+     with a fresh conversation to write in; new talks get their own scene
+     and an entry in the chapter's **Talk menu**, so the map menu offers
+     *Talk* for that pair until the talk has played. New turn events on a
+     turn that already plays a scene add their message to that scene (the
+     game plays one scene per check).
+   - Add steps to an event (*someone says something*, *give an item*,
+     *raise a stat*, *units arrive*), remove steps with ×, or **Delete
+     event**. Messages only a deleted event used go with it. Every one of
+     these is one undo step.
+   - Talk events show whether the pair is in the Talk menu, with a button
+     to add or remove it. Changing who talks keeps the menu entry in step.
 6. **Items, shops & villages**, in three tabs:
    - **Weapons & items**: every weapon, staff and ring, grouped by type.
      Rename it, and set Might, Hit, Weight, range, uses, price, rank, weapon
@@ -191,6 +204,7 @@ runs this randomizer from its own menu (Mods → Randomizer).
 | `events/dialogue.txt` | 785 | Every message those scripts show, as editable text |
 | `locations.csv` | 132 | Every castle and village: position, castle name, castle-town facilities, armory stock, village gold |
 | `arena.csv` | 71 | Arena opponents for each chapter and rank |
+| `talks.csv` | 42 | Each chapter's Talk menu: which unit can Talk to which, until which event flag is set |
 | `armies.csv` | 72 | Every army: name, member units, castles it holds |
 | `ai_orders.evt` | 737 | Enemy AI programs: which castle to seize, which turn to march, what to attack |
 | `skills.csv` | 29+ | Every skill: who has it, activation rates and effect numbers, plus new skills from later games (Aether, Galeforce, Great Shield…) with their Skills-menu entries |
@@ -252,6 +266,21 @@ Forgive me...{08}{01}
   - `{01}` = end
 - Line breaks in the file itself are ignored.
 - Lines in the game box fit about 44 characters.
+
+**`talks.csv`** is the map menu's Talk list for each chapter:
+
+| column | meaning |
+|---|---|
+| `chapter` | 0–11 |
+| `flag` | the event flag the talk event sets; once set, *Talk* is no longer offered |
+| `from` | unit who talks, or `any` |
+| `to` | unit talked to |
+| `needs` | empty = always; `gold10000` = only while the talker has 10,000 gold (hiring Beowulf) |
+| `flag_chapter` | the chapter whose flags hold `flag` (normally the same chapter) |
+
+A row only makes *Talk* appear. What happens is the chapter's talk event
+(`COND_TALK` `04`, or `16` from chapter 6 on) with the same units and flag.
+Same-army talks need both; the editor's **+ New event** writes both.
 
 ## Maps
 
@@ -699,6 +728,22 @@ command after the line above it, and deleting a line removes a command:
   names the line if one is wrong.
 - Some AI programs share code with one listed earlier, marked
   "(shared, listed above)". Add commands to the earlier program instead.
+
+**New messages.** In `events/dialogue.txt`, a block headed `@N00001`
+(`@N` and five digits) is a new message. Use it in any `.evt` file by
+writing `@N00001` where its 3-byte address goes:
+
+```
++ 0C @N00001          ; SC_TEXT  a new line of dialogue
+```
+
+- The build puts new messages into free space and fills in their addresses.
+- The editor makes these for you when you add an event or a step.
+
+**New conversations (scenes).** 88 of the 562 scenes are empty and nothing
+starts them. The editor uses those for new events: it writes the scene in
+`scenes.evt` under its `scene N` label and starts it with `RUN_SCENE`.
+Only one scene plays per event check, so an event should start one scene.
 
 ## Also included
 

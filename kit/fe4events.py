@@ -507,6 +507,41 @@ def _verify_block(rom, vm, start, blk, newaddrs, path):
             raise SystemExit(f"{path}:{blk['line']}: a scene must end with FF FF")
 
 
+NEW_MSG = re.compile(r'^@(N\d{5})')
+
+
+def place_new_messages(rom, evdir, far):
+    """Messages added in dialogue.txt as @Nxxxxx (not yet in the ROM): write each into free space.
+    Returns {'Nxxxxx': snes address} for the @Nxxxxx tokens in .evt files."""
+    path = os.path.join(evdir, 'dialogue.txt')
+    out = {}
+    if not os.path.exists(path):
+        return out
+    cur, body = None, {}
+    for ln, line in enumerate(open(path, encoding='utf-8'), start=1):
+        line = line.rstrip('\n')
+        if line.startswith(';'):
+            continue
+        if line.startswith('@'):
+            m = NEW_MSG.match(line)
+            cur = m.group(1) if m else None
+            if cur:
+                body[cur] = (ln, [])
+        elif cur and line.strip() != '':
+            body[cur][1].append(line)
+    for key, (ln, lines) in body.items():
+        try:
+            new = text_encode(''.join(lines))
+        except ValueError as e:
+            raise SystemExit(f'{path}:{ln}: {e}')
+        if not new.endswith(b'\x01'):
+            raise SystemExit(f'{path}:{ln}: message must end with {{01}}')
+        dest = far.alloc(len(new) + 1)
+        rom[dest:dest + len(new)] = new
+        out[key] = 0x400000 + (dest - 0x400000)          # banks $40-$7D map 1:1 to file 0x400000+
+    return out
+
+
 def apply_events(rom, evdir, space=None, far=None):
     """Apply edited .evt and dialogue.txt files. Returns number of changes."""
     if not os.path.isdir(evdir):
@@ -520,11 +555,13 @@ def apply_events(rom, evdir, space=None, far=None):
     placer = A.make_placer(space, lambda size: far.alloc(size + 1))
     chapters = {(lab, st): (ch, i) for ch, _, scr in ctx.chapter_scripts() for i, (lab, st) in enumerate(scr)}
     scenes = {p: sid for sid, p in enumerate(ctx.scene_ptrs())}
+    scene_ptrs = ctx.scene_ptrs()
+    symbols = place_new_messages(rom, evdir, far)
     for fn in sorted(os.listdir(evdir)):
         if not fn.endswith('.evt'):
             continue
         path = os.path.join(evdir, fn)
-        for blk in A.parse_blocks(path):
+        for blk in A.parse_blocks(path, symbols):
             st = blk['start']
             moved = None            # (table slot) for a block a hacked ROM had already moved
             if fn == 'scenes.evt':
@@ -566,7 +603,11 @@ def apply_events(rom, evdir, space=None, far=None):
             if moved is not None:
                 t = moved
             elif vm == 'sc':
-                t = SCENE_TABLE + 3 * scenes[st]
+                # several scenes can share one start (empty ones): the label says which slot this is
+                m = re.match(r'scene\s+(\d+)$', blk['label'])
+                sid = int(m.group(1)) if m and int(m.group(1)) < len(scene_ptrs) and scene_ptrs[int(m.group(1))] == st \
+                    else scenes[st]
+                t = SCENE_TABLE + 3 * sid
             else:
                 ch, i = chapters[(blk['label'].split()[0], st)]
                 a = CHAPTER_TABLE + 3 * ch
@@ -584,6 +625,9 @@ def apply_events(rom, evdir, space=None, far=None):
         for ln, line in enumerate(open(path), start=1):
             line = line.rstrip('\n')
             if line.startswith(';'):
+                continue
+            if line.startswith('@N'):
+                cur = None                                    # new message: placed before the scripts
                 continue
             if line.startswith('@'):
                 cur = int(line[1:7], 16)

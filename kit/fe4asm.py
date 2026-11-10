@@ -17,11 +17,30 @@ import re
 
 from dis65816 import snes_to_file
 
-LINE = re.compile(r'^\s*([0-9A-Fa-f]{6}|\+)\s*:?\s*([0-9A-Fa-f ]+?)\s*(;.*)?$')
+LINE = re.compile(r'^\s*([0-9A-Fa-f]{6}|\+)\s*:?\s*((?:[0-9A-Fa-f]{2}|@N\d{5})(?:\s+(?:[0-9A-Fa-f]{2}|@N\d{5}))*)\s*(;.*)?$')
+SYMBOL = re.compile(r'^@(N\d{5})$')       # a new message from dialogue.txt: its 3-byte address
 HEAD = re.compile(r'^==\s*(.*?)\s*@([0-9A-Fa-f]{6})')
 
 
-def parse_blocks(path):
+def parse_bytes(text, symbols=None, where=''):
+    """Hex pairs, where @Nxxxxx stands for the 3-byte address of new message Nxxxxx."""
+    out = bytearray()
+    for t in text.split():
+        m = SYMBOL.match(t)
+        if m:
+            if symbols is None or m.group(1) not in symbols:
+                raise SystemExit(f'{where}: {t} is not a new message in dialogue.txt')
+            a = symbols[m.group(1)]
+            out += bytes([a & 0xFF, (a >> 8) & 0xFF, a >> 16])
+        else:
+            try:
+                out.append(int(t, 16))
+            except ValueError:
+                raise SystemExit(f'{where}: bad hex')
+    return bytes(out)
+
+
+def parse_blocks(path, symbols=None):
     """[{'label', 'start', 'line', 'cmds': [(addr or None, bytes, line_no)]}] in file order."""
     blocks, cur = [], None
     for ln, line in enumerate(open(path), start=1):
@@ -35,10 +54,7 @@ def parse_blocks(path):
             continue
         if cur is None:
             raise SystemExit(f'{path}:{ln}: command outside a "== ..." block')
-        try:
-            data = bytes(int(x, 16) for x in m.group(2).split())
-        except ValueError:
-            raise SystemExit(f'{path}:{ln}: bad hex')
+        data = parse_bytes(m.group(2), symbols, f'{path}:{ln}')
         if not data:
             raise SystemExit(f'{path}:{ln}: empty command')
         addr = None if m.group(1) == '+' else int(m.group(1), 16)
