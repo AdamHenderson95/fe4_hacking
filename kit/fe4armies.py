@@ -292,7 +292,8 @@ def _apply_orders(rom, path, space):
                 raise SystemExit(f'{path}:{ln}: opcode {data[0]:02X} takes '
                                  f'{AI_OPS[data[0]][1] if data[0] in AI_OPS else "?"} argument bytes')
         orig = groups.get((blk['label'], blk['start']), [])
-        same = [a for a, _, _ in blk['cmds']] == orig and all(len(d) == len(cmds[a]) for a, d, _ in blk['cmds'])
+        same = ([a for a, _, _ in blk['cmds']] == orig and not blk.get('steps')
+                and all(len(d) == len(cmds[a]) for a, d, _ in blk['cmds']))
         if same:
             for addr, data, ln in blk['cmds']:
                 fo = snes_to_file(addr)

@@ -611,11 +611,29 @@ adds working Armory and Arena buttons to the Prologue.
 - **Other arguments:** `$02 $03 $04 $11 $14` take 1 byte, `$0C` 2, `$1E` 3,
   and `$05 $0B $0F $10 $12 $13 $19 $1A–$1D` none. Their effects aren't
   identified yet.
+- **Handler details** (decision in `$7E:201A` = action, `$7E:2002` = mode):
+  - `$00` sets action 0 and stops: the unit does nothing this turn.
+  - `$06 loc mode` falls through once the castle check (`$84:C15F` ≠ 1) fails,
+    i.e. after it is taken; otherwise action 1 toward the castle, mode = arg.
+  - `$07 loc mode` only acts while the castle's owner is the unit's army
+    (`$0E7E`); mode 5 runs `$0B`'s handler instead; action 6.
+  - `$02 m` sets `$7E:2002`; `$04 n` sets `$7E:201E`; `$0C a b` sets
+    `$7E:2004` = a and `$7E:2006` = b & 3 and falls through (`$07` sets
+    `$2004` = `$0D` when it is 0).
+  - `$0A`: action 4, mode 4 unless `$87:D411` says otherwise, then `$18`.
+  - `$13`: action 7, mode 5.
+- **Unit positions (RAM):** unit object +4 = index i, x = `$7E:441B + i`,
+  y = `$7E:44AB + i` (words); +6 army slot, +7 deploy `orders`.
 - **Verified in-game:**
   - Setting `orders` to 0 for four Prologue units kept them in place during
     enemy phase 1 while the rest moved as usual.
   - Changing army 2 orders 2 from "turn ≥ 3" to "turn ≥ 1" made exactly
     those four units (0.4–0.6, 0.17) march on turn 1.
+  - Kit v21: army 2 program 1 rewritten as `00` ("stay put", via the editor)
+    kept 0.0–0.3 at their starting tiles after enemy phase 1; in the
+    unedited game they march toward Jungby ((45,17), (48,14), (51,13), (58,13)).
+- **Kit:** new lines in `ai_orders.evt` can jump to a command of the same
+  program with `@Lk` (k = its position in the program, from 0).
 
 ## Skills (V)
 

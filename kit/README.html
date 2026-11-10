@@ -115,6 +115,19 @@ default browser). The editor runs on your PC only: nothing is sent anywhere.
      the visit event.</li>
 <li><strong>Arena</strong>: the seven opponents per chapter for melee and ranged
      fighters, with each opponent's class and level.</li>
+<li><strong>Armies &amp; AI</strong>, per chapter: the armies the chapter sets up, by slot
+   (slot 0 is yours).</li>
+<li><strong>The army</strong>: its name on the map, the castles it holds and its
+     members (units that join when it's set up).</li>
+<li><strong>What its units do</strong>: each AI program in words (<em>Seize Jungby</em>,
+     <em>From turn 3 on, go to step 4</em>, <em>Attack anyone</em>…), with fields for the
+     castle, turn or target. <strong>Change what it does…</strong> rewrites a program:
+     attack anyone, attack only what's in reach, seize a castle, guard a
+     castle, raid villages, go after one unit, or stay put, optionally
+     only from a given turn (until then they wait or attack what's in reach).</li>
+<li><strong>Units on the map</strong>: every deployed unit of the army, grouped by
+     deploy list, with the program it follows. <strong>Set all to…</strong> changes a
+     whole list at once.</li>
 <li>Changes are checked as you type (a value out of range turns red and
    says why). <strong>Undo / Redo</strong> (Ctrl+Z / Ctrl+Y) cover every change (a whole
    paint stroke or fill is one step); <strong>Save</strong> (Ctrl+S) writes the project
@@ -647,7 +660,17 @@ or "Jungby". Three files work together:</p>
 <ul>
 <li><strong>Editing rules:</strong> the same as the other <code>.evt</code> files (see "Adding new things").
   Jump addresses are the low 16 bits of an address in
-  the same bank.</li>
+  the same bank. A new line can jump to another command of the same
+  program by its position instead: <code>@L3</code> is the program's 4th command
+  (counting from 0), wherever the build puts it:</li>
+</ul>
+<pre><code>== army 2 orders 1 @9081A0
++ 1F 03 @L2   ; from turn 3, go to the third command
++ 00          ; until then: stay put
++ 18          ; attack anyone
++ FF
+</code></pre>
+<ul>
 <li><strong>Old projects:</strong> older <code>deploy.csv</code> files use <code>army</code> and <code>faction</code> for
   <code>orders</code> and <code>army_slot</code>, and they still build.</li>
 </ul>

@@ -110,16 +110,29 @@ default browser). The editor runs on your PC only: nothing is sent anywhere.
      the visit event.
    - **Arena**: the seven opponents per chapter for melee and ranged
      fighters, with each opponent's class and level.
-7. Changes are checked as you type (a value out of range turns red and
+7. **Armies & AI**, per chapter: the armies the chapter sets up, by slot
+   (slot 0 is yours).
+   - **The army**: its name on the map, the castles it holds and its
+     members (units that join when it's set up).
+   - **What its units do**: each AI program in words (*Seize Jungby*,
+     *From turn 3 on, go to step 4*, *Attack anyone*…), with fields for the
+     castle, turn or target. **Change what it does…** rewrites a program:
+     attack anyone, attack only what's in reach, seize a castle, guard a
+     castle, raid villages, go after one unit, or stay put, optionally
+     only from a given turn (until then they wait or attack what's in reach).
+   - **Units on the map**: every deployed unit of the army, grouped by
+     deploy list, with the program it follows. **Set all to…** changes a
+     whole list at once.
+8. Changes are checked as you type (a value out of range turns red and
    says why). **Undo / Redo** (Ctrl+Z / Ctrl+Y) cover every change (a whole
    paint stroke or fill is one step); **Save** (Ctrl+S) writes the project
    files.
-8. **Build ROM** writes the hacked ROM plus a shareable `.ips` patch next to
+9. **Build ROM** writes the hacked ROM plus a shareable `.ips` patch next to
    the project folder. **Test play** (F6) builds it and opens it straight
    away in the FE4 PC port (FE4Port.zip), without your mods and with its own
    saves. The editor finds FE4.exe when the kit sits in the port's `fe4kit`
    folder (as it comes in FE4Port.zip) or next to it; otherwise it asks once.
-9. On the Project page, **Add unit stats to the map box** puts the PC port's
+10. On the Project page, **Add unit stats to the map box** puts the PC port's
    MT / HIT / AS / AVO box into the ROMs and patches you build, so players
    on emulators get it too (the port can still switch it off).
 
@@ -410,7 +423,17 @@ or "Jungby". Three files work together:
 
 - **Editing rules:** the same as the other `.evt` files (see "Adding new things").
   Jump addresses are the low 16 bits of an address in
-  the same bank.
+  the same bank. A new line can jump to another command of the same
+  program by its position instead: `@L3` is the program's 4th command
+  (counting from 0), wherever the build puts it:
+
+```
+== army 2 orders 1 @9081A0
++ 1F 03 @L2   ; from turn 3, go to the third command
++ 00          ; until then: stay put
++ 18          ; attack anyone
++ FF
+```
 - **Old projects:** older `deploy.csv` files use `army` and `faction` for
   `orders` and `army_slot`, and they still build.
 

@@ -36,7 +36,7 @@ import fe4locations                # noqa: E402
 from fe4project import Project, load_settings, save_settings   # noqa: E402
 
 APP = 'Builder of the Holy War'
-VERSION = '20'
+VERSION = '21'
 STATIC = os.path.join(KIT, 'studio')
 
 # ---------------------------------------------------------------- state
@@ -767,7 +767,9 @@ def cmd_bytes(c):
     """The command's bytes; a new message token (@Nxxxxx) counts as three zero bytes."""
     out = bytearray()
     for t in c['hex'].split():
-        if t.startswith('@'):
+        if t.startswith('@L'):
+            out += b'\0\0'                  # a jump to another command of the block
+        elif t.startswith('@'):
             out += b'\0\0\0'
         else:
             try:
@@ -1537,6 +1539,274 @@ def api_eventinfo(b, q):
 
 
 
+# ---------------------------------------------------------------- armies and enemy AI
+import fe4armies                   # noqa: E402
+
+AI = 'ai_orders.evt'
+# words for each AI command: (sentence, fields [(label, kind, byte pos, size)]); {k} = argument names
+AI_WORDS = {
+    0x00: ('Stay where it is this turn', []),
+    0x01: ('Go to step {jump}', []),
+    0x02: ('Set behaviour mode {b1}?', [('Mode', 'num', 1, 1)]),
+    0x06: ('Seize {loc} (skipped once it is taken)', [('Castle', 'loc', 1, 1), ('Mode?', 'num', 2, 1)]),
+    0x07: ('Guard {loc} while its army holds it', [('Castle', 'loc', 1, 1), ('Mode?', 'num', 2, 1)]),
+    0x08: ('Raid {loc}', [('Village', 'loc', 1, 1)]),
+    0x09: ('Move to ({b4}, {b5}) once', [('x', 'num', 4, 1), ('y', 'num', 5, 1)]),
+    0x0A: ('Attack anyone in reach; otherwise stay', []),
+    0x0C: ('Set targeting {b1}, {b2}?', [('Value 1', 'num', 1, 1), ('Value 2', 'num', 2, 1)]),
+    0x0D: ('Attack {unit}', [('Target', 'unit', 1, 2)]),
+    0x0E: ('Follow {unit}?', [('Unit', 'unit', 1, 2), ('Distance?', 'num', 3, 1)]),
+    0x11: ('Heal allies (staff users) below {b1}?', [('Value', 'num', 1, 1)]),
+    0x13: ('Hold position?', []),
+    0x15: ('Set event flag {flag}', []),
+    0x16: ('Clear event flag {flag}', []),
+    0x17: ('Raid the nearest village', []),
+    0x18: ('Attack anyone (marches on the nearest enemy)', []),
+    0x1E: ('Heal or retreat when hurt ({b1})?', [('Value', 'num', 1, 1)]),
+    0x1F: ('From turn {b1} on, go to step {jump}', [('Turn', 'num', 1, 1)]),
+    0x20: ('If event flag {flag} is set, go to step {jump}', []),
+    0x21: ('If event flag {flag} is not set, go to step {jump}', []),
+    0x22: ('Check {b1}? then go to step {jump}', []),
+    0xFF: ('End', []),
+}
+# whole programs the editor can write: action -> lines (hex with {c} castle, {u} unit word)
+AI_ACTIONS = {
+    'attack_any': ('Attack anyone', ['18', 'FF']),
+    'attack_reach': ('Attack anyone in reach, otherwise stay', ['0A', 'FF']),
+    'seize': ('Seize a castle, then attack anyone', ['06 {c} 01', '18', 'FF']),
+    'guard': ('Guard a castle', ['07 {c} 04', '0A', 'FF']),
+    'raid': ('Raid villages, then attack anyone', ['17', '18', 'FF']),
+    'attack_unit': ('Go after one unit, then attack anyone', ['0D {u}', '18', 'FF']),
+    'stay': ('Stay put (never moves or attacks)', ['00']),
+}
+
+
+def _ai_blocks():
+    f = need_project().evt(AI)
+    if f is None:
+        raise KeyError('This project has no ai_orders.evt.')
+    out = {}
+    for blk in f.blocks():
+        m = re.match(r'army (\d+) orders (\d+)$', blk['label'])
+        if m:
+            out[(int(m.group(1)), int(m.group(2)))] = blk
+    return out
+
+
+def _ai_steps(blk, com, locname):
+    """The program's commands in words, with jump targets as step numbers."""
+    cmds = blk['cmds']
+    index = {c['addr']: i for i, c in enumerate(cmds) if c['addr']}
+    bank = blk['start'][:2]
+    steps, inside = [], True
+    for i, c in enumerate(cmds):
+        b = cmd_bytes(c)
+        toks = c['hex'].split()
+        op = b[0] if b else 0xFF
+        jump = None
+        spec = fe4armies.AI_OPS.get(op)
+        if spec and spec[2] is not None:
+            pos = 1 + spec[2]
+            if pos < len(toks) and toks[pos].startswith('@L'):
+                jump = int(toks[pos][2:])
+            else:
+                a = '%s%02X%02X' % (bank, b[pos + 1], b[pos])
+                jump = index.get(a)
+                if jump is None:
+                    inside = False
+        words, fields = AI_WORDS.get(op, ('Unknown command %02X (bytes %s)' % (op, c['hex']), []))
+        w = lambda k: b[k] | b[k + 1] << 8 if k + 1 < len(b) else 0  # noqa: E731
+        vals = {'jump': (jump + 1) if jump is not None else 'outside this program',
+                'loc': locname(b[1]) if len(b) > 1 else '', 'unit': com.unit(w(1)).rsplit('(', 1)[0] if len(b) > 2 else '',
+                'flag': '%d.%d' % (w(1), b[3]) if len(b) > 3 else ''}
+        vals.update({'b%d' % k: b[k] for k in range(1, len(b))})
+        try:
+            text = words.format(**vals)
+        except (KeyError, IndexError):
+            text = words
+        steps.append({'line': c['line'], 'hex': c['hex'], 'op': op, 'text': text, 'jump': jump,
+                      'fields': [list(f_) for f_ in fields], 'new': c['addr'] is None,
+                      'known': op in AI_WORDS and '?' not in words})
+    return steps, inside
+
+
+def _chapter_slots(ch):
+    """{slot: army} from the chapter's $4B commands (the last one for a slot wins)."""
+    out = {}
+    f = need_project().evt(chapter_file(ch))
+    for blk in f.blocks():
+        for c in blk['cmds']:
+            b = cmd_bytes(c)
+            if len(b) == 3 and b[0] == 0x4B:
+                out.setdefault(b[1], b[2])
+    return out
+
+
+def chapter_deploy(ch):
+    """[(row index, row, list, entry, sure)] of deploy.csv entries that belong to chapter ch."""
+    p = need_project()
+    dch = deploy_chapters(os.path.join(p.path, 'events'))
+    known = sorted(dch)
+    out = []
+    dt = p.table('deploy')
+    for i, r in enumerate(dt.rows if dt else []):
+        lst, _, ent = (r.get('index') or '').partition('.')
+        if not lst.isdigit():
+            continue
+        n = int(lst)
+        if n in dch:
+            c, sure = dch[n], True
+        else:
+            before = [k for k in known if k < n]
+            c, sure = (dch[before[-1]] if before else 0), False
+        if c == ch:
+            out.append((i, r, n, ent, sure))
+    return out
+
+
+def castle_names():
+    rom = rom_data()
+    return [fe4locations.castle_name(rom, i) if rom is not None else '' for i in range(0x40)]
+
+
+def api_armies(b, q):
+    p = need_project()
+    ch = int(q.get('ch', ['0'])[0])
+    com = commenter()
+    at = p.table('armies')
+    blocks = _ai_blocks()
+    locs = []
+    lt = p.table('locations')
+    for r in lt.rows if lt else []:
+        if str(r.get('chapter')) == str(ch):
+            locs.append({'index': int(r['index']), 'kind': r.get('kind'), 'name': r.get('_castle_name') or '',
+                         'x': r.get('x'), 'y': r.get('y')})
+    lname = {l['index']: (l['name'] or 'castle %d' % l['index']) if l['kind'] == 'castle' else 'village %d' % l['index']
+             for l in locs}
+    locname = lambda i: lname.get(i, 'location %d' % i)  # noqa: E731
+    slots = _chapter_slots(ch)
+    units = unit_lookup()
+    dep = chapter_deploy(ch)
+    names = castle_names()
+    armies = []
+    for slot, army in sorted(slots.items()):
+        row = next((r for r in at.rows if r.get('army') == str(army)), None) if at else None
+        if row is None:
+            continue
+        ids = lambda t: [int(x) for x in (t or '').replace(',', ';').split(';') if x.strip().lstrip('-').isdigit()]  # noqa: E731
+        progs = []
+        k = 1
+        while (army, k) in blocks:
+            blk = blocks[(army, k)]
+            if blk['cmds']:
+                steps, inside = _ai_steps(blk, com, locname)
+            else:
+                steps, inside = [], False
+            ends = bool(steps) and steps[-1]['op'] in (0x00, 0x01, 0xFF)
+            progs.append({'k': k, 'start': blk['start'], 'steps': steps, 'shared': not blk['cmds'],
+                          'editable': bool(blk['cmds']) and inside and ends})
+            k += 1
+        us = []
+        for i, r, lst, ent, sure in dep:
+            if str(r.get('army_slot')) != str(slot):
+                continue
+            cid = int(r['char_id']) if (r.get('char_id') or '').isdigit() else -1
+            t, ur = units.get(cid, (None, None))
+            us.append({'row': i, 'list': lst, 'entry': ent, 'char_id': cid, 'orders': int(r.get('orders') or 0),
+                       'name': (ur or {}).get('_name') or r.get('_name') or f'Unit {cid}',
+                       'class': (ur or {}).get('_class_name', ''), 'level': (ur or {}).get('level', ''),
+                       'leader': r.get('leader_flag') not in ('', '0', None), 'x': r.get('x'), 'y': r.get('y')})
+        nm = int(row.get('name') or 255)
+        armies.append({'slot': slot, 'army': army, 'row': at.rows.index(row), 'nameId': nm,
+                       'name': (names[nm] if nm < 0x40 else '') or ('Army %d' % army),
+                       'unk1': row.get('unk1'), 'unk2': row.get('unk2'),
+                       'members': [{'id': u, 'name': com.unit(u).rsplit('(', 1)[0]} for u in ids(row.get('members'))],
+                       'castles': ids(row.get('castles')), 'programs': progs, 'units': us})
+    return {'ch': ch, 'title': CHAPTER_TITLES[ch] if ch < len(CHAPTER_TITLES) else '', 'armies': armies,
+            'locations': locs, 'castleNames': names,
+            'actions': [[k, v[0]] for k, v in AI_ACTIONS.items()]}
+
+
+def api_aicmd(b, q):
+    """Same-length edit of one AI command: {line, hex}."""
+    p = need_project()
+    f = p.evt(AI)
+    line = int(b['line'])
+    old = next((c for blk in f.blocks() for c in blk['cmds'] if c['line'] == line), None)
+    if old is None:
+        raise KeyError(f'line {line + 1} of {AI} is not a command')
+    toks = b['hex'].split()
+    ot = old['hex'].split()
+    if len(toks) != len(ot) or toks[0].upper() != ot[0].upper():
+        raise ValueError('Keep the same kind of command and length.')
+    for t, o in zip(toks, ot):
+        if o.startswith('@') and t != o:
+            raise ValueError('The jump of this step can\'t be changed here.')
+        if not o.startswith('@') and not re.fullmatch(r'[0-9A-Fa-f]{2}', t):
+            raise ValueError('Write the bytes as hex pairs.')
+    hexs = ' '.join(t if t.startswith('@') else t.upper() for t in toks)
+    nb = cmd_bytes({'hex': hexs})
+    name, note = fe4armies.ai_comment(rom_data(), nb, commenter(), {}) if nb[0] in fe4armies.AI_OPS or nb[0] == 0xFF else ('?', '')
+    if '@L' in hexs:
+        note = _step_note(nb, hexs)
+    p.set_command(AI, line, hexs, ('%-17s %s' % (name, note)).rstrip())
+    return {'ok': True}
+
+
+def _step_note(nb, hexs):
+    """Comment for a command whose jump is @Lk."""
+    k = int(re.search(r'@L(\d+)', hexs).group(1)) + 1
+    if nb[0] == 0x1F:
+        return f'turn >= {nb[1]} -> step {k}'
+    return f'-> step {k}'
+
+
+def api_airecipe(b, q):
+    """Rewrite army N's program K: {army, k, action, castle?, unit?, until_turn?}. One undo step."""
+    p = need_project()
+    f = p.evt(AI)
+    army, k = int(b['army']), int(b['k'])
+    blk = _ai_blocks().get((army, k))
+    if blk is None:
+        raise KeyError(f'army {army} has no program {k}')
+    if not blk['cmds']:
+        raise ValueError('This program is the same code as one listed earlier; change that one.')
+    act = b.get('action')
+    if act not in AI_ACTIONS:
+        raise ValueError(f'unknown action {act}')
+    body = list(AI_ACTIONS[act][1])
+    vals = {}
+    if '{c}' in ' '.join(body):
+        c = int(b.get('castle', -1))
+        if not 0 <= c < 64:
+            raise ValueError('Choose a castle.')
+        vals['c'] = '%02X' % c
+    if '{u}' in ' '.join(body):
+        u = int(b.get('unit', -1))
+        if not 0 < u < 0xFFFF:
+            raise ValueError('Choose who to go after.')
+        vals['u'] = '%02X %02X' % (u & 0xFF, u >> 8)
+    body = [x.format(**vals) for x in body]
+    turn = int(b.get('until_turn') or 0)
+    if turn:
+        if not 2 <= turn <= 99:
+            raise ValueError('The waiting turn is 2 to 99.')
+        # until that turn: only the waiting behaviour; from it on: jump to the action
+        pre = ['00'] if b.get('wait') == 'stay' else ['0A', 'FF']
+        body = ['1F %02X @L%d' % (turn, len(pre) + 1)] + pre + body
+    com = commenter()
+    lines = []
+    for hx in body:
+        nb = cmd_bytes({'hex': hx})
+        name, note = fe4armies.ai_comment(rom_data(), nb, com, {}) if nb[0] in fe4armies.AI_OPS or nb[0] == 0xFF else ('?', '')
+        if '@L' in hx:
+            note = _step_note(nb, hx)
+        lines.append(('+ %-18s ; %-17s %s' % (hx, name, note)).rstrip())
+    a, z = blk['cmds'][0]['line'], blk['cmds'][-1]['line'] + 1
+    p.edit([('lines', AI, a, f.lines[a:z], lines)])
+    return {'ok': True}
+
+
 API = {('GET', 'session'): api_session, ('POST', 'ping'): api_ping, ('GET', 'table'): api_table,
        ('POST', 'tables'): api_tables, ('POST', 'set'): api_set, ('POST', 'undo'): api_undo,
        ('POST', 'redo'): api_redo, ('POST', 'save'): api_save, ('POST', 'open'): api_open,
@@ -1546,7 +1816,8 @@ API = {('GET', 'session'): api_session, ('POST', 'ping'): api_ping, ('GET', 'tab
        ('POST', 'setmany'): api_setmany, ('GET', 'people'): api_people, ('GET', 'textinfo'): api_textinfo, ('GET', 'events'): api_events,
        ('GET', 'chapters'): api_chapters, ('GET', 'scene'): api_scene, ('POST', 'messages'): api_messages,
        ('POST', 'msg'): api_msg, ('POST', 'evtcmd'): api_evtcmd, ('GET', 'dsearch'): api_dsearch, ('GET', 'villages'): api_villages, ('GET', 'itemuse'): api_itemuse, ('POST', 'newevent'): api_newevent, ('POST', 'talkmenu'): api_talkmenu, ('POST', 'delstep'): api_delstep,
-       ('POST', 'addstep'): api_addstep, ('GET', 'eventinfo'): api_eventinfo, ('GET', 'maps'): api_maps, ('GET', 'map'): api_map, ('POST', 'paint'): api_paint}
+       ('POST', 'addstep'): api_addstep, ('GET', 'eventinfo'): api_eventinfo, ('GET', 'maps'): api_maps, ('GET', 'map'): api_map, ('POST', 'paint'): api_paint,
+       ('GET', 'armies'): api_armies, ('POST', 'aicmd'): api_aicmd, ('POST', 'airecipe'): api_airecipe}
 
 
 # ---------------------------------------------------------------- window

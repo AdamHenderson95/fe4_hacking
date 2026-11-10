@@ -454,3 +454,40 @@ textarea.fe4box.bad { border-color: #E1606F; }
 .area-preview:hover, .area-preview:focus-visible { box-shadow: 0 0 0 2px var(--gilt, #B98B2F); outline: none; }
 .modal-box .pick-btn { align-self: end; justify-self: start; }
 .mobjs:not(.live) .mevarea > button { pointer-events: none; }
+
+/* armies & AI */
+.arsheet { max-width: 1040px; }
+.arhead { padding: 18px 24px 14px; border-bottom: 1px solid var(--line); }
+.arhead h2 { margin: 0; font-size: 24px; font-weight: 700; }
+.arhead .sub { margin: 2px 0 0; color: var(--muted); }
+.arsec { padding: 16px 24px 20px; border-bottom: 1px solid var(--line); }
+.arsec:last-child { border-bottom: 0; }
+.arsec h4 { margin: 14px 0 6px; font-size: 14px; font-weight: 600; }
+.arsec .hint { margin: 0 0 8px; }
+.artag { display: inline-flex; align-items: center; gap: 6px; cursor: default; }
+.artag .x, .arsteps .x { border: 0; background: none; cursor: pointer; color: var(--muted); font-size: 16px; line-height: 1; padding: 0 2px; }
+.artag .x:hover { color: var(--crimson, #A52A36); }
+.aradd { margin-top: 8px; max-width: 280px; }
+.arlist { border-top: 1px solid var(--line); padding: 8px 0; }
+.arlist > summary { cursor: pointer; padding: 2px 0; }
+.arlist > summary .sub { color: var(--muted); font-size: 14px; }
+.arlist-head { display: flex; align-items: center; gap: 10px; margin: 8px 0 6px; }
+.arlist-head select { width: auto; min-width: 220px; }
+.arlist-head .btn { padding: 3px 12px; font-size: 14px; }
+.arunits { display: grid; grid-template-columns: repeat(auto-fill, minmax(400px, 1fr)); gap: 0 24px; }
+.arunit { display: grid; grid-template-columns: 1fr minmax(180px, 230px); gap: 10px; align-items: center; padding: 6px 0; border-top: 1px solid var(--line); }
+.arunit .sub { color: var(--muted); font-size: 13px; }
+.arunit .badge { margin-left: 8px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: #7A4B12; background: #F1E3C2; border-radius: 3px; padding: 1px 5px; }
+.arprog { margin-top: 12px; }
+.arsteps { margin: 0; padding-left: 24px; display: flex; flex-direction: column; gap: 8px; }
+.arsteps li::marker { color: var(--muted); font-variant-numeric: tabular-nums; }
+.arsteps li.end { color: var(--muted); }
+.artext .q { font-style: normal; }
+.artext .q::after { content: '?'; display: inline-grid; place-items: center; width: 16px; height: 16px; margin-left: 6px; border-radius: 50%; background: #E9E1CF; color: #7A4B12; font-size: 11px; font-weight: 700; }
+.arfields { display: flex; flex-wrap: wrap; gap: 6px 12px; margin-top: 6px; }
+.arfields .lbl { min-width: 120px; }
+.arfields .in.num { width: 90px; }
+.arrecipe { border-top: 1px dashed var(--line); padding-top: 10px; }
+.arrecipe summary { cursor: pointer; font-weight: 600; color: var(--ink); }
+.arrecipe .itgrid { margin-top: 10px; }
+.arrecipe .btn { margin-top: 6px; }

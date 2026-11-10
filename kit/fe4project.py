@@ -86,7 +86,7 @@ class MapGrid:
         self._saved = list(self.words)
 
 
-EVT_LINE = re.compile(r'^(\s*)([0-9A-Fa-f]{6}|\+)(\s*:?\s*)((?:[0-9A-Fa-f]{2}|@N\d{5})(?:\s+(?:[0-9A-Fa-f]{2}|@N\d{5}))*)(\s*)(;.*)?$')
+EVT_LINE = re.compile(r'^(\s*)([0-9A-Fa-f]{6}|\+)(\s*:?\s*)((?:[0-9A-Fa-f]{2}|@N\d{5}|@L\d{1,3})(?:\s+(?:[0-9A-Fa-f]{2}|@N\d{5}|@L\d{1,3}))*)(\s*)(;.*)?$')
 EVT_HEAD = re.compile(r'^==\s*(.*?)\s*@([0-9A-Fa-f]{6})')
 
 
@@ -244,11 +244,19 @@ class Project:
         d = os.path.join(self.path, 'events')
         return sorted(f for f in os.listdir(d) if f.endswith('.evt')) if os.path.isdir(d) else []
 
+    AI_FILE = 'ai_orders.evt'          # enemy AI programs; in the project folder, not events/
+
     def evt(self, name):
         if name not in self.evts:
-            if name not in self.evt_files():
+            if name == self.AI_FILE:
+                path = os.path.join(self.path, name)
+                if not os.path.exists(path):
+                    return None
+                self.evts[name] = EvtFile(path)
+            elif name not in self.evt_files():
                 return None
-            self.evts[name] = EvtFile(os.path.join(self.path, 'events', name))
+            else:
+                self.evts[name] = EvtFile(os.path.join(self.path, 'events', name))
         return self.evts[name]
 
     def dialogue(self):
