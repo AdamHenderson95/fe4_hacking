@@ -7,6 +7,7 @@ default browser). Only pages that know this session's token can use the API.
 
   python fe4studio.py            # or BuilderOfTheHolyWar.exe
 """
+import csv
 import io
 import json
 import mimetypes
@@ -34,10 +35,11 @@ import fe4gfx                      # noqa: E402
 import fe4maps                     # noqa: E402
 import fe4events                   # noqa: E402
 import fe4locations                # noqa: E402
+import fe4sprites                  # noqa: E402
 from fe4project import Project, load_settings, save_settings   # noqa: E402
 
 APP = 'Builder of the Holy War'
-VERSION = '22'
+VERSION = '23'
 STATIC = os.path.join(KIT, 'studio')
 
 # ---------------------------------------------------------------- state
@@ -90,6 +92,11 @@ def open_project(d):
                                            else 'exported by an older kit and edited since; re-export it'))
         if not os.path.exists(os.path.join(d, 'talks.csv')):     # kits before v19 had no Talk lists
             fe4locations.export_talks(rom, os.path.join(d, 'talks.csv'))
+        if not os.path.exists(os.path.join(d, 'map_sprites.csv')):   # kits before v23
+            import fe4hack
+            names = [r.get('_name', '') for r in csv.DictReader(open(os.path.join(d, 'classes.csv'), newline=''))] \
+                if os.path.exists(os.path.join(d, 'classes.csv')) else []
+            fe4hack.export_map_sprites(rom, d, names)
     state['project'] = Project(d)
     warm_portraits()
     settings['project'] = d
@@ -152,7 +159,7 @@ def port_exe():
 
 # ---------------------------------------------------------------- data for the pages
 TABLES = {'units_playable', 'units_children', 'units_npc', 'units_generic', 'classes', 'items', 'rings',
-          'item_instances', 'skills', 'names', 'lovers', 'gen2_rules', 'deploy', 'locations', 'arena', 'armies', 'talks'}
+          'item_instances', 'skills', 'names', 'lovers', 'gen2_rules', 'deploy', 'locations', 'arena', 'armies', 'talks', 'map_sprites'}
 
 
 def unit_portrait(table, row):
@@ -324,6 +331,11 @@ def check_value(table, field, value):
         if len(set(parts)) != len(parts):
             raise ValueError('Each item copy exists once, so a shop can\'t sell the same copy twice.')
         return ';'.join(parts), None
+    if table == 'map_sprites' and field == 'sprite':
+        try:
+            return fe4sprites.sprite_name(fe4sprites.parse_sprite(v)), None
+        except ValueError as e:
+            raise ValueError(str(e))
     if field in NUMERIC:
         lo, hi = NUMERIC[field]
         if not v.lstrip('-').isdigit():
@@ -407,6 +419,17 @@ class Handler(BaseHTTPRequestHandler):
             # ?c=<version> URLs (the Portraits page) change whenever the picture does, so they can be cached
             return (self._send(200, data, 'image/png', cache='c' in parse_qs(u.query)) if data
                     else self._send(404, 'no'))
+        if path.startswith('/gfx/sprite/'):
+            q = parse_qs(u.query)
+            try:
+                name = path.rsplit('/', 1)[1].split('.')[0]
+                sid = fe4sprites.parse_sprite(name)
+                army = int(q.get('a', ['0'])[0])
+                scale = max(1, min(int(q.get('s', ['1'])[0]), 8))
+            except ValueError:
+                return self._send(404, 'no')
+            data = sprite_image(sid, army, scale, indexed=path.endswith('.idx.png'))
+            return (self._send(200, data, 'image/png', cache='c' in q) if data else self._send(404, 'no'))
         if path.startswith('/gfx/tiles/'):
             rom = rom_data()
             try:
@@ -1907,6 +1930,79 @@ def api_airecipe(b, q):
     return {'ok': True}
 
 
+# ---------------------------------------------------------------- map sprites
+def sprite_rows(sid):
+    """Index rows of a sprite's three frames: the project's drawing if it has one, else the ROM's."""
+    rom = rom_data()
+    if rom is None:
+        return None
+    p = project()
+    data = p.blob(fe4sprites.sprite_file(sid)).data if p else None
+    if data is not None:
+        return fe4sprites.rows_from_png(sid, data, fe4sprites.palette(rom, 0))
+    return fe4sprites.sprite_rows(rom, sid)
+
+
+def sprite_image(sid, army, scale, indexed=False):
+    rom = rom_data()
+    rows = sprite_rows(sid)
+    if rows is None:
+        return None
+    if indexed:
+        return fe4sprites.indexed_sheet_png(rows, fe4sprites.palette(rom, 0))
+    offs = dict(fe4sprites.ARMIES)
+    pal = fe4sprites.palette(rom, list(offs.values())[army] if 0 <= army < len(offs) else 0)
+    return fe4sprites.rows_png(rows, pal, scale)
+
+
+def api_mapsprites(b, q):
+    p = need_project()
+    t = p.table('map_sprites')
+    if t is None:
+        raise KeyError('This project has no map_sprites.csv; reopen it with this version to add one.')
+    classes = {}
+    users = {}
+    for i, r in enumerate(t.rows):
+        c = int(r['class'])
+        e = classes.setdefault(c, {'c': c, 'name': r.get('_class_name') or f'Class {c}', 'entries': []})
+        e['entries'].append({'row': i, 'entry': int(r['entry']), 'gender': r['gender'],
+                             'character': r.get('character', ''), 'who': r.get('_character_name', ''),
+                             'sprite': r['sprite']})
+        users.setdefault(r['sprite'].upper(), [])
+        if e['name'] not in users[r['sprite'].upper()]:
+            users[r['sprite'].upper()].append(e['name'])
+    sprites = []
+    for sid in fe4sprites.all_ids():
+        nm = fe4sprites.sprite_name(sid)
+        data = p.blob(fe4sprites.sprite_file(sid)).data
+        sprites.append({'name': nm, 'tall': fe4sprites.is_tall(sid), 'users': users.get(nm, []),
+                        'custom': data is not None, 'ver': '%08x' % zlib.crc32(data) if data is not None else 'rom'})
+    return {'classes': [classes[k] for k in sorted(classes)], 'sprites': sprites,
+            'armies': [a for a, _ in fe4sprites.ARMIES]}
+
+
+def api_mapsprite(b, q):
+    """Replace a sprite's drawing with a PNG (base64), or {reset: true}."""
+    import base64
+    p = need_project()
+    rom = rom_data()
+    if rom is None:
+        raise ValueError('Choose your FE4 ROM on the Project page first.')
+    sid = fe4sprites.parse_sprite(str(b['name']))
+    rel = fe4sprites.sprite_file(sid)
+    if b.get('reset'):
+        p.set_blob(rel, None)
+        return {'ok': True}
+    try:
+        rows = fe4sprites.rows_from_png(sid, base64.b64decode(b['png']), fe4sprites.palette(rom, 0))
+    except ValueError as e:
+        raise ValueError(str(e))
+    except Exception:          # noqa: BLE001
+        raise ValueError('That file could not be read as a PNG picture.')
+    p.set_blob(rel, fe4sprites.indexed_sheet_png(rows, fe4sprites.palette(rom, 0)))
+    return {'ok': True}
+
+
 API = {('GET', 'session'): api_session, ('POST', 'ping'): api_ping, ('GET', 'table'): api_table,
        ('POST', 'tables'): api_tables, ('POST', 'set'): api_set, ('POST', 'undo'): api_undo,
        ('POST', 'redo'): api_redo, ('POST', 'save'): api_save, ('POST', 'open'): api_open,
@@ -1917,7 +2013,7 @@ API = {('GET', 'session'): api_session, ('POST', 'ping'): api_ping, ('GET', 'tab
        ('GET', 'chapters'): api_chapters, ('GET', 'scene'): api_scene, ('POST', 'messages'): api_messages,
        ('POST', 'msg'): api_msg, ('POST', 'evtcmd'): api_evtcmd, ('GET', 'dsearch'): api_dsearch, ('GET', 'villages'): api_villages, ('GET', 'itemuse'): api_itemuse, ('POST', 'newevent'): api_newevent, ('POST', 'talkmenu'): api_talkmenu, ('POST', 'delstep'): api_delstep,
        ('POST', 'addstep'): api_addstep, ('GET', 'eventinfo'): api_eventinfo, ('GET', 'maps'): api_maps, ('GET', 'map'): api_map, ('POST', 'paint'): api_paint,
-       ('GET', 'armies'): api_armies, ('GET', 'portraits'): api_portraits, ('POST', 'portrait'): api_portrait, ('POST', 'aicmd'): api_aicmd, ('POST', 'airecipe'): api_airecipe}
+       ('GET', 'armies'): api_armies, ('GET', 'portraits'): api_portraits, ('GET', 'mapsprites'): api_mapsprites, ('POST', 'mapsprite'): api_mapsprite, ('POST', 'portrait'): api_portrait, ('POST', 'aicmd'): api_aicmd, ('POST', 'airecipe'): api_airecipe}
 
 
 # ---------------------------------------------------------------- window

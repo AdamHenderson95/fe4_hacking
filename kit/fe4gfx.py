@@ -5,7 +5,8 @@ Portraits (found for the editor; the status screen loads them at $8A:B369):
   $8A:B4F9   ptr24 per portrait number (248 of them): compressed tiles ($80:AA02 format, fe4lz)
   $8A:B7E1   ptr24 per portrait number: 16-colour palette (raw, colour 0 = transparent)
 The 64 tiles decompress as a 16-tile-wide block: the face is tiles 0-5 of rows 0-3 (top half)
-and tiles 6-11 of rows 0-3 (bottom half); tiles 12-15 are mouth and eye frames.
+and tiles 6-11 of rows 0-3 (bottom half); tiles 12-15 are two 32x16 talking frames of the face
+block at (0, 32).
 """
 import struct
 import zlib

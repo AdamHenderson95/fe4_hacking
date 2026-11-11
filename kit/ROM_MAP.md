@@ -403,6 +403,29 @@ and 785 messages, with every script decoded to its end.
   colour 0 transparent over the map.
 - Most numbers from 185 on are class pictures for generic units. The status screen loads portraits at `$8A:B369`.
 
+## Map sprites (V)
+
+- **Small sprites** (on foot, ids 0–62): `$88:D526`, ptr24 each → three 16×16
+  frames, `$80` bytes each (tiles TL TR BL BR, 4bpp, raw; data in `$D7`).
+  The map plays frames 0 1 2 1 (`$88:DC20`).
+- **Tall sprites** (mounted and flying, ids `$8000`–`$801E`): `$88:D5E3`,
+  ptr24 each → three 16×24 frames, `$C0` bytes each (data in `$DA`). Tiles 0–1
+  are the middle row, 2–3 the bottom row, 4–5 the top row (`$88:DC8B` sends
+  `$40` bytes to VRAM `$6E00` and `$80` to `$6F00`).
+- **Which sprite a unit uses:** `$84:A822` → `$84:A84A`. `$83:805E` has a word per
+  class (72): offset + `$805E` in bank `$83` of 5-byte entries
+  `[character word][gender][sprite word]`. Gender `$FF` ends the list and gives
+  the default. An entry matches when its gender equals the unit's (ROM record
+  +18: 0 male, 1 female) and its character is 0 or the unit's ID. For example,
+  Knight Lord: Sigurd → `$800A`, Seliph → `$8008`, else `$8003`.
+- The chosen ids are kept in RAM (`$7E:480B`, 8 slots) when the chapter loads;
+  the frames are sent from ROM every animation step (queue at `$07ED`).
+- **Palettes:** `$8C:9520`, 16 colours each: +`$00` player, +`$20` enemy, +`$40`
+  ally, +`$60` other, +`$C0` grey (moved). Colour numbers mean the same in each.
+- Verified (kit v23): Sigurd's entry set to small sprite 3 shows him on foot
+  on the Prologue map; a new drawing for small sprite 6 replaces the Verdane
+  axe fighters (in enemy colours).
+
 ## Maps (V)
 
 ### Chapter map headers

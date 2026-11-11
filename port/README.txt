@@ -148,7 +148,8 @@ castles, villages and units into place); chapter events and all the
 dialogue (speech bubbles with portraits), including new talks, turn
 events, village visits and battle quotes; weapons, rings, shops,
 villages and the arena; the enemy armies and what their units do; and
-the portraits (replace any face with your own picture). Its manual is
+the portraits and map sprites (replace any face or unit with your own
+drawing). Its manual is
 fe4kit\README.html. Two things connect it to this port:
   * Test play (F6, or the Test play button) builds your project and opens
     it here at once, without your mods, with its own saves.

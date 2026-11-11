@@ -523,3 +523,24 @@ textarea.fe4box.bad { border-color: #E1606F; }
 .ptprev { width: 144px; height: 192px; image-rendering: pixelated; background: #2B3150; border-radius: var(--r-sm); }
 .ptarrow { font-size: 24px; color: var(--muted); }
 .ptlink { display: block; margin: 10px auto 0; padding: 3px 12px; font-size: 13px; }
+
+/* map sprites */
+.spanim { image-rendering: pixelated; display: block; }
+.sprow { display: flex; align-items: center; gap: 12px; }
+.spbox { width: 40px; height: 52px; display: grid; place-items: end center; background: #5E8F4A; border-radius: var(--r-sm); padding-bottom: 2px; flex: none; }
+.spbox.big { width: 84px; height: 108px; padding-bottom: 6px; }
+.spsheet { max-width: 900px; }
+.spbar { display: flex; align-items: center; gap: 10px; padding: 12px 24px 0; }
+.sprowbig { display: flex; align-items: center; gap: 18px; padding: 10px 0; border-top: 1px solid var(--line); }
+.sprowbig .sub { color: var(--muted); font-size: 14px; margin: 2px 0 8px; }
+.spbtns { display: flex; gap: 8px; flex-wrap: wrap; }
+.spdrawrow { display: flex; align-items: flex-end; gap: 22px; flex-wrap: wrap; margin: 8px 0; }
+.spframes { image-rendering: pixelated; background: #5E8F4A; border-radius: var(--r-sm); }
+.spanimbig { background: #5E8F4A; border-radius: var(--r-sm); padding: 6px; }
+.spmodal { width: min(980px, 100%); max-height: 90vh; overflow: auto; }
+.spmodal h4 { margin: 14px 0 6px; font-size: 14px; }
+.spgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(58px, 1fr)); gap: 6px; }
+.spcell { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 6px 2px 4px; border: 1px solid var(--line); border-radius: var(--r-sm); background: #5E8F4A; cursor: pointer; color: #fff; font: 600 11px/1 var(--f-body); }
+.spcell canvas { min-height: 48px; display: flex; align-items: flex-end; }
+.spcell:hover { border-color: #fff; }
+.spcell[aria-pressed="true"] { box-shadow: 0 0 0 3px var(--gilt); }

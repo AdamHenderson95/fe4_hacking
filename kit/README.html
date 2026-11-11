@@ -141,6 +141,18 @@ default browser). The editor runs on your PC only: nothing is sent anywhere.
      with it to draw your own talking frames.</li>
 <li><strong>Use the original</strong> goes back to the game's picture. On a character's
      sheet, <strong>Change picture</strong> opens that character's portrait.</li>
+<li><strong>Map sprites</strong>: the little unit each class shows on the map.</li>
+<li>The list shows every class's sprite, animated, in the army colour you
+     pick (player, enemy, ally, other, has moved).</li>
+<li>Some classes have extra entries the game checks first: one for women,
+     or one for a single character (Knight Lord: Sigurd and Seliph each have
+     their own). <strong>Use another sprite…</strong> picks from all 63 sprites on foot
+     and 31 mounted or flying ones.</li>
+<li><strong>Edit drawing</strong> shows a sprite's three frames. <strong>Replace drawing…</strong>
+     takes a PNG of the three frames side by side (48 × 16 on foot, 48 × 24
+     mounted; 2× to 4× bigger also works); colours become the nearest of the
+     map palette, so every army recolours it. <strong>Download PNG</strong> gives the
+     current drawing to edit. Classes that share a sprite all change.</li>
 <li>Changes are checked as you type (a value out of range turns red and
    says why). <strong>Undo / Redo</strong> (Ctrl+Z / Ctrl+Y) cover every change (a whole
    paint stroke or fill is one step); <strong>Save</strong> (Ctrl+S) writes the project
@@ -358,6 +370,16 @@ runs this randomizer from its own menu (Mods → Randomizer).</p>
 <td><code>talks.csv</code></td>
 <td>42</td>
 <td>Each chapter's Talk menu: which unit can Talk to which, until which event flag is set</td>
+</tr>
+<tr>
+<td><code>map_sprites.csv</code></td>
+<td>119</td>
+<td>Which map sprite each class uses (<code>S0</code>–<code>S62</code> on foot, <code>T0</code>–<code>T30</code> mounted/flying), with the per-gender and per-character entries; the number of entries per class is fixed</td>
+</tr>
+<tr>
+<td><code>sprites/sNN.png</code>, <code>sprites/tNN.png</code></td>
+<td>–</td>
+<td>Your own drawings for map sprites (48 × 16 or 48 × 24, the map palette's colours); only replaced ones exist</td>
 </tr>
 <tr>
 <td><code>portraits/pNNN.png</code></td>

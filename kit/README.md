@@ -136,16 +136,28 @@ default browser). The editor runs on your PC only: nothing is sent anywhere.
      with it to draw your own talking frames.
    - **Use the original** goes back to the game's picture. On a character's
      sheet, **Change picture** opens that character's portrait.
-9. Changes are checked as you type (a value out of range turns red and
+9. **Map sprites**: the little unit each class shows on the map.
+   - The list shows every class's sprite, animated, in the army colour you
+     pick (player, enemy, ally, other, has moved).
+   - Some classes have extra entries the game checks first: one for women,
+     or one for a single character (Knight Lord: Sigurd and Seliph each have
+     their own). **Use another sprite…** picks from all 63 sprites on foot
+     and 31 mounted or flying ones.
+   - **Edit drawing** shows a sprite's three frames. **Replace drawing…**
+     takes a PNG of the three frames side by side (48 × 16 on foot, 48 × 24
+     mounted; 2× to 4× bigger also works); colours become the nearest of the
+     map palette, so every army recolours it. **Download PNG** gives the
+     current drawing to edit. Classes that share a sprite all change.
+10. Changes are checked as you type (a value out of range turns red and
    says why). **Undo / Redo** (Ctrl+Z / Ctrl+Y) cover every change (a whole
    paint stroke or fill is one step); **Save** (Ctrl+S) writes the project
    files.
-10. **Build ROM** writes the hacked ROM plus a shareable `.ips` patch next to
+11. **Build ROM** writes the hacked ROM plus a shareable `.ips` patch next to
    the project folder. **Test play** (F6) builds it and opens it straight
    away in the FE4 PC port (FE4Port.zip), without your mods and with its own
    saves. The editor finds FE4.exe when the kit sits in the port's `fe4kit`
    folder (as it comes in FE4Port.zip) or next to it; otherwise it asks once.
-11. On the Project page, **Add unit stats to the map box** puts the PC port's
+12. On the Project page, **Add unit stats to the map box** puts the PC port's
    MT / HIT / AS / AVO box into the ROMs and patches you build, so players
    on emulators get it too (the port can still switch it off).
 
@@ -237,6 +249,8 @@ runs this randomizer from its own menu (Mods → Randomizer).
 | `locations.csv` | 132 | Every castle and village: position, castle name, castle-town facilities, armory stock, village gold |
 | `arena.csv` | 71 | Arena opponents for each chapter and rank |
 | `talks.csv` | 42 | Each chapter's Talk menu: which unit can Talk to which, until which event flag is set |
+| `map_sprites.csv` | 119 | Which map sprite each class uses (`S0`–`S62` on foot, `T0`–`T30` mounted/flying), with the per-gender and per-character entries; the number of entries per class is fixed |
+| `sprites/sNN.png`, `sprites/tNN.png` | – | Your own drawings for map sprites (48 × 16 or 48 × 24, the map palette's colours); only replaced ones exist |
 | `portraits/pNNN.png` | – | Your own pictures for portrait NNN (80 × 64 sheet or 48 × 64 face, 15 colours + transparency); only replaced ones exist |
 | `armies.csv` | 72 | Every army: name, member units, castles it holds |
 | `ai_orders.evt` | 737 | Enemy AI programs: which castle to seize, which turn to march, what to attack |
