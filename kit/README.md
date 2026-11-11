@@ -156,6 +156,10 @@ default browser). The editor runs on your PC only: nothing is sent anywhere.
      or one for a single character (Knight Lord: Sigurd and Seliph each have
      their own). **Use another sprite…** picks from all 63 sprites on foot
      and 31 mounted or flying ones.
+   - **Add a sprite for** adds a row for one character (say, Noish gets his
+     own look as a Cavalier) or for all women or all men of the class;
+     **Remove** takes a row out. Rows are checked from the top, so new ones
+     go above "Everyone else".
    - **Edit drawing** shows a sprite's three frames. **Replace drawing…**
      takes a PNG of the three frames side by side (48 × 16 on foot, 48 × 24
      mounted; 2× to 4× bigger also works); colours become the nearest of the
@@ -264,7 +268,7 @@ runs this randomizer from its own menu (Mods → Randomizer).
 | `talks.csv` | 42 | Each chapter's Talk menu: which unit can Talk to which, until which event flag is set |
 | `map_terrain.csv` | 12,288 | The terrain type of each chapter's 1024 tiles |
 | `maps/tiles/<map>/tNNN.png` | – | Your own drawings for a chapter's tile NNN (0–255), 16 × 16 or bigger pixel art; only redrawn ones exist |
-| `map_sprites.csv` | 119 | Which map sprite each class uses (`S0`–`S62` on foot, `T0`–`T30` mounted/flying), with the per-gender and per-character entries; the number of entries per class is fixed |
+| `map_sprites.csv` | 119 | Which map sprite each class uses (`S0`–`S62` on foot, `T0`–`T30` mounted/flying), with the per-gender and per-character rows; a class's last row is `default`, and a class can have up to 30 rows |
 | `sprites/sNN.png`, `sprites/tNN.png` | – | Your own drawings for map sprites (48 × 16 or 48 × 24, the map palette's colours); only replaced ones exist |
 | `portraits/pNNN.png` | – | Your own pictures for portrait NNN (80 × 64 sheet or 48 × 64 face, 15 colours + transparency); only replaced ones exist |
 | `armies.csv` | 72 | Every army: name, member units, castles it holds |

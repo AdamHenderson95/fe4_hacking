@@ -18,6 +18,8 @@ setInterval(() => {
 export async function spritesPage(root) {
   await loadTables(['map_sprites']);
   let D = await api('mapsprites');
+  const { people } = await api('people');
+  root.append(h('datalist', { id: 'sppeople' }, people.filter(x => x.name && !x.speaker).map(x => h('option', { value: `${x.name} (${x.id})` }))));
   const list = h('div', { class: 'list' });
   const detail = h('div', { class: 'sheet-wrap' });
   const armyBar = h('div', { class: 'chips', role: 'radiogroup', 'aria-label': 'Army colours' });
@@ -81,11 +83,38 @@ export async function spritesPage(root) {
       rows.append(h('div', { class: 'sprowbig' }, h('span', { class: 'spbox big' }, anim(e.sprite, 4)),
         h('div', {}, h('b', {}, entryLabel(e)), h('div', { class: 'sub' }, `${e.sprite} · ${s?.tall ? 'tall (mounted / flying)' : 'on foot'}${s?.custom ? ' · redrawn' : ''}`),
           h('div', { class: 'spbtns' }, h('button', { class: 'btn btn-line', onclick: () => picker(e) }, 'Use another sprite…'),
-            h('button', { class: 'btn btn-line', onclick: () => drawing(e.sprite) }, 'Edit drawing')))));
+            h('button', { class: 'btn btn-line', onclick: () => drawing(e.sprite) }, 'Edit drawing'),
+            e.gender !== 'default' ? h('button', { class: 'btn btn-line danger', title: 'Remove this row: these units use the next one that fits',
+              onclick: () => entry({ row: e.row }, `Removed the row for ${entryLabel(e)}`) }, 'Remove') : null))));
     }
+    rows.append(addRow(c));
     sheet.append(rows);
     sheet.append(drawingSection(st.drawing && c.entries.some(e => e.sprite === st.drawing) ? st.drawing : c.entries[c.entries.length - 1].sprite));
     detail.append(sheet);
+  }
+
+  // a new row: one character, or everyone of a gender
+  function addRow(c) {
+    const who = h('input', { class: 'in', list: 'sppeople', placeholder: 'Someone, e.g. Noish', 'aria-label': 'Character' });
+    const gender = h('select', { class: 'in', 'aria-label': 'Or everyone who is' },
+      h('option', { value: '' }, 'one character'), h('option', { value: 'female' }, 'all women'), h('option', { value: 'male' }, 'all men'));
+    gender.onchange = () => { who.disabled = !!gender.value; };
+    const def = c.entries[c.entries.length - 1];
+    const add = h('button', { class: 'btn btn-line' }, 'Add');
+    add.onclick = () => {
+      if (gender.value) return entry({ class: c.c, gender: gender.value, character: 0, sprite: def.sprite }, `Added a row for all ${gender.value === 'female' ? 'women' : 'men'}: pick their sprite`);
+      const m = who.value.match(/\((\d+)\)\s*$/) || who.value.trim().match(/^(\d+)$/);
+      const pp = m ? null : people.find(x => x.name && x.name.toLowerCase() === who.value.trim().toLowerCase());
+      const id = m ? Number(m[1]) : pp?.id;
+      if (!id) { toast('Pick someone from the list.', true); who.classList.add('bad'); return; }
+      entry({ class: c.c, character: id, sprite: def.sprite }, 'Added: now pick their sprite with "Use another sprite"');
+    };
+    return h('div', { class: 'spadd' }, h('b', {}, 'Add a sprite for'), gender, who, add,
+      h('p', { class: 'hint' }, 'New rows go above "Everyone else". A character row also needs the right gender; the editor takes it from the character.'));
+  }
+
+  async function entry(body, msg) {
+    try { await api('spriteentry', body); await loadTables(['map_sprites'], true); await reload(); toast(msg); } catch (e) { toast(e.message, true); }
   }
 
   function drawing(name) { st.drawing = name; drawDetail(); detail.querySelector('.spdraw')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }

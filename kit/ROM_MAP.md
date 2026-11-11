@@ -422,6 +422,9 @@ and 785 messages, with every script decoded to its end.
   the frames are sent from ROM every animation step (queue at `$07ED`).
 - **Palettes:** `$8C:9520`, 16 colours each: +`$00` player, +`$20` enemy, +`$40`
   ally, +`$60` other, +`$C0` grey (moved). Colour numbers mean the same in each.
+- Longer lists (kit v25) move to the zero-filled end of bank `$83` (2 KB free from `$83:F7C4`;
+  the class's word is the new address − `$805E`). Verified: a Cavalier row for Noish (char 2)
+  → small sprite 12 shows Noish on foot while Alec and Arden stay mounted.
 - Verified (kit v23): Sigurd's entry set to small sprite 3 shows him on foot
   on the Prologue map; a new drawing for small sprite 6 replaces the Verdane
   axe fighters (in enemy colours).
@@ -468,6 +471,9 @@ Map headers are 12 records of 27 bytes. The pointer table is at `$88:9FC3` (file
   bit is never set. Chapter metatiles use rows 1–5 (row 0 = `PAL0` rarely).
 - Chapter 8×8 tiles 640–767: 106–125 are used by the chapter's metatiles (17 of them by shared
   metatiles), leaving 3–22 free per chapter.
+- More room (not used yet): 28 of the shared tiles 0–639 are used by no chapter's metatiles
+  (151, 185, 187, 264, …), and VRAM tiles 928–1023 were empty on the Prologue map, but other
+  screens may load into them; both need checking before the kit hands them out.
 - Verified: Prologue tile 66 redrawn from a picture (4 new 8×8 tiles, grass reproduced by
   colour matching) shows on all 50 cells; its terrain set to Peak (0) takes those cells out of
   Sigurd's move range. The kit recompresses the chapter's +3, +6 and +24 data into free space.

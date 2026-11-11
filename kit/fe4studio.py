@@ -40,7 +40,7 @@ import fe4maptiles                 # noqa: E402
 from fe4project import Project, load_settings, save_settings   # noqa: E402
 
 APP = 'Builder of the Holy War'
-VERSION = '24'
+VERSION = '25'
 STATIC = os.path.join(KIT, 'studio')
 
 # ---------------------------------------------------------------- state
@@ -2120,6 +2120,50 @@ def api_tiledraw(b, q):
     return {'ok': True, 'free': len(g.free_tiles())}
 
 
+def api_spriteentry(b, q):
+    """Add a per-character (or per-gender) sprite to a class: {class, character?, gender?, sprite}, or
+    remove one: {row}.  One undo step; the class's rows are renumbered."""
+    p = need_project()
+    t = p.table('map_sprites')
+    if t is None:
+        raise KeyError('This project has no map_sprites.csv.')
+    rows = t.rows
+    if 'row' in b:                                     # remove
+        i = int(b['row'])
+        if not 0 <= i < len(rows) or rows[i].get('gender') == 'default':
+            raise ValueError('The class\'s last ("everyone else") sprite can\'t be removed.')
+        c = rows[i]['class']
+        idx = [j for j, r in enumerate(rows) if r['class'] == c]
+        old = [dict(rows[j]) for j in idx]
+        new = [dict(r) for j, r in zip(idx, old) if j != i]
+    else:
+        c = str(int(b['class']))
+        idx = [j for j, r in enumerate(rows) if r['class'] == c]
+        if not idx:
+            raise KeyError(f'class {c} has no sprite rows')
+        sprite = fe4sprites.sprite_name(fe4sprites.parse_sprite(str(b['sprite'])))
+        ch = int(b.get('character') or 0)
+        g = b.get('gender')
+        if g not in ('male', 'female'):
+            g = 'male'
+            if ch:
+                hit = unit_lookup().get(ch)
+                if hit and str(hit[1].get('gender', '0')).strip() == '1':
+                    g = 'female'
+        if len(idx) >= 30:
+            raise ValueError('A class can have at most 30 sprite rows.')
+        old = [dict(rows[j]) for j in idx]
+        who = commenter().unit(ch).rsplit('(', 1)[0].strip() if ch else ''
+        add = {f: '' for f in t.fields}
+        add.update({'class': c, '_class_name': old[0].get('_class_name', ''), 'gender': g,
+                    'character': str(ch), '_character_name': who, 'sprite': sprite})
+        new = [dict(r) for r in old[:-1]] + [add] + [dict(old[-1])]    # before "everyone else"
+    for k, r in enumerate(new):
+        r['entry'] = str(k)
+    p.edit([('rows', 'map_sprites', idx[0], old, new)])
+    return {'ok': True}
+
+
 API = {('GET', 'session'): api_session, ('POST', 'ping'): api_ping, ('GET', 'table'): api_table,
        ('POST', 'tables'): api_tables, ('POST', 'set'): api_set, ('POST', 'undo'): api_undo,
        ('POST', 'redo'): api_redo, ('POST', 'save'): api_save, ('POST', 'open'): api_open,
@@ -2130,7 +2174,7 @@ API = {('GET', 'session'): api_session, ('POST', 'ping'): api_ping, ('GET', 'tab
        ('GET', 'chapters'): api_chapters, ('GET', 'scene'): api_scene, ('POST', 'messages'): api_messages,
        ('POST', 'msg'): api_msg, ('POST', 'evtcmd'): api_evtcmd, ('GET', 'dsearch'): api_dsearch, ('GET', 'villages'): api_villages, ('GET', 'itemuse'): api_itemuse, ('POST', 'newevent'): api_newevent, ('POST', 'talkmenu'): api_talkmenu, ('POST', 'delstep'): api_delstep,
        ('POST', 'addstep'): api_addstep, ('GET', 'eventinfo'): api_eventinfo, ('GET', 'maps'): api_maps, ('GET', 'map'): api_map, ('POST', 'paint'): api_paint,
-       ('GET', 'armies'): api_armies, ('GET', 'portraits'): api_portraits, ('GET', 'mapsprites'): api_mapsprites, ('GET', 'tileinfo'): api_tileinfo, ('POST', 'tiledraw'): api_tiledraw, ('POST', 'mapsprite'): api_mapsprite, ('POST', 'portrait'): api_portrait, ('POST', 'aicmd'): api_aicmd, ('POST', 'airecipe'): api_airecipe}
+       ('GET', 'armies'): api_armies, ('GET', 'portraits'): api_portraits, ('GET', 'mapsprites'): api_mapsprites, ('POST', 'spriteentry'): api_spriteentry, ('GET', 'tileinfo'): api_tileinfo, ('POST', 'tiledraw'): api_tiledraw, ('POST', 'mapsprite'): api_mapsprite, ('POST', 'portrait'): api_portrait, ('POST', 'aicmd'): api_aicmd, ('POST', 'airecipe'): api_airecipe}
 
 
 # ---------------------------------------------------------------- window

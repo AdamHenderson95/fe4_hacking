@@ -343,7 +343,7 @@ def build(rom_path, proj, out_path, ips=None, hover=False):
     n += MP.apply_maps(rom, os.path.join(proj, 'maps'), far)
     n += MT.apply(rom, proj, far)
     n += GFX.apply_portraits(rom, os.path.join(proj, 'portraits'), far)
-    n += SPR.apply(rom, proj)
+    n += SPR.apply(rom, proj, space)
     n += NM.apply(rom, os.path.join(proj, 'names.csv'), far, space)
     n += LOC.apply(rom, os.path.join(proj, 'locations.csv'), space)
     n += LOC.apply_arena(rom, os.path.join(proj, 'arena.csv'), space)

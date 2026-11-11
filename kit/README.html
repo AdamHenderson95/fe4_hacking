@@ -163,6 +163,10 @@ default browser). The editor runs on your PC only: nothing is sent anywhere.
      or one for a single character (Knight Lord: Sigurd and Seliph each have
      their own). <strong>Use another sprite…</strong> picks from all 63 sprites on foot
      and 31 mounted or flying ones.</li>
+<li><strong>Add a sprite for</strong> adds a row for one character (say, Noish gets his
+     own look as a Cavalier) or for all women or all men of the class;
+     <strong>Remove</strong> takes a row out. Rows are checked from the top, so new ones
+     go above "Everyone else".</li>
 <li><strong>Edit drawing</strong> shows a sprite's three frames. <strong>Replace drawing…</strong>
      takes a PNG of the three frames side by side (48 × 16 on foot, 48 × 24
      mounted; 2× to 4× bigger also works); colours become the nearest of the
@@ -399,7 +403,7 @@ runs this randomizer from its own menu (Mods → Randomizer).</p>
 <tr>
 <td><code>map_sprites.csv</code></td>
 <td>119</td>
-<td>Which map sprite each class uses (<code>S0</code>–<code>S62</code> on foot, <code>T0</code>–<code>T30</code> mounted/flying), with the per-gender and per-character entries; the number of entries per class is fixed</td>
+<td>Which map sprite each class uses (<code>S0</code>–<code>S62</code> on foot, <code>T0</code>–<code>T30</code> mounted/flying), with the per-gender and per-character rows; a class's last row is <code>default</code>, and a class can have up to 30 rows</td>
 </tr>
 <tr>
 <td><code>sprites/sNN.png</code>, <code>sprites/tNN.png</code></td>

@@ -552,3 +552,6 @@ textarea.fe4box.bad { border-color: #E1606F; }
 .mtile-info { display: flex; flex-direction: column; gap: 8px; min-width: 220px; flex: 1; }
 .mtile-info .sub { margin: 0; color: var(--muted); }
 .mtile-info .chip { align-self: flex-start; cursor: default; }
+.spadd { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; padding: 12px 0 0; border-top: 1px solid var(--line); }
+.spadd .in { width: auto; min-width: 150px; }
+.spadd .hint { flex-basis: 100%; margin: 0; }

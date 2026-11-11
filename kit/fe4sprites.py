@@ -14,6 +14,7 @@ Found for the editor (kit v23):
   $8C:9520  sprite palettes, 16 colours each: +$00 player (blue), +$20 enemy (red), +$40 ally
             (green), +$60 other (yellow), +$C0 grey (units that have moved).  The colour numbers mean
             the same in every palette, so a drawing is stored once in the player's colours.
+A class list that grows moves to the free end of bank $83 (the offsets are 16-bit in that bank).
 """
 import csv
 import os
@@ -212,35 +213,48 @@ def export(rom, path, class_names=None, char_name=None):
 GENDERS = {'male': 0, 'female': 1, 'default': 0xFF, '': 0xFF}
 
 
-def apply(rom, proj):
-    """map_sprites.csv (in place: the same number of entries per class) and sprites/*.png."""
+def apply(rom, proj, space=None):
+    """map_sprites.csv and sprites/*.png.  A class's list is rewritten in place when it is no longer;
+    a longer list moves to free space at the end of bank $83 (space: fe4lib.BankSpace)."""
     n = 0
     path = os.path.join(proj, 'map_sprites.csv')
     if os.path.exists(path):
         want = {}
         for ln, r in enumerate(csv.DictReader(open(path, newline='')), start=2):
             try:
-                c, k = int(r['class']), int(r['entry'])
+                c = int(r['class'])
                 g = r['gender'].strip().lower()
                 g = GENDERS[g] if g in GENDERS else int(g, 0)
                 ch = int(r['character'], 0) if r.get('character', '').strip() else 0
                 sp = parse_sprite(r['sprite'])
             except (ValueError, KeyError) as e:
                 raise SystemExit(f'{path}:{ln}: {e}')
-            want.setdefault(c, {})[k] = (ch, g, sp)
-        for c, ents in want.items():
+            if not (0 <= g <= 0xFF and 0 <= ch <= 0xFFFF):
+                raise SystemExit(f'{path}:{ln}: gender is male, female or default; character 0-65535')
+            want.setdefault(c, []).append((0 if g == 0xFF else ch, g, sp))
+        for c, new in want.items():
             if not 0 <= c < class_count(rom):
                 raise SystemExit(f'{path}: class {c} has no sprite list')
+            if [g == 0xFF for _, g, _ in new] != [False] * (len(new) - 1) + [True]:
+                raise SystemExit(f'{path}: class {c}: the last row of a class (and only it) is "default"')
+            if len(new) > 30:
+                raise SystemExit(f'{path}: class {c}: at most 30 rows')
             cur, x = class_list(rom, c)
-            new = [ents.get(k, cur[k]) for k in range(len(cur))]
-            if set(ents) - set(range(len(cur))):
-                raise SystemExit(f'{path}: class {c} has {len(cur)} entries (0-{len(cur) - 1})')
-            if [g == 0xFF for _, g, _ in new] != [g == 0xFF for _, g, _ in cur]:
-                raise SystemExit(f'{path}: class {c}: only the last entry can be the default')
-            if new != cur:
-                for k, (ch, g, sp) in enumerate(new):
-                    rom[x + 5 * k:x + 5 * k + 5] = bytes([ch & 0xFF, ch >> 8, g, sp & 0xFF, sp >> 8])
-                n += 1
+            if new == cur:
+                continue
+            data = b''.join(bytes([ch & 0xFF, ch >> 8, g, sp & 0xFF, sp >> 8]) for ch, g, sp in new)
+            if len(new) > len(cur):
+                if space is None:
+                    import fe4lib
+                    space = fe4lib.BankSpace(rom)
+                x, a = space.alloc(0x838000, len(data))
+                if not 0x838000 <= a <= 0x83FFFF:
+                    raise SystemExit('no room for sprite lists in bank $83')
+                off = ((a & 0xFFFF) - (CLASS_TABLE & 0xFFFF)) & 0xFFFF
+                fo = _fo(CLASS_TABLE) + 2 * c
+                rom[fo:fo + 2] = off.to_bytes(2, 'little')
+            rom[x:x + len(data)] = data
+            n += 1
     folder = os.path.join(proj, 'sprites')
     if os.path.isdir(folder):
         pal = palette(rom, 0)
