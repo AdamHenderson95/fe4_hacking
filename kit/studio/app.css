@@ -611,8 +611,15 @@ textarea.fe4box.bad { border-color: #E1606F; }
 .lvparent img, .lvkid img { image-rendering: pixelated; border-radius: 3px; background: #2B3150; flex: none; }
 .lvkids { display: flex; flex-direction: column; gap: 10px; padding-top: 10px; }
 .lvkid { display: flex; gap: 12px; align-items: flex-start; }
+.lvnoface { width: 48px; height: 64px; border-radius: 3px; background: #2B3150; flex: none; }
 .lvkid .sub, .lvparent .sub { color: var(--muted); font-size: 13px; }
 .lvparentsel { margin-top: 6px; max-width: 220px; }
 .linkbtn { border: 0; background: none; padding: 0; font: inherit; font-weight: 700; color: var(--ink); cursor: pointer; text-decoration: underline; text-decoration-color: rgba(0,0,0,.25); }
 .linkbtn:hover { color: var(--crimson, #A52A36); }
 .lvrules { max-width: 720px; }
+.lvfamtop { flex-direction: row; align-items: flex-start; gap: 18px; max-width: none; }
+.lvfamtop .hint { max-width: 760px; }
+.lvfamtop .btn { margin-left: auto; flex: none; }
+.lvwarn { color: #8E1F2B; margin: 0 0 12px; }
+.lvnew { margin-left: 8px; font-size: 11px; padding: 1px 7px; cursor: default; }
+.lvdel { margin-left: 8px; padding: 1px 8px; font-size: 12px; }

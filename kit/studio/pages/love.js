@@ -10,7 +10,7 @@ const remember = () => { try { sessionStorage.setItem('fe4studio-love', JSON.str
 const portraitUrl = n => `/gfx/portrait/${n}.png?s=1`;
 
 export async function lovePage(root) {
-  const NEED = ['lovers', 'units_children', 'units_playable', 'units_npc', 'gen2_rules'];
+  const NEED = ['lovers', 'units_children', 'units_playable', 'units_npc', 'gen2_rules', 'classes', 'units_generic'];
   await loadTables(NEED);
   const T = app.tables;
   const tabs = h('div', { class: 'tabs', role: 'tablist' });
@@ -175,14 +175,65 @@ export async function lovePage(root) {
         const sel = h('select', { class: 'in', 'aria-label': `${r._name}'s parent` }, h('option', { value: '' }, 'none (never born)'),
           names.map(n => h('option', { value: n, selected: n === r.parent }, n)));
         sel.onchange = () => set('units_children', i, 'parent', sel.value, sel);
-        return h('div', { class: 'lvkid' }, h('img', { src: portraitUrl(r.portrait), alt: '', width: 48, height: 64 }),
+        const kp = /^\d+$/.test(String(r.portrait ?? '').trim()) ? r.portrait : portraitOf(String(r.portrait || '').trim());
+        return h('div', { class: 'lvkid' }, kp !== undefined && kp !== '' ? h('img', { src: portraitUrl(kp), alt: '', width: 48, height: 64 }) : h('div', { class: 'lvnoface', 'aria-hidden': 'true' }),
           h('div', {}, h('button', { class: 'linkbtn', onclick: () => openCharacter('units_children', i) }, r._name),
+            Number(r.index) > 768 ? h('span', { class: 'chip lvnew' }, 'new') : null,
+            Number(r.index) > 768 ? h('button', { class: 'btn btn-line danger lvdel', onclick: () => delChild(i, r._name) }, 'Delete') : null,
             h('div', { class: 'sub' }, `${r._class_name || ''}${r.substitute ? ` · stand-in: ${r.substitute}` : ''}${r.always === 'yes' ? ' · born even if the parent died' : ''}`),
             h('div', { class: 'sub' }, `Gets ${r.heir === 'mother' ? 'the mother' : 'the father'}'s holy blood and weapon · growths ${r.growth_father}% / ${r.growth_mother}%`),
             h('label', { class: 'lbl lvparentsel' }, h('span', {}, 'Parent'), sel)));
       }))));
     }
-    return h('div', {}, h('p', { class: 'hint lvintro' }, 'Each child is tied to one parent and is born to that parent and whoever they married, at the end of chapter 5. Change a parent here; click a child for everything else (inheritance, stand-in, skills).'), grid);
+    const added = T.units_children.rows.filter(r => Number(r.index) > 768).length;
+    return h('div', {}, h('div', { class: 'lvintro lvfamtop' },
+      h('p', { class: 'hint' }, 'Each child is tied to one parent and is born to that parent and whoever they married, at the end of chapter 5. Change a parent here; click a child for everything else (inheritance, stand-in, skills).'),
+      h('button', { class: 'btn btn-gilt', onclick: () => newChild(names) }, '+ New child')),
+    added > 1 ? h('p', { class: 'hint lvwarn' }, `${added} new children: FE4's save slot has room for about one more child than the game's 17, so more than one extra child born can break saving.`) : null,
+    grid);
+  }
+
+  async function delChild(i, name) {
+    try { await api('newchild', { delete: i }); await refreshSession(); await loadTables(NEED, true); draw(); check(); toast(`${name} deleted`); }
+    catch (e) { toast(e.message, true); }
+  }
+
+  function newChild(names) {
+    document.querySelector('.modal.lvnewchild')?.remove();
+    const cls = T.classes.rows.map((r, i) => [i, r._name]).filter(([, n]) => n);
+    const name = h('input', { class: 'in', maxlength: 12, 'aria-label': 'Name', placeholder: 'e.g. Kian' });
+    const gender = h('select', { class: 'in', 'aria-label': 'Gender' }, h('option', { value: '0' }, 'Male'), h('option', { value: '1' }, 'Female'));
+    const klass = h('select', { class: 'in', 'aria-label': 'Class' }, cls.map(([i, n]) => h('option', { value: i, selected: n === 'Myrmidon' }, n)));
+    const level = h('input', { class: 'in num', value: '1', 'aria-label': 'Level' });
+    const parent = h('select', { class: 'in', 'aria-label': 'Parent' }, names.map(n => h('option', { value: n }, n)));
+    const joins = h('select', { class: 'in', 'aria-label': 'Joins in chapter' }, [6, 7, 8, 9, 10, 11].map(c => h('option', { value: c }, `Chapter ${c}`)));
+    const heir = h('select', { class: 'in', 'aria-label': 'Holy blood and weapon from' }, h('option', { value: '' }, 'the parent of the same gender'), h('option', { value: 'father' }, 'the father'), h('option', { value: 'mother' }, 'the mother'));
+    const portrait = h('input', { class: 'in', list: 'lvpeople', placeholder: 'e.g. Lex', 'aria-label': 'Portrait' });
+    const sub = h('input', { class: 'in', list: 'lvpeople', placeholder: 'nobody', 'aria-label': 'Stand-in' });
+    const dl = h('datalist', { id: 'lvpeople' }, names.map(n => h('option', { value: n })));
+    const ok = h('button', { class: 'btn btn-gilt' }, 'Add child');
+    const modal = h('div', { class: 'modal lvnewchild', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'New child' },
+      h('div', { class: 'modal-box' }, dl, h('h2', {}, 'New child'),
+        h('div', { class: 'itgrid wide' },
+          h('label', { class: 'lbl' }, h('span', {}, 'Name'), name), h('label', { class: 'lbl' }, h('span', {}, 'Gender'), gender),
+          h('label', { class: 'lbl' }, h('span', {}, 'Class'), klass), h('label', { class: 'lbl' }, h('span', {}, 'Level'), level),
+          h('label', { class: 'lbl' }, h('span', {}, 'Parent'), parent), h('label', { class: 'lbl' }, h('span', {}, 'Joins Seliph\'s army in'), joins),
+          h('label', { class: 'lbl' }, h('span', {}, 'Holy blood and weapon from'), heir),
+          h('label', { class: 'lbl' }, h('span', {}, 'Portrait (borrow someone\'s)'), portrait),
+          h('label', { class: 'lbl' }, h('span', {}, 'Stand-in if not born'), sub)),
+        h('p', { class: 'hint' }, 'The child is born to the parent and whoever they marry, and joins at the start of the chapter you pick. Stats, growths and skills come from the parents; fine-tune them on the Characters page. New children can\'t fall in love, and their name may be blank in unit lists if the list has no room.'),
+        h('div', { class: 'modal-actions' }, h('button', { class: 'btn btn-line', onclick: () => modal.remove() }, 'Cancel'), ok)));
+    ok.onclick = async () => {
+      const body = { name: name.value.trim(), gender: gender.value, class: Number(klass.value), level: level.value.trim(), parent: parent.value,
+        joins: joins.value, heir: heir.value, portrait: portrait.value.trim(), substitute: sub.value.trim() };
+      try {
+        await api('newchild', body); modal.remove(); await refreshSession(); await loadTables(NEED, true); draw(); check();
+        toast(`${body.name} added: born to ${body.parent} and their spouse`);
+      } catch (e) { toast(e.message, true); }
+    };
+    modal.addEventListener('keydown', e => { if (e.key === 'Escape') modal.remove(); });
+    document.body.append(modal);
+    name.focus();
   }
 
   // ------------------------------------------------------------ rules

@@ -40,7 +40,7 @@ import fe4maptiles                 # noqa: E402
 from fe4project import Project, load_settings, save_settings   # noqa: E402
 
 APP = 'Builder of the Holy War'
-VERSION = '28'
+VERSION = '29'
 STATIC = os.path.join(KIT, 'studio')
 
 # ---------------------------------------------------------------- state
@@ -2353,7 +2353,7 @@ def api_gen2check(b, q):
     if rom is None:
         return {'ok': False, 'error': 'Choose your FE4 ROM on the Project page to check this.'}
     with tempfile.TemporaryDirectory() as d:
-        for name in ('units_children', 'lovers', 'gen2_rules', 'skills'):
+        for name in ('units_children', 'units_generic', 'lovers', 'gen2_rules', 'skills'):
             t = p.table(name)
             if t is None:
                 continue
@@ -2368,12 +2368,85 @@ def api_gen2check(b, q):
             with contextlib.redirect_stdout(out):
                 if os.path.exists(os.path.join(d, 'skills.csv')):     # skill names, as the build sets them
                     fe4skills.set_maps(fe4skills.read_rows(os.path.join(d, 'skills.csv')))
-                fe4gen2.apply(r2, d, L.BankSpace(r2))
+                import fe4hack
+                space = L.BankSpace(r2)
+                added = fe4hack._add_units(r2, d, space)       # new children need their unit records
+                fe4gen2.apply(r2, d, space, added)
         except SystemExit as e:
             return {'ok': False, 'error': str(e).replace(d + os.sep, '')}
         except Exception as e:          # noqa: BLE001
             return {'ok': False, 'error': f'{type(e).__name__}: {e}'}
     return {'ok': True, 'note': out.getvalue().strip()}
+
+
+def api_newchild(b, q):
+    """Add a new child (units_children row + its name in names.csv) as one undo step:
+    {name, gender, class, level, parent, joins, heir?, substitute?, portrait?}  or delete one: {delete: row}."""
+    import fe4names
+    p = need_project()
+    rom = rom_data()
+    if rom is None:
+        raise ValueError('Choose your FE4 ROM on the Project page first.')
+    kids, gen, names = p.table('units_children'), p.table('units_generic'), p.table('names')
+    cnt = L.unit_count(rom)
+    if 'delete' in b:
+        i = int(b['delete'])
+        r = kids.rows[i]
+        idx = int(r['index'])
+        if idx <= cnt:
+            raise ValueError('Only children you added can be deleted.')
+        top = max([int(x['index']) for t in (kids, gen) for x in t.rows if x['index'].isdigit()])
+        if idx != top:
+            raise ValueError('Delete the newest added unit first (new units are numbered without gaps).')
+        ops = [('rows', 'units_children', i, [dict(r)], [])]
+        nid = r.get('name_id', '')
+        for k, nr in enumerate(names.rows):
+            if nr['kind'] == 'character' and nr['id'] == nid and nr['name']:
+                ops.append(('cell', 'names', k, 'name', nr['name'], ''))
+        p.edit(ops)
+        return {'ok': True}
+    name = str(b.get('name', '')).strip()
+    if not name:
+        raise ValueError('Give the child a name.')
+    try:
+        _, w = fe4names.render(name)
+    except ValueError as e:
+        raise ValueError(str(e))
+    if w > fe4names.KINDS['character'][2]:
+        raise ValueError(f'"{name}" is too wide for a name ({w} tiles; {fe4names.KINDS["character"][2]} fit).')
+    ids = [int(x['index']) for t in (kids, gen) for x in t.rows if x['index'].isdigit()]
+    new_ids = [i for i in ids if i > cnt]
+    nid_unit = (max(new_ids) + 1) if new_ids else L.first_new_id(rom)
+    used = {x.get('name_id') for t in ('units_playable', 'units_children', 'units_npc', 'units_generic')
+            for x in (p.table(t).rows if p.table(t) else [])}
+    slot = next((nr for nr in names.rows if nr['kind'] == 'character' and 570 <= int(nr['id']) <= 575
+                 and not nr['name'] and nr['id'] not in used), None)
+    if slot is None:
+        raise ValueError('All six free name slots (570-575) are taken by other new units.')
+    for f, lo, hi in (('level', 1, 30), ('joins', 6, 11)):
+        if not str(b.get(f, '')).isdigit() or not lo <= int(b[f]) <= hi:
+            raise ValueError(f'{f.capitalize()} must be {lo} to {hi}.')
+    row = {f: '' for f in kids.fields}
+    row.update({'index': str(nid_unit), '_name': name, 'class': str(int(b['class'])), 'level': str(int(b['level'])),
+                'name_id': slot['id'], 'gender': '1' if str(b.get('gender')) in ('1', 'female') else '0',
+                'parent': str(b.get('parent', '')), 'joins': str(int(b['joins'])),
+                'heir': b.get('heir') if b.get('heir') in ('father', 'mother') else
+                ('mother' if str(b.get('gender')) in ('1', 'female') else 'father'),
+                'substitute': str(b.get('substitute', '')), 'portrait': str(b.get('portrait', '')),
+                'item1': '255', 'item2': '255'})
+    # same weights as the game's own children: the heir parent counts double
+    for f, (a, m) in zip(('growth_father', 'growth_mother', 'stats_father', 'stats_mother'),
+                         ((100, 50), (50, 100), (20, 10), (10, 20))):
+        if f in row:
+            row[f] = str(a if row['heir'] == 'father' else m)
+    ct = p.table('classes')
+    if ct and int(b['class']) < len(ct.rows):
+        row['_class_name'] = ct.rows[int(b['class'])].get('_name', '')
+    if not row['parent']:
+        raise ValueError('A new child needs a parent.')
+    k = names.rows.index(slot)
+    p.edit([('rows', 'units_children', len(kids.rows), [], [row]), ('cell', 'names', k, 'name', '', name)])
+    return {'ok': True, 'row': len(kids.rows) - 1, 'index': nid_unit}
 
 
 API = {('GET', 'session'): api_session, ('POST', 'ping'): api_ping, ('GET', 'table'): api_table,
@@ -2386,7 +2459,7 @@ API = {('GET', 'session'): api_session, ('POST', 'ping'): api_ping, ('GET', 'tab
        ('GET', 'chapters'): api_chapters, ('GET', 'scene'): api_scene, ('POST', 'messages'): api_messages,
        ('POST', 'msg'): api_msg, ('POST', 'evtcmd'): api_evtcmd, ('GET', 'dsearch'): api_dsearch, ('GET', 'villages'): api_villages, ('GET', 'itemuse'): api_itemuse, ('POST', 'newevent'): api_newevent, ('POST', 'talkmenu'): api_talkmenu, ('POST', 'delstep'): api_delstep,
        ('POST', 'addstep'): api_addstep, ('GET', 'eventinfo'): api_eventinfo, ('GET', 'maps'): api_maps, ('GET', 'map'): api_map, ('POST', 'paint'): api_paint,
-       ('GET', 'armies'): api_armies, ('GET', 'portraits'): api_portraits, ('GET', 'mapsprites'): api_mapsprites, ('GET', 'skills'): api_skills, ('POST', 'gen2check'): api_gen2check, ('POST', 'skillcheck'): api_skillcheck, ('POST', 'skilledit'): api_skilledit, ('POST', 'spriteentry'): api_spriteentry, ('GET', 'tileinfo'): api_tileinfo, ('POST', 'tiledraw'): api_tiledraw, ('POST', 'mapsprite'): api_mapsprite, ('POST', 'portrait'): api_portrait, ('POST', 'aicmd'): api_aicmd, ('POST', 'airecipe'): api_airecipe}
+       ('GET', 'armies'): api_armies, ('GET', 'portraits'): api_portraits, ('GET', 'mapsprites'): api_mapsprites, ('GET', 'skills'): api_skills, ('POST', 'gen2check'): api_gen2check, ('POST', 'newchild'): api_newchild, ('POST', 'skillcheck'): api_skillcheck, ('POST', 'skilledit'): api_skilledit, ('POST', 'spriteentry'): api_spriteentry, ('GET', 'tileinfo'): api_tileinfo, ('POST', 'tiledraw'): api_tiledraw, ('POST', 'mapsprite'): api_mapsprite, ('POST', 'portrait'): api_portrait, ('POST', 'aicmd'): api_aicmd, ('POST', 'airecipe'): api_airecipe}
 
 
 # ---------------------------------------------------------------- window

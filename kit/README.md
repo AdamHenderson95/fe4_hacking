@@ -37,6 +37,13 @@ default browser). The editor runs on your PC only: nothing is sent anywhere.
      parent and whoever they marry). Change a child's parent here; click a
      child to open them on the Characters page for inheritance, stand-in
      and skills.
+     **+ New child** adds a brand-new child: name (up to 7 tiles wide),
+     class, level, parent, the chapter they join (6–11), which parent's holy
+     blood they get, a stand-in and a portrait to borrow (a name like "Lex"
+     or a portrait number). The name takes one of the 6 free name slots, and
+     the child joins at the start of that chapter. New children show a
+     **new** tag and can be deleted (the newest first). See "New children"
+     below for their limits (one extra child fits the save).
    - **Inheritance rules**: children's gold and the highest stat they can
      inherit.
 4. **Classes**: bases, growths, weapon ranks, movement, flying and class

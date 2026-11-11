@@ -6,7 +6,8 @@ code{background:#f2f2f4;padding:1px 4px;border-radius:3px;font:13px Consolas,mon
 pre{background:#f2f2f4;padding:12px;border-radius:6px;overflow:auto} pre code{background:none;padding:0}
 table{border-collapse:collapse;margin:12px 0} th,td{border:1px solid #ddd;padding:5px 9px;vertical-align:top;text-align:left}
 th{background:#f6f6f8}
-</style></head><body><h1>fe4kit: FE4 hacking toolkit (Project Naga ROM)</h1>
+</style></head><body>
+<h1>fe4kit: FE4 hacking toolkit (Project Naga ROM)</h1>
 <p>Make hacks and randomized games of Fire Emblem: Genealogy of the Holy War
 (the Project Naga translation). You need your own copy of the ROM; the tools
 read everything out of it and never ship any of the game.</p>
@@ -41,7 +42,14 @@ default browser). The editor runs on your PC only: nothing is sent anywhere.
 <li><strong>Families</strong>: each parent with the children tied to them (born to that
      parent and whoever they marry). Change a child's parent here; click a
      child to open them on the Characters page for inheritance, stand-in
-     and skills.</li>
+     and skills.
+     <strong>+ New child</strong> adds a brand-new child: name (up to 7 tiles wide),
+     class, level, parent, the chapter they join (6–11), which parent's holy
+     blood they get, a stand-in and a portrait to borrow (a name like "Lex"
+     or a portrait number). The name takes one of the 6 free name slots, and
+     the child joins at the start of that chapter. New children show a
+     <strong>new</strong> tag and can be deleted (the newest first). See "New children"
+     below for their limits (one extra child fits the save).</li>
 <li><strong>Inheritance rules</strong>: children's gold and the highest stat they can
      inherit.</li>
 <li><strong>Classes</strong>: bases, growths, weapon ranks, movement, flying and class
@@ -1395,4 +1403,5 @@ Only one scene plays per event check, so an event should start one scene.</p>
 <li>The patch adds read, write and exec tracing to Snes9x (upstream commit <code>1bcc369</code>).</li>
 <li>It's how the engine routines in <code>ROM_MAP.md</code> were located.</li>
 <li>To build it, apply the patch, then run <code>make</code> in <code>snes9x/libretro</code>.</li>
-</ul></body></html>
+</ul>
+</body></html>
