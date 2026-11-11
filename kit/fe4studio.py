@@ -40,7 +40,7 @@ import fe4maptiles                 # noqa: E402
 from fe4project import Project, load_settings, save_settings   # noqa: E402
 
 APP = 'Builder of the Holy War'
-VERSION = '26'
+VERSION = '27'
 STATIC = os.path.join(KIT, 'studio')
 
 # ---------------------------------------------------------------- state
@@ -2181,6 +2181,151 @@ def api_spriteentry(b, q):
     return {'ok': True}
 
 
+# ---------------------------------------------------------------- skills
+SKILL_HOLDERS = (('units_playable', 'skills'), ('units_npc', 'skills'), ('classes', 'skills'), ('items', 'skills'))
+SKILL_TUNING = {3: ['amount'], 12: ['amount'], 15: ['amount', 'amount2'], 24: ['amount', 'amount2'],
+                19: ['stat', 'amount', 'amount2', 'weapons'], 20: ['stat', 'amount', 'amount2', 'weapons'],
+                21: ['stat', 'amount', 'amount2', 'weapons']}
+
+
+def _split(v):
+    return [x.strip() for x in (v or '').replace(',', ';').split(';') if x.strip()]
+
+
+def api_skills(b, q):
+    import fe4skillfx
+    import fe4skills
+    p = need_project()
+    t = p.table('skills')
+    if t is None:
+        raise KeyError('This project has no skills.csv.')
+    holders = {}
+    for tname, field in SKILL_HOLDERS:
+        tb = p.table(tname)
+        for i, r in enumerate(tb.rows if tb else []):
+            for sk in _split(r.get(field)):
+                nm = r.get('_name') or f'{tname} {i}'
+                holders.setdefault(sk, {}).setdefault(tname, []).append({'row': i, 'name': nm,
+                                                                         'index': r.get('index', '')})
+    out = []
+    for i, r in enumerate(t.rows):
+        sid = int(r['id'])
+        out.append({'row': i, 'id': sid, 'new': sid >= fe4skills.VANILLA_COUNT, 'name': r['name'],
+                    'notes': r.get('_notes', ''), 'inMenu': r.get('_in_menu', '') == 'yes',
+                    'bits': {k: r.get(k + '_bit', '') for k in ('personal', 'class', 'item')},
+                    'fields': {k: r.get(k, '') for k in fe4skills.FIELDS},
+                    'holders': holders.get(r['name'], {}), 'tuning': SKILL_TUNING.get(sid, [])})
+    effects = [{'key': k, 'kind': v[0], 'help': v[-1], 'power': v[7]} for k, v in fe4skillfx.EFFECTS.items()]
+    return {'skills': out, 'effects': effects,
+            'when': [k for k in fe4skillfx.WHEN if k], 'icons': sorted(set(fe4skills.NAMES[1:]) - {None}),
+            'classes': [r.get('_name', '') for r in (p.table('classes').rows if p.table('classes') else [])]}
+
+
+def api_skillcheck(b, q):
+    """Build the project's current skills table into a copy of the ROM: {ok} or {error}."""
+    import tempfile
+    import fe4skills
+    p = need_project()
+    rom = rom_data()
+    if rom is None:
+        return {'ok': False, 'error': 'Choose your FE4 ROM on the Project page to check skills.'}
+    t = p.table('skills')
+    with tempfile.TemporaryDirectory() as d:
+        with open(os.path.join(d, 'skills.csv'), 'w', newline='') as f:
+            w = csv.DictWriter(f, fieldnames=t.fields)
+            w.writeheader()
+            w.writerows(t.rows)
+        try:
+            r2 = bytearray(rom)
+            fe4skills.apply(r2, d, L.BankSpace(r2), L.FreeSpace())
+        except SystemExit as e:
+            msg = str(e).replace(os.path.join(d, 'skills.csv'), 'skills.csv')
+            return {'ok': False, 'error': msg}
+        except Exception as e:          # noqa: BLE001
+            return {'ok': False, 'error': f'{type(e).__name__}: {e}'}
+    return {'ok': True}
+
+
+def api_skilledit(b, q):
+    """Skill-level edits that touch several rows, as one undo step:
+       {op: 'new'} | {op: 'delete', row} | {op: 'rename', row, name} | {op: 'holder', row, table, holder, on}"""
+    import fe4skills
+    p = need_project()
+    t = p.table('skills')
+    rows = t.rows
+    op = b.get('op')
+    ops = []
+    if op == 'new':
+        nid = max(int(r['id']) for r in rows) + 1
+        names = {r['name'] for r in rows}
+        n = 1
+        while f'New skill {n}' in names:
+            n += 1
+        row = {f: '' for f in t.fields}
+        row.update({'id': str(nid), 'name': f'New skill {n}', 'effect': 'combat', 'bonus': 'atk+3'})
+        ops.append(('rows', 'skills', len(rows), [], [row]))
+    elif op == 'delete':
+        i = int(b['row'])
+        if int(rows[i]['id']) < fe4skills.VANILLA_COUNT:
+            raise ValueError('FE4\'s own skills can\'t be deleted.')
+        name = rows[i]['name']
+        new = []
+        for r in rows[i + 1:]:
+            r2 = dict(r)
+            r2['id'] = str(int(r['id']) - 1)      # ids stay 1, 2, 3 ... with no gaps
+            new.append(r2)
+        ops.append(('rows', 'skills', i, [dict(r) for r in rows[i:]], new))
+        ops += _holder_ops(p, name, None)
+    elif op == 'rename':
+        i = int(b['row'])
+        name = str(b['name']).strip()
+        old = rows[i]['name']
+        if int(rows[i]['id']) < fe4skills.VANILLA_COUNT:
+            raise ValueError('Renaming FE4\'s own skills isn\'t supported yet.')
+        if not name or len(name) > 15 or not all(32 <= ord(c) < 127 for c in name) or ';' in name or ',' in name:
+            raise ValueError('A skill name is 1 to 15 plain letters, numbers or spaces.')
+        if name != old and name in {r['name'] for r in rows}:
+            raise ValueError('Another skill already has that name.')
+        ops.append(('cell', 'skills', i, 'name', old, name))
+        ops += _holder_ops(p, old, name)
+    elif op == 'holder':
+        i = int(b['row'])
+        name = rows[i]['name']
+        new_skill = int(rows[i]['id']) >= fe4skills.VANILLA_COUNT
+        table, holder, on = b['table'], str(b['holder']), bool(b.get('on'))
+        if new_skill and table in ('units', 'classes'):     # lists in the skill's own row
+            cur = _split(rows[i].get(table))
+            nxt = [x for x in cur if x != holder] + ([holder] if on and holder not in cur else [])
+            if nxt != cur:
+                ops.append(('cell', 'skills', i, table, rows[i].get(table, ''), ';'.join(nxt)))
+        elif table in ('units_playable', 'units_npc', 'classes'):
+            tb = p.table(table)
+            k = int(holder)
+            cur = _split(tb.rows[k].get('skills'))
+            nxt = [x for x in cur if x != name] + ([name] if on and name not in cur else [])
+            if nxt != cur:
+                ops.append(('cell', table, k, 'skills', tb.rows[k].get('skills', ''), ';'.join(nxt)))
+        else:
+            raise ValueError('That can\'t hold a skill here.')
+    else:
+        raise ValueError('unknown skill edit')
+    p.edit(ops)
+    return {'ok': True}
+
+
+def _holder_ops(p, old, new):
+    """Rename (or with new=None remove) a skill in every unit, class and item skills column."""
+    ops = []
+    for tname, field in SKILL_HOLDERS:
+        tb = p.table(tname)
+        for i, r in enumerate(tb.rows if tb else []):
+            cur = _split(r.get(field))
+            if old in cur:
+                nxt = [new if x == old else x for x in cur if new is not None or x != old]
+                ops.append(('cell', tname, i, field, r.get(field, ''), ';'.join(nxt)))
+    return ops
+
+
 API = {('GET', 'session'): api_session, ('POST', 'ping'): api_ping, ('GET', 'table'): api_table,
        ('POST', 'tables'): api_tables, ('POST', 'set'): api_set, ('POST', 'undo'): api_undo,
        ('POST', 'redo'): api_redo, ('POST', 'save'): api_save, ('POST', 'open'): api_open,
@@ -2191,7 +2336,7 @@ API = {('GET', 'session'): api_session, ('POST', 'ping'): api_ping, ('GET', 'tab
        ('GET', 'chapters'): api_chapters, ('GET', 'scene'): api_scene, ('POST', 'messages'): api_messages,
        ('POST', 'msg'): api_msg, ('POST', 'evtcmd'): api_evtcmd, ('GET', 'dsearch'): api_dsearch, ('GET', 'villages'): api_villages, ('GET', 'itemuse'): api_itemuse, ('POST', 'newevent'): api_newevent, ('POST', 'talkmenu'): api_talkmenu, ('POST', 'delstep'): api_delstep,
        ('POST', 'addstep'): api_addstep, ('GET', 'eventinfo'): api_eventinfo, ('GET', 'maps'): api_maps, ('GET', 'map'): api_map, ('POST', 'paint'): api_paint,
-       ('GET', 'armies'): api_armies, ('GET', 'portraits'): api_portraits, ('GET', 'mapsprites'): api_mapsprites, ('POST', 'spriteentry'): api_spriteentry, ('GET', 'tileinfo'): api_tileinfo, ('POST', 'tiledraw'): api_tiledraw, ('POST', 'mapsprite'): api_mapsprite, ('POST', 'portrait'): api_portrait, ('POST', 'aicmd'): api_aicmd, ('POST', 'airecipe'): api_airecipe}
+       ('GET', 'armies'): api_armies, ('GET', 'portraits'): api_portraits, ('GET', 'mapsprites'): api_mapsprites, ('GET', 'skills'): api_skills, ('POST', 'skillcheck'): api_skillcheck, ('POST', 'skilledit'): api_skilledit, ('POST', 'spriteentry'): api_spriteentry, ('GET', 'tileinfo'): api_tileinfo, ('POST', 'tiledraw'): api_tiledraw, ('POST', 'mapsprite'): api_mapsprite, ('POST', 'portrait'): api_portrait, ('POST', 'aicmd'): api_aicmd, ('POST', 'airecipe'): api_airecipe}
 
 
 # ---------------------------------------------------------------- window

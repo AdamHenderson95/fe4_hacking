@@ -29,7 +29,21 @@ default browser). The editor runs on your PC only: nothing is sent anywhere.
      the skills they can inherit.
 3. **Classes**: bases, growths, weapon ranks, movement, flying and class
    skills, with the units that use each class.
-4. **Maps**: each chapter's map drawn with the game's own tiles, with its
+4. **Skills**: FE4's own skills and new ones, with a line at the top that
+   says whether the skills build (checked after every change).
+   - FE4's skills: who has them (units, classes, the items that give them)
+     and, for Wrath, Charm, Miracle, Renewal, Astra, Luna and Sol, their
+     numbers (Astra, Luna and Sol can also work with any weapon).
+   - **+ New skill** adds one: a stat bonus, battle bonuses (Atk, Def, Hit,
+     Avoid, Crit, attack speed, for the unit or against the foe, always or
+     only when attacking, attacked, at low HP, at full HP, or as an aura for
+     nearby allies), or an effect from later games (Aether, Ignis, Colossus,
+     Vengeance, Deadeye, Lethality, Sure Strike, Great Shield, Aegis, Pray,
+     Counter, Galeforce, Lifetaker) with its rate and power.
+   - Give a new skill to units and classes, and set its icon, type and help
+     text for the map menu's Skills list. Renaming or deleting a skill
+     updates every unit, class and item that has it.
+5. **Maps**: each chapter's map drawn with the game's own tiles, with its
    castles, villages and units on top.
    - **Paint** (B): pick a tile in the **Tiles** panel and paint. Drag across
      several tiles in the panel to paint them as a block (a house, a castle
@@ -68,7 +82,7 @@ default browser). The editor runs on your PC only: nothing is sent anywhere.
      them as they are.
    - Zoom with − / + or Ctrl+mouse wheel; drag with the middle mouse button
      (or Shift+drag) to move around.
-5. **Events & dialogue**: each chapter's script as a list of events in
+6. **Events & dialogue**: each chapter's script as a list of events in
    plain words: *Turn 3*, *Sigurd talks to Ayra*, *Someone visits village 5*,
    *Midir fights Gerrard*, *Sigurd reaches (12, 38)–(17, 43)*, … with the
    first line of what's said. Filter by talks, turns, villages, battles and
@@ -107,7 +121,7 @@ default browser). The editor runs on your PC only: nothing is sent anywhere.
      New area events have the same picker.
    - Talk events show whether the pair is in the Talk menu, with a button
      to add or remove it. Changing who talks keeps the menu entry in step.
-6. **Items, shops & villages**, in three tabs:
+7. **Items, shops & villages**, in three tabs:
    - **Weapons & items**: every weapon, staff and ring, grouped by type.
      Rename it, and set Might, Hit, Weight, range, uses, price, rank, weapon
      type, what it's effective against, its special effect (brave, magic
@@ -124,7 +138,7 @@ default browser). The editor runs on your PC only: nothing is sent anywhere.
      the visit event.
    - **Arena**: the seven opponents per chapter for melee and ranged
      fighters, with each opponent's class and level.
-7. **Armies & AI**, per chapter: the armies the chapter sets up, by slot
+8. **Armies & AI**, per chapter: the armies the chapter sets up, by slot
    (slot 0 is yours).
    - **The army**: its name on the map, the castles it holds and its
      members (units that join when it's set up).
@@ -137,7 +151,7 @@ default browser). The editor runs on your PC only: nothing is sent anywhere.
    - **Units on the map**: every deployed unit of the army, grouped by
      deploy list, with the program it follows. **Set all to…** changes a
      whole list at once.
-8. **Portraits**: all 247 faces with who uses each one (units, generic
+9. **Portraits**: all 247 faces with who uses each one (units, generic
    classes, people who only speak). Pick one to see it large, with a
    talking preview.
    - **Replace with a picture…** takes any image. It is fitted to 48 × 64
@@ -150,7 +164,7 @@ default browser). The editor runs on your PC only: nothing is sent anywhere.
      with it to draw your own talking frames.
    - **Use the original** goes back to the game's picture. On a character's
      sheet, **Change picture** opens that character's portrait.
-9. **Map sprites**: the little unit each class shows on the map.
+10. **Map sprites**: the little unit each class shows on the map.
    - The list shows every class's sprite, animated, in the army colour you
      pick (player, enemy, ally, other, has moved).
    - Some classes have extra entries the game checks first: one for women,
@@ -166,16 +180,16 @@ default browser). The editor runs on your PC only: nothing is sent anywhere.
      mounted; 2× to 4× bigger also works); colours become the nearest of the
      map palette, so every army recolours it. **Download PNG** gives the
      current drawing to edit. Classes that share a sprite all change.
-10. Changes are checked as you type (a value out of range turns red and
+11. Changes are checked as you type (a value out of range turns red and
    says why). **Undo / Redo** (Ctrl+Z / Ctrl+Y) cover every change (a whole
    paint stroke or fill is one step); **Save** (Ctrl+S) writes the project
    files.
-11. **Build ROM** writes the hacked ROM plus a shareable `.ips` patch next to
+12. **Build ROM** writes the hacked ROM plus a shareable `.ips` patch next to
    the project folder. **Test play** (F6) builds it and opens it straight
    away in the FE4 PC port (FE4Port.zip), without your mods and with its own
    saves. The editor finds FE4.exe when the kit sits in the port's `fe4kit`
    folder (as it comes in FE4Port.zip) or next to it; otherwise it asks once.
-12. On the Project page, **Add unit stats to the map box** puts the PC port's
+13. On the Project page, **Add unit stats to the map box** puts the PC port's
    MT / HIT / AS / AVO box into the ROMs and patches you build, so players
    on emulators get it too (the port can still switch it off).
 

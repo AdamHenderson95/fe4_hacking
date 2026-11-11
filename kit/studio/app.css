@@ -555,3 +555,21 @@ textarea.fe4box.bad { border-color: #E1606F; }
 .spadd { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; padding: 12px 0 0; border-top: 1px solid var(--line); }
 .spadd .in { width: auto; min-width: 150px; }
 .spadd .hint { flex-basis: 100%; margin: 0; }
+
+/* skills */
+.listhead { padding: 12px 16px 4px; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+.sksheet { max-width: 900px; }
+.skhead { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 16px; }
+.skhead .sub { flex-basis: 100%; order: 3; }
+.skhead .btn { margin-left: auto; }
+.skname { font-size: 22px; font-weight: 700; max-width: 320px; }
+.skstatus { margin: 0; padding: 10px 24px; font-size: 14px; border-bottom: 1px solid var(--line); white-space: pre-wrap; }
+.skstatus.ok { color: #24613A; background: #E6F0E4; }
+.skstatus.bad { color: #8E1F2B; background: #F7E3E3; }
+.skstatus.busy { color: var(--muted); }
+.skbonus { display: flex; flex-direction: column; gap: 6px; margin: 6px 0 12px; align-items: flex-start; }
+.skbrow { display: flex; gap: 8px; align-items: center; }
+.skbrow .in { width: auto; }
+.skbrow .in.num { width: 80px; }
+.skdesc { width: 100%; max-width: 420px; font: inherit; }
+.lbl-text { font-size: 13px; color: var(--muted); }

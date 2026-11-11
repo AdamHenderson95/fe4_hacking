@@ -8,6 +8,7 @@ import { itemsPage } from './pages/items.js';
 import { armiesPage } from './pages/armies.js';
 import { portraitsPage } from './pages/portraits.js';
 import { spritesPage } from './pages/sprites.js';
+import { skillsPage } from './pages/skills.js';
 import { soonPage } from './pages/soon.js';
 
 const TOKEN = location.hash.slice(1).split('/')[0] || sessionStorage.getItem('fe4studio-token') || '';
@@ -142,6 +143,7 @@ async function testPlay() {
 const PAGES = {
   home: { title: 'Project', make: homePage },
   characters: { title: 'Characters', make: charactersPage, needsProject: true },
+  skills: { title: 'Skills', make: skillsPage, needsProject: true },
   classes: { title: 'Classes', make: classesPage, needsProject: true },
   maps: { title: 'Maps', make: mapsPage, needsProject: true },
   events: { title: 'Events & dialogue', make: eventsPage, needsProject: true },
