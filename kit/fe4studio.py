@@ -40,7 +40,7 @@ import fe4maptiles                 # noqa: E402
 from fe4project import Project, load_settings, save_settings   # noqa: E402
 
 APP = 'Builder of the Holy War'
-VERSION = '25'
+VERSION = '26'
 STATIC = os.path.join(KIT, 'studio')
 
 # ---------------------------------------------------------------- state
@@ -2069,17 +2069,24 @@ def tiles_version(ch):
 
 
 def chapter_gfx(ch, drawings=None):
-    """The chapter's tiles with the project's drawings (terrain from the table)."""
+    """The chapter's tiles with the project's drawings.  Earlier chapters' drawings come first, since
+    they take from the shared tile pool before this one (as the build does)."""
     rom = rom_data()
-    dr = chapter_drawings(ch) if drawings is None else drawings
-    key = (id(rom), ch, tiles_version(ch) if drawings is None else 'x')
+    dr = {c: chapter_drawings(c) for c in range(ch + 1)}
+    if drawings is not None:
+        dr[ch] = drawings
+    key = (id(rom), ch, tuple(tiles_version(c) for c in range(ch + 1)))
     if drawings is None and key in _gfx_cache:
-        g = _gfx_cache[key]
-    else:
-        g = fe4maptiles.load_project(rom, None, ch, None, dr)
-        if drawings is None:
+        return _gfx_cache[key]
+    pool = list(fe4maptiles.pool_tiles(rom))
+    for c in range(ch):
+        if dr[c]:
+            pool = list(fe4maptiles.load_project(rom, None, c, None, dr[c], pool).pool)
+    g = fe4maptiles.load_project(rom, None, ch, None, dr[ch], pool)
+    if drawings is None:
+        if len(_gfx_cache) > 24:
             _gfx_cache.clear()
-            _gfx_cache[key] = g
+        _gfx_cache[key] = g
     return g
 
 
@@ -2094,7 +2101,8 @@ def api_tileinfo(b, q):
     rom = rom_data()
     orig = fe4maptiles.ChapterGfx(rom, ch).terrain[k] if rom is not None else 0
     return {'ch': ch, 'k': k, 'own': k < 256, 'onMap': used, 'terrain': terr.get(k, g.terrain[k]), 'origTerrain': orig,
-            'row': ch * 1024 + k, 'custom': custom, 'free': len(g.free_tiles()), 'ver': tiles_version(ch)}
+            'row': ch * 1024 + k, 'custom': custom, 'free': sum(g.room()), 'freeShared': g.room()[1],
+            'ver': tiles_version(ch)}
 
 
 def api_tiledraw(b, q):
@@ -2116,8 +2124,17 @@ def api_tiledraw(b, q):
         g = chapter_gfx(ch, dr)          # raises when the chapter runs out of 8x8 tiles
     except ValueError as e:
         raise ValueError(str(e))
+    # later chapters take from the shared pool after this one: make sure they still fit
+    alld = {c: chapter_drawings(c) for c in range(fe4maps.MAP_COUNT)}
+    alld[ch] = dr
+    try:
+        fe4maptiles.load_chapters(rom_data(), {}, alld)
+    except ValueError as e:
+        c = getattr(e, 'ch', ch)
+        raise ValueError(f'This picture needs shared tiles that {CHAPTER_TITLES[c] if c < len(CHAPTER_TITLES) else c} '
+                         'already uses for its own redrawn tiles. Reuse more of the map\'s tiles in this picture.')
     p.set_blob(rel, data)
-    return {'ok': True, 'free': len(g.free_tiles())}
+    return {'ok': True, 'free': sum(g.room())}
 
 
 def api_spriteentry(b, q):

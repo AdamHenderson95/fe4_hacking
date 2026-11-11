@@ -379,7 +379,7 @@ export async function mapsPage(root) {
               h('a', { class: 'btn btn-line', href: `/gfx/tile/${st.ch}/${k}.png?s=1&c=${T.ver}`, download: `${M.title.split(':')[0].replace(/\W+/g, '_')}_tile_${k}.png` }, 'Download PNG'),
               T.custom ? h('button', { class: 'btn btn-line danger', onclick: () => send({ reset: true }, `Tile ${k} is the game's drawing again`) }, 'Use the original') : null, file),
             h('p', { class: 'hint' }, `A tile is 16 × 16 pixels (2× to 8× pixel art works too). Colours become the nearest of the chapter's map palettes. `,
-              `Each 8 × 8 quarter that doesn't match one already in the chapter takes one of its free 8 × 8 tiles: ${T.free} left. Redrawing a tile that isn't on the map frees its quarters.`))
+              `Each 8 × 8 quarter that doesn't match one already in the chapter takes a free 8 × 8 tile: ${T.free} left${T.freeShared ? ` (${T.freeShared} of them from a pool shared by all chapters, handed out from the Prologue on)` : ''}. Redrawing a tile that isn't on the map frees its quarters.`))
           : h('p', { class: 'hint' }, 'This tile is shared by every chapter, so its drawing can\'t be changed here; its terrain above is this chapter\'s own. To draw a new tile, redraw one of tiles 0–255 that this map doesn\'t use.'),
         h('div', { class: 'modal-actions' }, h('button', { class: 'btn btn-line', onclick: () => modal.remove() }, 'Close'))));
     modal.addEventListener('keydown', e => { if (e.key === 'Escape') modal.remove(); });

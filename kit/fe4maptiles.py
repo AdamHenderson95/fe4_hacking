@@ -11,8 +11,11 @@ How a chapter's tiles are built (see fe4maps):
 
 A redrawn metatile gets, for each 8x8 quarter, the palette row (of those the chapter uses) that fits
 its colours best, and reuses any 8x8 tile already in VRAM that matches (also flipped).  Only new
-quarters take one of the chapter's free 8x8 tiles (640-767 that no metatile uses), and a chapter has
-only a few, so new tiles that reuse grass, water or walls are cheap and fully new pictures are not.
+quarters take one of the chapter's free 8x8 tiles (640-767 that no metatile uses; 3-22 per chapter),
+then one from the shared pool: shared tiles 0-639 that no chapter's metatiles use and the map doesn't
+animate (25 in the game).
+Pool tiles are raw in the shared tile data, so each one goes to one chapter: chapters are filled in
+order (Prologue first) and later chapters get what is left.
 """
 import csv
 import os
@@ -24,13 +27,18 @@ from dis65816 import snes_to_file
 from fe4gfx import png, read_png
 
 CH_TILE0, CH_TILES = 640, 128
+# shared tiles the map animates (water): $88:CFC2 sends 32 tiles from $DC:xxxx to tiles 160-191 every
+# few frames, and tiles up to 254 changed during play too; the pool leaves 128-255 alone
+ANIMATED = (128, 256)
 FIELDS = ['chapter', 'tile', 'terrain']
 
 
 class ChapterGfx:
-    def __init__(self, rom, ch):
+    def __init__(self, rom, ch, pool=()):
         rom = bytes(rom)
         self.ch = ch
+        self.pool = list(pool)            # shared tiles this chapter may take, in order
+        self.pool_new = {}                # shared tile -> 32 bytes this chapter drew there
         hd = M.header(rom, ch)
         self.hd = hd
         meta = fe4lz.decompress(rom, hd['meta'])[:0x800].ljust(0x800, b'\0')
@@ -54,6 +62,8 @@ class ChapterGfx:
 
     # ---- tiles
     def tile_bytes(self, n):
+        if n in self.pool_new:
+            return self.pool_new[n]
         if n < CH_TILE0:
             return self.shared[n * 32:n * 32 + 32]
         if n < CH_TILE0 + CH_TILES:
@@ -86,6 +96,10 @@ class ChapterGfx:
     def free_tiles(self, skip=()):
         used = self.used_tiles(skip)
         return [n for n in range(CH_TILE0, CH_TILE0 + CH_TILES) if n not in used]
+
+    def room(self):
+        """(own free 8x8 tiles, pool tiles still available to this chapter)."""
+        return len(self.free_tiles()), len(self.pool)
 
     def metatile_rgba(self, k):
         """16x16 rows of (r, g, b, a)."""
@@ -130,15 +144,19 @@ class ChapterGfx:
             raise ValueError('only the chapter\'s own tiles (0-255) can be redrawn; 256-1023 are shared by every chapter')
         index = {}
         keep = self.used_tiles(skip=(k,))
+        released = [n for n in self.pool_new if n not in keep]   # pool tiles only k used
+        for n in released:
+            del self.pool_new[n]
+        self.pool = sorted(set(self.pool) | set(released))
         for n in range(CH_TILE0 + CH_TILES):
-            if n >= CH_TILE0 and n not in keep:
+            if (n >= CH_TILE0 or n in self.pool) and n not in keep:
                 continue                  # free (or about to be): not a reuse candidate
             t = self.decode(self.tile_bytes(n))
             for fl in range(4):
                 v = t[::-1] if fl & 2 else t
                 v = tuple(r[::-1] for r in v) if fl & 1 else v
                 index.setdefault(v, (n, fl))
-        free = self.free_tiles(skip=(k,))
+        free = self.free_tiles(skip=(k,)) + [n for n in self.pool if n not in keep]
         new_words = []
         new_tiles = {}
         for q in range(4):
@@ -168,13 +186,18 @@ class ChapterGfx:
                 n, fl = new_tiles[idx], 0
             else:
                 if not free:
-                    raise ValueError(f'chapter {self.ch} has no free 8x8 tile left for this picture: reuse more of '
-                                     'the map\'s existing tiles, or free some by redrawing unused tiles')
+                    raise ValueError(f'chapter {self.ch} has no free 8x8 tile left for this picture (its own and the '
+                                     'shared pool are used up): reuse more of the map\'s existing tiles, or free some by '
+                                     'redrawing unused tiles')
                 n, fl = free.pop(0), 0
                 new_tiles[idx] = n
             new_words.append(n | row << 10 | (0x4000 if fl & 1 else 0) | (0x8000 if fl & 2 else 0))
         for idx, n in new_tiles.items():
-            self.ctiles[(n - CH_TILE0) * 32:(n - CH_TILE0) * 32 + 32] = self.encode(idx)
+            if n < CH_TILE0:
+                self.pool_new[n] = self.encode(idx)
+                self.pool.remove(n)
+            else:
+                self.ctiles[(n - CH_TILE0) * 32:(n - CH_TILE0) * 32 + 32] = self.encode(idx)
         self.words[4 * k:4 * k + 4] = new_words
         return len(new_tiles)
 
@@ -191,6 +214,9 @@ class ChapterGfx:
             n += self._put(rom, far, h + 6, fe4lz.compress(bytes(self.ctiles)))
         if self.terrain != r0:
             n += self._put(rom, far, h + 24, fe4lz.compress(bytes(self.terrain)))
+        for t, data in sorted(self.pool_new.items()):
+            rom[M.SHARED_TILES + t * 32:M.SHARED_TILES + t * 32 + 32] = data
+            n += 1
         return n
 
     @staticmethod
@@ -226,15 +252,49 @@ def export_terrain(rom, path):
     print('wrote', path)
 
 
-def load_project(rom, proj, ch, terrain_rows=None, drawings=None):
+_pool_cache = {}
+
+
+def pool_tiles(rom):
+    """Shared tiles 0-639 that no chapter's metatiles use (in this ROM)."""
+    key = (id(rom), len(rom))
+    if key not in _pool_cache:
+        used = set()
+        for ch in range(M.MAP_COUNT):
+            used |= {w & 0x3FF for w in ChapterGfx(rom, ch).words}
+        _pool_cache.clear()
+        _pool_cache[key] = [t for t in range(CH_TILE0) if t not in used and not ANIMATED[0] <= t < ANIMATED[1]]
+    return _pool_cache[key]
+
+
+def load_project(rom, proj, ch, terrain_rows=None, drawings=None, pool=()):
     """ChapterGfx with the project's terrain and drawings applied (drawings: {k: png bytes})."""
-    g = ChapterGfx(rom, ch)
+    g = ChapterGfx(rom, ch, pool)
     if terrain_rows is not None:
         for k, t in terrain_rows.items():
             g.terrain[k] = t
     for k, data in sorted((drawings or {}).items()):
         g.redraw(k, rgba_from_png(data))
     return g
+
+
+def load_chapters(rom, terrain, drawings, upto=M.MAP_COUNT - 1):
+    """{ch: ChapterGfx} for chapters 0..upto that have terrain rows or drawings, handing out the shared
+    pool in chapter order.  terrain: {ch: {k: t}}, drawings: {ch: {k: png}}.  Raises ValueError
+    (with the chapter in .ch) when a chapter runs out of tiles."""
+    pool = list(pool_tiles(rom)) if any(drawings.values()) else []
+    out = {}
+    for ch in range(upto + 1):
+        if not drawings.get(ch) and ch not in terrain:
+            continue
+        try:
+            g = load_project(rom, None, ch, terrain.get(ch), drawings.get(ch), pool)
+        except ValueError as e:
+            e.ch = ch
+            raise
+        pool = list(g.pool)
+        out[ch] = g
+    return out
 
 
 def project_drawings(proj, ch):
@@ -266,14 +326,9 @@ def project_terrain(proj):
 
 def apply(rom, proj, far):
     terr = project_terrain(proj)
-    n = 0
-    for ch in range(M.MAP_COUNT):
-        drawings = project_drawings(proj, ch)
-        if not drawings and ch not in terr:
-            continue
-        try:
-            g = load_project(rom, proj, ch, terr.get(ch), drawings)
-        except ValueError as e:
-            raise SystemExit(f'maps/tiles/{M.MAP_NAMES[ch]}: {e}')
-        n += g.write(rom, far)
-    return n
+    drawings = {ch: project_drawings(proj, ch) for ch in range(M.MAP_COUNT)}
+    try:
+        gfx = load_chapters(bytes(rom), terr, drawings)
+    except ValueError as e:
+        raise SystemExit(f'maps/tiles/{M.MAP_NAMES[getattr(e, "ch", 0)]}: {e}')
+    return sum(g.write(rom, far) for g in gfx.values())

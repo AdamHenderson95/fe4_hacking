@@ -471,9 +471,14 @@ Map headers are 12 records of 27 bytes. The pointer table is at `$88:9FC3` (file
   bit is never set. Chapter metatiles use rows 1–5 (row 0 = `PAL0` rarely).
 - Chapter 8×8 tiles 640–767: 106–125 are used by the chapter's metatiles (17 of them by shared
   metatiles), leaving 3–22 free per chapter.
-- More room (not used yet): 28 of the shared tiles 0–639 are used by no chapter's metatiles
-  (151, 185, 187, 264, …), and VRAM tiles 928–1023 were empty on the Prologue map, but other
-  screens may load into them; both need checking before the kit hands them out.
+- **Animated tiles:** `$88:CFC2` sends 32 tiles (`$400` bytes) from `$DC:xxxx` (frames `$400` apart,
+  table `$88:D013`) to VRAM word `$0A00` = tiles 160–191; tiles up to 254 also changed during play.
+- **BG1 and BG2 share char base 0** (`$7A` shadow of `$210B` = 0): BG2's windows use tiles 768–910,
+  and dialogue fills tiles 928+, so those aren't free.
+- **Shared pool (kit v26):** shared tiles 0–639 that no chapter's metatiles use, outside 128–255:
+  25 tiles (264, 271, 280, …). Verified: the Prologue with 10 redrawn tiles (23 pool tiles in use)
+  shows them right at the start and after enemy phase 1 with battles and scenes (VRAM matches the
+  ROM data for every tile outside 128–255).
 - Verified: Prologue tile 66 redrawn from a picture (4 new 8×8 tiles, grass reproduced by
   colour matching) shows on all 50 cells; its terrain set to Peak (0) takes those cells out of
   Sigurd's move range. The kit recompresses the chapter's +3, +6 and +24 data into free space.
