@@ -33,24 +33,30 @@ ARMY_COUNT = 72
 # opcode: (name, argument bytes, jump-target offset within the arguments or None)
 AI_OPS = {
     0x00: ('STOP', 0, None),            0x01: ('GOTO', 2, 0),
-    0x02: ('SET_MODE?', 1, None),       0x03: ('OP_03', 1, None),
-    0x04: ('SET_04?', 1, None),         0x05: ('OP_05', 0, None),
+    0x02: ('SET_MODE', 1, None),        0x03: ('PACE', 1, None),
+    0x04: ('SPARE_SLOT', 1, None),      0x05: ('OP_05', 0, None),
     0x06: ('SEIZE_CASTLE', 2, None),    0x07: ('GUARD_CASTLE', 2, None),
     0x08: ('RAID_VILLAGE', 1, None),    0x09: ('MOVE_TO', 5, None),
-    0x0A: ('ATTACK_IN_REACH', 0, None), 0x0B: ('OP_0B', 0, None),
-    0x0C: ('OP_0C', 2, None),           0x0D: ('ATTACK_UNIT', 2, None),
-    0x0E: ('FOLLOW_UNIT?', 3, None),    0x0F: ('OP_0F', 0, None),
-    0x10: ('OP_10', 0, None),           0x11: ('OP_11', 1, None),
-    0x12: ('OP_12', 0, None),           0x13: ('HOLD?', 0, None),
-    0x14: ('OP_14', 1, None),           0x15: ('SET_FLAG', 3, None),
+    0x0A: ('ATTACK_IN_REACH', 0, None), 0x0B: ('ATTACK_IN_REACH_OR_GO_ON', 0, None),
+    0x0C: ('FORMATION', 2, None),       0x0D: ('ATTACK_UNIT', 2, None),
+    0x0E: ('FOLLOW_UNIT', 3, None),     0x0F: ('RETREAT', 0, None),
+    0x10: ('RETREAT_IF_CLEAR', 0, None), 0x11: ('RETREAT_IF_GROUP_LOW', 1, None),
+    0x12: ('FALL_BACK', 0, None),       0x13: ('HOLD', 0, None),
+    0x14: ('REINFORCE_EVERY', 1, None), 0x15: ('SET_FLAG', 3, None),
     0x16: ('CLEAR_FLAG', 3, None),      0x17: ('RAID_ANY_VILLAGE', 0, None),
-    0x18: ('ATTACK_ANY', 0, None),      0x19: ('OP_19', 0, None),
-    0x1A: ('OP_1A', 0, None),           0x1B: ('OP_1B', 0, None),
-    0x1C: ('OP_1C', 0, None),           0x1D: ('OP_1D', 0, None),
-    0x1E: ('OP_1E', 3, None),           0x1F: ('IF_TURN_GOTO', 3, 1),
+    0x18: ('ATTACK_ANY', 0, None),      0x19: ('ATTACK_ANY_7', 0, None),
+    0x1A: ('SURROUND', 0, None),        0x1B: ('SURROUND', 0, None),
+    0x1C: ('SURROUND', 0, None),        0x1D: ('SURROUND', 0, None),
+    0x1E: ('RETREAT_IF_HURT', 3, None), 0x1F: ('IF_TURN_GOTO', 3, 1),
     0x20: ('IF_FLAG_GOTO', 5, 3),       0x21: ('IF_NOT_FLAG_GOTO', 5, 3),
-    0x22: ('IF_22_GOTO', 2, 0),         0x23: ('IF_ASM_GOTO', 5, 3),
+    0x22: ('IF_NO_TARGET_GOTO', 2, 0),  0x23: ('IF_ASM_GOTO', 5, 3),
 }
+# FORMATION shapes ($87:DCD8: 15 lists of 18 x/y offsets from the group's centre)
+# and facings ($87:DAB0 rotates them); names are by look.
+FORMATIONS = ['none (all aim for the same spot)', 'wedge, narrow', 'wide wings', 'arrowhead', 'triangle',
+              'line abreast (one row)', 'block, two rows', 'single file', 'column, two wide',
+              'column, three wide', 'V, wide', 'zigzag column', 'ring', 'cluster', 'cluster, loose']
+FACINGS = ['south', 'west', 'north', 'east']
 STOPS = {0x00, 0x01, 0xFF}
 
 
@@ -141,6 +147,20 @@ def ai_comment(rom, b, com, locnames):
         c = 'to (%d,%d) unless flag %d.%d, then set it' % (b[4], b[5], w(1), b[3])
     elif op in (0x0D, 0x0E):
         c = com.unit(w(1))
+        if op == 0x0E:
+            c += ', within %d' % b[3]
+    elif op == 0x0C:
+        c = '%s, facing %s' % (FORMATIONS[b[1]] if b[1] < len(FORMATIONS) else 'shape %d' % b[1], FACINGS[b[2] & 3])
+    elif op == 0x03:
+        c = 'full move' if b[1] == 0 else 'about %d%% of its move' % round(b[1] * 100 / 256)
+    elif op == 0x04:
+        c = 'slot %d' % b[1]
+    elif op == 0x11:
+        c = 'under %d%% of its group left' % round(b[1] * 100 / 256)
+    elif op == 0x14:
+        c = 'every %d turn%s' % (b[1], '' if b[1] == 1 else 's')
+    elif op == 0x1E:
+        c = 'HP at or below %d%%' % round(b[1] * 100 / 256)
     elif op in (0x15, 0x16):
         c = 'flag %d.%d' % (w(1), b[3])
     elif op == 0x1F:
@@ -219,7 +239,7 @@ def export(rom, proj):
              '; A unit runs its program from the top each turn: the first command that can',
              '; act does so; the rest fall through.  Edit the hex bytes; add a command with a',
              '; line starting with + (e.g. "+ 17"), remove one by deleting its line.',
-             '; Names ending in ? or OP_xx are not confirmed.', '']
+             '; Names ending in ? or OP_xx are not confirmed (see ROM_MAP.md for what each does).', '']
     done = set()
     for i in range(ARMY_COUNT):
         a = army(rom, i)

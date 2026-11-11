@@ -167,6 +167,10 @@ default browser). The editor runs on your PC only: nothing is sent anywhere.
      attack anyone, attack only what's in reach, seize a castle, guard a
      castle, raid villages, go after one unit, or stay put, optionally
      only from a given turn (until then they wait or attack what's in reach).
+     It can also set a marching formation and facing, a player unit they
+     never attack, and an HP % at which they go home to heal.
+     Every command in the game now has a plain description; formation,
+     facing, spared unit and percentages have their own fields.
    - **Units on the map**: every deployed unit of the army, grouped by
      deploy list, with the program it follows. **Set all to…** changes a
      whole list at once.
@@ -501,6 +505,24 @@ or "Jungby". Three files work together:
 | `IF_FLAG_GOTO` / `IF_NOT_FLAG_GOTO` | `20`/`21 flag bit addr` | jump on an event flag |
 | `GOTO` | `01 addr` | jump |
 | `STOP` / `END` | `00` / `FF` | do nothing more this turn |
+
+- **Settings and retreats** (v30; decoded from the game's code, see
+  ROM_MAP.md). Settings change how later commands behave and then go on to
+  the next line, so they go at the top of a program:
+
+| Command | Bytes | Meaning |
+|---|---|---|
+| `FORMATION` | `0C shape facing` | (not yet seen working in a test) march as a group in a shape (0 none, 1 narrow wedge, 2 wide wings, 3 arrowhead, 4 triangle, 5 one row, 6 two rows, 7 single file, 8–9 columns two/three wide, 10 wide V, 11 zigzag, 12 ring, 13–14 clusters); facing 0 south, 1 west, 2 north, 3 east |
+| `PACE` | `03 n` | move only about n/256 of its movement each turn (`00` = full) |
+| `SPARE_SLOT` | `04 slot` | never attack the player unit in that army slot (e.g. `04 12` spares Raquesis) |
+| `RETREAT_IF_HURT` | `1E n 00 01` | go back to its castle to heal when HP ≤ n/256 (`4C` ≈ 30%) |
+| `RETREAT_IF_GROUP_LOW` | `11 n` | go back to its castle when less than n/256 of its group is left |
+| `RETREAT` / `RETREAT_IF_CLEAR` | `0F` / `10` | go back to its castle (always / when no enemy is near) |
+| `HOLD` | `13` | stay in place |
+| `ATTACK_IN_REACH_OR_GO_ON` | `0B` | attack what's in reach, else go on to the next line |
+| `FOLLOW_UNIT` | `0E unit n` | stay within n tiles of a unit (word) |
+| `IF_NO_TARGET_GOTO` | `22 addr` | jump when nothing can be attacked this turn |
+| `REINFORCE_EVERY` | `14 n` | every n turns, sends out group members who are off the map (unconfirmed) |
 
 - **Editing rules:** the same as the other `.evt` files (see "Adding new things").
   Jump addresses are the low 16 bits of an address in

@@ -174,7 +174,11 @@ default browser). The editor runs on your PC only: nothing is sent anywhere.
      castle, turn or target. <strong>Change what it does…</strong> rewrites a program:
      attack anyone, attack only what's in reach, seize a castle, guard a
      castle, raid villages, go after one unit, or stay put, optionally
-     only from a given turn (until then they wait or attack what's in reach).</li>
+     only from a given turn (until then they wait or attack what's in reach).
+     It can also set a marching formation and facing, a player unit they
+     never attack, and an HP % at which they go home to heal.
+     Every command in the game now has a plain description; formation,
+     facing, spared unit and percentages have their own fields.</li>
 <li><strong>Units on the map</strong>: every deployed unit of the army, grouped by
      deploy list, with the program it follows. <strong>Set all to…</strong> changes a
      whole list at once.</li>
@@ -758,6 +762,77 @@ or "Jungby". Three files work together:</p>
 <td><code>STOP</code> / <code>END</code></td>
 <td><code>00</code> / <code>FF</code></td>
 <td>do nothing more this turn</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li><strong>Settings and retreats</strong> (v30; decoded from the game's code, see
+  ROM_MAP.md). Settings change how later commands behave and then go on to
+  the next line, so they go at the top of a program:</li>
+</ul>
+<table>
+<thead>
+<tr>
+<th>Command</th>
+<th>Bytes</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>FORMATION</code></td>
+<td><code>0C shape facing</code></td>
+<td>(not yet seen working in a test) march as a group in a shape (0 none, 1 narrow wedge, 2 wide wings, 3 arrowhead, 4 triangle, 5 one row, 6 two rows, 7 single file, 8–9 columns two/three wide, 10 wide V, 11 zigzag, 12 ring, 13–14 clusters); facing 0 south, 1 west, 2 north, 3 east</td>
+</tr>
+<tr>
+<td><code>PACE</code></td>
+<td><code>03 n</code></td>
+<td>move only about n/256 of its movement each turn (<code>00</code> = full)</td>
+</tr>
+<tr>
+<td><code>SPARE_SLOT</code></td>
+<td><code>04 slot</code></td>
+<td>never attack the player unit in that army slot (e.g. <code>04 12</code> spares Raquesis)</td>
+</tr>
+<tr>
+<td><code>RETREAT_IF_HURT</code></td>
+<td><code>1E n 00 01</code></td>
+<td>go back to its castle to heal when HP ≤ n/256 (<code>4C</code> ≈ 30%)</td>
+</tr>
+<tr>
+<td><code>RETREAT_IF_GROUP_LOW</code></td>
+<td><code>11 n</code></td>
+<td>go back to its castle when less than n/256 of its group is left</td>
+</tr>
+<tr>
+<td><code>RETREAT</code> / <code>RETREAT_IF_CLEAR</code></td>
+<td><code>0F</code> / <code>10</code></td>
+<td>go back to its castle (always / when no enemy is near)</td>
+</tr>
+<tr>
+<td><code>HOLD</code></td>
+<td><code>13</code></td>
+<td>stay in place</td>
+</tr>
+<tr>
+<td><code>ATTACK_IN_REACH_OR_GO_ON</code></td>
+<td><code>0B</code></td>
+<td>attack what's in reach, else go on to the next line</td>
+</tr>
+<tr>
+<td><code>FOLLOW_UNIT</code></td>
+<td><code>0E unit n</code></td>
+<td>stay within n tiles of a unit (word)</td>
+</tr>
+<tr>
+<td><code>IF_NO_TARGET_GOTO</code></td>
+<td><code>22 addr</code></td>
+<td>jump when nothing can be attacked this turn</td>
+</tr>
+<tr>
+<td><code>REINFORCE_EVERY</code></td>
+<td><code>14 n</code></td>
+<td>every n turns, sends out group members who are off the map (unconfirmed)</td>
 </tr>
 </tbody>
 </table>

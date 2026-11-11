@@ -121,6 +121,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .portrait .noface { font-family: var(--f-head); font-weight: 700; font-size: 48px; color: var(--night-muted); }
 .who h2 { font-family: var(--f-head); font-weight: 700; font-size: 30px; line-height: 1.15; letter-spacing: -.02em; margin: 2px 0 10px; }
 .who .facts { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 10px 18px; }
+[hidden] { display: none !important; }
 .lbl { display: flex; flex-direction: column; gap: 3px; font-size: 14px; color: var(--muted); font-weight: 500; }
 .lbl > span { display: flex; justify-content: space-between; gap: 6px; }
 input.in, select.in { width: 100%; min-width: 0; border: 1px solid var(--line); background: #FBFAF6; border-radius: var(--r-sm); padding: 4px 8px; color: var(--ink); font-size: 16px; }

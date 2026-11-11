@@ -40,7 +40,7 @@ import fe4maptiles                 # noqa: E402
 from fe4project import Project, load_settings, save_settings   # noqa: E402
 
 APP = 'Builder of the Holy War'
-VERSION = '29'
+VERSION = '30'
 STATIC = os.path.join(KIT, 'studio')
 
 # ---------------------------------------------------------------- state
@@ -1710,25 +1710,39 @@ AI_WORDS = {
     0x00: ('Stay where it is this turn', []),
     0x01: ('Go to step {jump}', []),
     0x02: ('Set behaviour mode {b1}?', [('Mode', 'num', 1, 1)]),
+    0x03: ('Group pace: {pace}', [('Pace', 'pace', 1, 1)]),
+    0x04: ('Never attack {slot}', [('Spare', 'slot', 1, 1)]),
+    0x05: ('Set an unknown switch (bit 9 of $7E:2000)?', []),
     0x06: ('Seize {loc} (skipped once it is taken)', [('Castle', 'loc', 1, 1), ('Mode?', 'num', 2, 1)]),
     0x07: ('Guard {loc} while its army holds it', [('Castle', 'loc', 1, 1), ('Mode?', 'num', 2, 1)]),
     0x08: ('Raid {loc}', [('Village', 'loc', 1, 1)]),
     0x09: ('Move to ({b4}, {b5}) once', [('x', 'num', 4, 1), ('y', 'num', 5, 1)]),
     0x0A: ('Attack anyone in reach; otherwise stay', []),
-    0x0C: ('Set targeting {b1}, {b2}?', [('Value 1', 'num', 1, 1), ('Value 2', 'num', 2, 1)]),
+    0x0B: ('Attack anyone in reach; otherwise go on to the next step', []),
+    0x0C: ('March in formation: {formation}, facing {facing}?', [('Shape', 'formation', 1, 1), ('Facing', 'facing', 2, 1)]),
     0x0D: ('Attack {unit}', [('Target', 'unit', 1, 2)]),
-    0x0E: ('Follow {unit}?', [('Unit', 'unit', 1, 2), ('Distance?', 'num', 3, 1)]),
-    0x11: ('Heal allies (staff users) below {b1}?', [('Value', 'num', 1, 1)]),
-    0x13: ('Hold position?', []),
+    0x0E: ('Follow {unit}, staying within {b3}', [('Unit', 'unit', 1, 2), ('Within', 'num', 3, 1)]),
+    0x0F: ('Go back to its castle', []),
+    0x10: ('If no enemy is near, go back to its castle', []),
+    0x11: ('When under {pct} of its group is left, go back to its castle', [('Group left', 'pct', 1, 1)]),
+    0x12: ('Fall back toward its target while attacking?', []),
+    0x13: ('Hold its position', []),
+    0x14: ('Every {b1} turn(s), send out group members who are off the map?', [('Turns', 'num', 1, 1)]),
     0x15: ('Set event flag {flag}', []),
     0x16: ('Clear event flag {flag}', []),
     0x17: ('Raid the nearest village', []),
     0x18: ('Attack anyone (marches on the nearest enemy)', []),
-    0x1E: ('Heal or retreat when hurt ({b1})?', [('Value', 'num', 1, 1)]),
+    0x19: ('Attack anyone (mode 7)?', []),
+    0x1A: ('Close in on an enemy with free sides around it', []),
+    0x1B: ('Close in on an enemy with free sides around it', []),
+    0x1C: ('Close in on an enemy with free sides around it', []),
+    0x1D: ('Close in on an enemy with free sides around it', []),
+    0x1E: ('Go back to its castle to heal when its HP is at or below {pct}', [('HP', 'pct', 1, 1)]),
     0x1F: ('From turn {b1} on, go to step {jump}', [('Turn', 'num', 1, 1)]),
     0x20: ('If event flag {flag} is set, go to step {jump}', []),
     0x21: ('If event flag {flag} is not set, go to step {jump}', []),
-    0x22: ('Check {b1}? then go to step {jump}', []),
+    0x22: ('If nothing can be attacked this turn, go to step {jump}', []),
+    0x23: ('If routine {asm} says so, go to step {jump}', []),
     0xFF: ('End', []),
 }
 # whole programs the editor can write: action -> lines (hex with {c} castle, {u} unit word)
@@ -1755,9 +1769,26 @@ def _ai_blocks():
     return out
 
 
+def slot_names():
+    """{army slot: 'Sigurd / Seliph'}: who sits in each player slot, generation 1 then 2."""
+    p = need_project()
+    out = {}
+    for t in ('units_playable', 'units_children'):
+        tb = p.table(t)
+        for r in tb.rows if tb else []:
+            v = (r.get('slot') or '').strip()
+            if v.isdigit() and int(v) < 128 and r.get('_name'):
+                out.setdefault(int(v), [])
+                if r['_name'] not in out[int(v)]:
+                    out[int(v)].append(r['_name'])
+    return {k: ' / '.join(v) for k, v in out.items()}
+
+
 def _ai_steps(blk, com, locname):
     """The program's commands in words, with jump targets as step numbers."""
     cmds = blk['cmds']
+    sn = slot_names()
+    slot_name = lambda n: sn.get(n, 'slot %d' % n)  # noqa: E731
     index = {c['addr']: i for i, c in enumerate(cmds) if c['addr']}
     bank = blk['start'][:2]
     steps, inside = [], True
@@ -1782,6 +1813,15 @@ def _ai_steps(blk, com, locname):
                 'loc': locname(b[1]) if len(b) > 1 else '', 'unit': com.unit(w(1)).rsplit('(', 1)[0] if len(b) > 2 else '',
                 'flag': '%d.%d' % (w(1), b[3]) if len(b) > 3 else ''}
         vals.update({'b%d' % k: b[k] for k in range(1, len(b))})
+        if len(b) > 1:
+            vals['pct'] = '%d%%' % round(b[1] * 100 / 256)
+            vals['pace'] = 'full move' if b[1] == 0 else 'about %d%% of its move' % round(b[1] * 100 / 256)
+            vals['slot'] = slot_name(b[1])
+            vals['formation'] = fe4armies.FORMATIONS[b[1]] if b[1] < len(fe4armies.FORMATIONS) else 'shape %d' % b[1]
+        if len(b) > 2:
+            vals['facing'] = fe4armies.FACINGS[b[2] & 3]
+        if op == 0x23 and len(b) > 3:
+            vals['asm'] = '$%02X:%02X%02X' % (b[3], b[2], b[1])
         try:
             text = words.format(**vals)
         except (KeyError, IndexError):
@@ -1886,7 +1926,9 @@ def api_armies(b, q):
                        'castles': ids(row.get('castles')), 'programs': progs, 'units': us})
     return {'ch': ch, 'title': CHAPTER_TITLES[ch] if ch < len(CHAPTER_TITLES) else '', 'armies': armies,
             'locations': locs, 'castleNames': names,
-            'actions': [[k, v[0]] for k, v in AI_ACTIONS.items()]}
+            'actions': [[k, v[0]] for k, v in AI_ACTIONS.items()],
+            'formations': fe4armies.FORMATIONS, 'facings': fe4armies.FACINGS,
+            'slots': sorted([k, v] for k, v in slot_names().items())}
 
 
 def api_aicmd(b, q):
@@ -1924,7 +1966,8 @@ def _step_note(nb, hexs):
 
 
 def api_airecipe(b, q):
-    """Rewrite army N's program K: {army, k, action, castle?, unit?, until_turn?}. One undo step."""
+    """Rewrite army N's program K: {army, k, action, castle?, unit?, until_turn?, wait?,
+    spare? (slot), formation? + facing?, retreat? (HP %)}. One undo step."""
     p = need_project()
     f = p.evt(AI)
     army, k = int(b['army']), int(b['k'])
@@ -1956,6 +1999,25 @@ def api_airecipe(b, q):
         # until that turn: only the waiting behaviour; from it on: jump to the action
         pre = ['00'] if b.get('wait') == 'stay' else ['0A', 'FF']
         body = ['1F %02X @L%d' % (turn, len(pre) + 1)] + pre + body
+    # optional settings that run before everything else (each falls through)
+    setup = []
+    if b.get('spare') not in (None, ''):
+        n = int(b['spare'])
+        if not 0 < n < 128:
+            raise ValueError('Pick who to spare.')
+        setup.append('04 %02X' % n)
+    if b.get('formation') not in (None, ''):
+        shape, facing = int(b['formation']), int(b.get('facing') or 0)
+        if not (0 <= shape < len(fe4armies.FORMATIONS) and 0 <= facing < 4):
+            raise ValueError('Unknown formation.')
+        setup.append('0C %02X %02X' % (shape, facing))
+    if b.get('retreat') not in (None, ''):
+        pc = int(b['retreat'])
+        if not 1 <= pc <= 99:
+            raise ValueError('Retreat at 1 to 99% HP.')
+        setup.append('1E %02X 00 01' % round(pc * 256 / 100))
+    if setup:
+        body = setup + [re.sub(r'@L(\d+)', lambda m: '@L%d' % (int(m.group(1)) + len(setup)), x) for x in body]
     com = commenter()
     lines = []
     for hx in body:

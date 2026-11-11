@@ -649,36 +649,80 @@ adds working Armory and Arena buttons to the Prologue.
 | `$09` | flag16, bit, x, y | move to (x, y) unless flag set; set it on arrival |
 | `$0A` | – | attack whatever is in reach |
 | `$0D` | unit16 | target a unit |
-| `$0E` | unit16, n | follow/target a unit (?) |
+| `$0E` | unit16, n | follow a unit, staying within n |
 | `$15`/`$16` | flag16, bit | set / clear an event flag (`$8699D6` / `$869A13`) |
 | `$17` | – | raid any village |
 | `$18` | – | attack anyone |
 | `$1F` | turn, addr16 | go to once turn ≥ n (turn at `$0D8F`) |
 | `$20`/`$21` | flag16, bit, addr16 | go to if the flag is set / clear (`$868294`) |
-| `$22` | addr16 | go to if `$87:D411` succeeds |
+| `$22` | addr16 | go to if nothing can be attacked this turn (`$87:D411` fails) |
+| `$03` | n | pace: n/256 of its move (0 = full) |
+| `$04` | slot | never attack the player unit in that slot |
+| `$0C` | shape, facing | march in formation |
+| `$0F`/`$10` | – | go back to its castle (always / when no enemy is near) |
+| `$11` | n | go home when under n/256 of its group is on the map |
+| `$1E` | n, word | go home to heal when HP ≤ n/256 |
 | `$23` | ptr24, addr16 | go to if the 65816 routine returns carry |
 
-- **Other arguments:** `$02 $03 $04 $11 $14` take 1 byte, `$0C` 2, `$1E` 3,
-  and `$05 $0B $0F $10 $12 $13 $19 $1A–$1D` none. Their effects aren't
-  identified yet.
-- **Handler details** (decision in `$7E:201A` = action, `$7E:2002` = mode):
+- **Handler details** (v30; decision in `$7E:201A` = action, `$7E:2002` = mode).
+  Handlers return carry set when the unit has its job for the turn, clear to
+  go on to the next command. Settings (`$02 $03 $04 $05 $0C`) always go on.
   - `$00` sets action 0 and stops: the unit does nothing this turn.
+  - `$02 m` sets the mode `$2002`. Known: mode 1 turns into 2 once enemies are
+    in reach (`$86:AF43`, table `$86:AF57`); modes 4 and 5 keep the group's
+    centre where it is (`$86:B090`); 3, 6 and 7 skip a target check in `$86:B7E0`.
+  - `$03 n` = **pace**: `$2008` = move (`$84:9D61`) × n / 256 + 1, or the full
+    move when n = 0. `$86:B0B6` uses it to pick how far the group's centre
+    advances (`$86:A6CD`, `$86:AD5E` → `$2010/$2012`).
+  - `$04 n` = **spare a slot**: `$201E` = n; `$18`'s target loop skips a unit
+    whose `$84:A358` (record +4 & `$7F`, the player army/love slot) equals it.
+    Vanilla: `04 12` (Raquesis) in Eldigan's army, `04 08` Lewyn, `04 17` Aideen, `04 01` Sigurd.
+  - `$05` sets bit 9 of `$7E:2000` (unused in the game; effect unknown).
   - `$06 loc mode` falls through once the castle check (`$84:C15F` ≠ 1) fails,
     i.e. after it is taken; otherwise action 1 toward the castle, mode = arg.
   - `$07 loc mode` only acts while the castle's owner is the unit's army
-    (`$0E7E`); mode 5 runs `$0B`'s handler instead; action 6.
-  - `$02 m` sets `$7E:2002`; `$04 n` sets `$7E:201E`; `$0C a b` sets
-    `$7E:2004` = a and `$7E:2006` = b & 3 and falls through (`$07` sets
-    `$2004` = `$0D` when it is 0).
-  - `$0A`: action 4, mode 4 unless `$87:D411` says otherwise, then `$18`.
-  - `$13`: action 7, mode 5.
-  - Read but not named yet (v26): `$05` sets bit 9 of `$7E:2000`; `$0B` acts (action 5, mode 5)
-    only when `$2000` bit 2 is set; `$0E unit n` aims at the unit's position (action 8,
-    `$201C` = n); `$0F` action 9, mode 2, sets `$2000` bit 8; `$10` action 12, mode 2 while
-    `$7E:5025` = 0; `$11 n` acts (via `$18`'s target code, action 10) when the unit in `$2020` has
-    bit 7 of `$7E:438B` and `$87:D3BD` + 1 < n; `$12` action 11, mode 2; `$14 n` acts on turns
-    that are a multiple of n (calls `$84:C54C` with the army); `$19` sets mode 7 and falls
-    through. The action numbers (`$201A`) still need naming from the code that carries them out.
+    (`$0E7E`); mode 5 runs `$0B` instead; if `$87:D411` finds a target it runs
+    `$18`; otherwise action 6 and, when no formation is set, formation 13 facing 0.
+  - `$0A`: if `$87:D411` finds something attackable this turn, `$18`; else
+    action 4, mode 4 (stay). `$0B`: action 5, mode 5 when `$2000` bit 2 (targets
+    listed) is set, else go on. `$22 addr` jumps when `$87:D411` finds nothing.
+  - `$87:D411` walks the group's target list (`$7E:2022` count, 14-byte
+    entries from `$2024`) through `$87:D45B`; carry set = a target can be hit
+    (index in `$0E82`, sets `$2000` bit 6).
+  - `$0C shape facing` = **formation**: `$2004` = shape, `$2006` = facing & 3.
+    `$87:DA53` places each group member at the centre (`$2010/$2012`) plus an
+    offset: shape table `$87:DCD8` (15 word pointers, then 18 signed x/y byte
+    pairs per shape, indexed by the member's place `$84:C935`), turned by the
+    facing (`$87:DAB0`: 0 = (x, y), 1 = (−y, x), 2 = (−x, −y), 3 = (y, −x)).
+    With members behind the leader (negative y) facing 0 marches south.
+    Not confirmed in game: in a Prologue test (DiMaggio's group, program
+    replaced by `0C s 0` + seize or move-to), shapes 0, 5 and 7 left the
+    group on the same tiles after enemy phase 1. It may only show when the
+    leader is on the map or over several turns.
+  - Tested from power-on (v30): the same group's program set to `00` keeps it
+    at its start tiles; `09` move-to (22,16) moves it toward there.
+  - `$0D unit` aims at the unit (action 3) unless it is off the map (status
+    bit 9) or bit 13. `$0E unit n` follows it (action 8, distance `$201C` = n).
+  - `$0F` = go back to its castle (action 9, mode 2, `$2000` bit 8). Actions
+    9, 10 and 12 head for a castle the army holds (`$86:BD06`: `$84:BE3D` →
+    kind 0) with command 3 (10: `$0D`). `$10` does it only while `$7E:5025` = 0
+    (no enemy near). `$12` attacks via `$18` then action 11 (back toward the
+    target tile).
+  - `$11 n`: when the unit (`$2020`) is on the map and the share of its group
+    still on the map (`$87:D3BD`: units with the same `$84:973F` as `$0E80`,
+    minus those with status bit 9, ×256 / total) + 1 < n: action 10, home.
+  - `$13`: action 7, mode 5 (hold). `$19`: `$18` with mode 7.
+  - `$14 n`: on turns that are multiples of n (`$80:A17E` remainder), if the
+    group is not all on the map, `$84:C54C` runs `$84:A9B6` on every member
+    with status bit 9 (off the map) and `$87:D811` regroups: probably
+    reinforcements.
+  - `$1A`–`$1D` (one handler, `$87:D1FE`): for each enemy in `$7E:5030`
+    (13-byte entries, count `$5025`), count its four neighbours that are free
+    or held by the group; at 3 or more, follow it at distance 1 (close in).
+  - `$1E n w`: when the unit's HP × 256 / max HP − 1 < n, or (status bit 15
+    clear and HP share < word w, `$0100` = not full) → `$18` targets, then `$0F`.
+    Vanilla `1E 4C 00 01`: home to heal at about 30%.
+  - `$23 ptr24 addr` calls the routine and jumps when it returns carry clear.
 - **Unit positions (RAM):** unit object +4 = index i, x = `$7E:441B + i`,
   y = `$7E:44AB + i` (words); +6 army slot, +7 deploy `orders`.
 - **Verified in-game:**

@@ -191,6 +191,22 @@ export async function armiesPage(root) {
       } else if (kind === 'unit') {
         el = h('input', { class: 'in', list: 'arpeople', value: `${personName(v)} (${v})`, 'aria-label': label });
         el.onchange = () => { const n = parseUnit(el.value); if (n === null) { el.classList.add('bad'); toast('Pick someone from the list.', true); return; } write(pos, size, n, el); };
+      } else if (kind === 'formation' || kind === 'facing' || kind === 'slot') {
+        const opts = kind === 'formation' ? A.formations.map((t, i) => [i, `${i}: ${t}`])
+          : kind === 'facing' ? A.facings.map((t, i) => [i, t]) : A.slots.map(([n, t]) => [n, `${t} (slot ${n})`]);
+        el = h('select', { class: 'in', 'aria-label': label }, opts.map(([n, t]) => h('option', { value: n, selected: n === (kind === 'facing' ? v & 3 : v) }, t)),
+          opts.some(([n]) => n === v) || kind === 'facing' ? null : h('option', { value: v, selected: true }, `Value ${v}`));
+        el.onchange = () => write(pos, size, Number(el.value), el);
+      } else if (kind === 'pct' || kind === 'pace') {
+        el = h('input', { class: 'in num', value: Math.round(v * 100 / 256), inputmode: 'numeric', 'aria-label': `${label} (%)`,
+          title: kind === 'pace' ? '0 = its full move' : 'percent' });
+        el.onchange = () => {
+          const n = Number(el.value), lo = kind === 'pace' ? 0 : 1;
+          if (!Number.isInteger(n) || n < lo || n > 99) { el.classList.add('bad'); toast(`Enter ${lo} to 99 (%).`, true); return; }
+          write(pos, size, Math.min(255, Math.round(n * 256 / 100)), el);
+        };
+        box.append(h('label', { class: 'lbl' }, h('span', {}, `${label} %`), el));
+        continue;
       } else {
         el = h('input', { class: 'in num', value: v, inputmode: 'numeric', 'aria-label': label });
         el.onchange = () => { const n = Number(el.value); if (!Number.isInteger(n) || n < 0 || n > 255) { el.classList.add('bad'); toast('Enter 0 to 255.', true); return; } write(pos, size, n, el); };
@@ -208,6 +224,13 @@ export async function armiesPage(root) {
     const unit = h('input', { class: 'in', list: 'arpeople', placeholder: 'Name', 'aria-label': 'Who' });
     const turn = h('input', { class: 'in num', placeholder: 'now', inputmode: 'numeric', 'aria-label': 'Starting on turn' });
     const wait = h('select', { class: 'in', 'aria-label': 'Until then' }, h('option', { value: 'reach' }, 'attack only what comes in reach'), h('option', { value: 'stay' }, 'stay put'));
+    const form = h('select', { class: 'in', 'aria-label': 'Formation' }, h('option', { value: '' }, 'game default'),
+      A.formations.map((t, i) => i ? h('option', { value: i }, t) : null));
+    const facing = h('select', { class: 'in', 'aria-label': 'Facing' }, A.facings.map((t, i) => h('option', { value: i }, t)));
+    const spare = h('select', { class: 'in', 'aria-label': 'Never attack' }, h('option', { value: '' }, 'nobody spared'),
+      A.slots.map(([n, t]) => h('option', { value: n }, t)));
+    const retreat = h('input', { class: 'in num', placeholder: 'never', inputmode: 'numeric', 'aria-label': 'Go home to heal at HP %' });
+    const facingL = h('label', { class: 'lbl' }, h('span', {}, 'Facing'), facing);
     const castleL = h('label', { class: 'lbl' }, h('span', {}, 'Castle'), castle);
     const unitL = h('label', { class: 'lbl' }, h('span', {}, 'Who'), unit);
     const waitL = h('label', { class: 'lbl' }, h('span', {}, 'Until then'), wait);
@@ -215,20 +238,31 @@ export async function armiesPage(root) {
       castleL.hidden = !['seize', 'guard'].includes(act.value);
       unitL.hidden = act.value !== 'attack_unit';
       waitL.hidden = !turn.value.trim();
+      facingL.hidden = !form.value;
     };
-    act.onchange = turn.oninput = sync; sync();
+    act.onchange = turn.oninput = form.onchange = sync; sync();
     const goBtn = h('button', { class: 'btn btn-gilt' }, 'Rewrite program');
     goBtn.onclick = async () => {
       const body = { army: a.army, k: p.k, action: act.value };
       if (!castleL.hidden) body.castle = Number(castle.value);
       if (!unitL.hidden) { const n = parseUnit(unit.value); if (n === null) { toast('Pick who to go after.', true); return; } body.unit = n; }
       if (turn.value.trim()) { body.until_turn = Number(turn.value); body.wait = wait.value; }
+      if (form.value) { body.formation = Number(form.value); body.facing = Number(facing.value); }
+      if (spare.value) body.spare = Number(spare.value);
+      if (retreat.value.trim()) {
+        const n = Number(retreat.value);
+        if (!Number.isInteger(n) || n < 1 || n > 99) { toast('Heal at 1 to 99% HP, or leave it empty.', true); return; }
+        body.retreat = n;
+      }
       try { await api('airecipe', body); await refreshSession(); toast(`Program ${p.k} rewritten`); await load(); }
       catch (e) { toast(e.message, true); }
     };
     const others = a.units.length ? '' : ' (no units use it in this chapter; other chapters may)';
     box.append(h('div', { class: 'itgrid wide' }, h('label', { class: 'lbl' }, h('span', {}, 'What it does'), act), castleL, unitL,
-      h('label', { class: 'lbl' }, h('span', {}, 'Starting on turn'), turn), waitL),
+      h('label', { class: 'lbl' }, h('span', {}, 'Starting on turn'), turn), waitL,
+      h('label', { class: 'lbl' }, h('span', {}, 'Marching formation'), form), facingL,
+      h('label', { class: 'lbl' }, h('span', {}, 'Never attack'), spare),
+      h('label', { class: 'lbl' }, h('span', {}, 'Go home to heal at HP %'), retreat)),
       h('p', { class: 'hint' }, `Replaces all the steps above for every unit with program ${p.k}${others}. Undo puts them back.`), goBtn);
     return box;
   }
