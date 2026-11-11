@@ -45,6 +45,19 @@ default browser). The editor runs on your PC only: nothing is sent anywhere.
    - The terrain comes with the tile: painting water makes the cell water
      for the game too. **Show → Terrain** colours the map by terrain; the
      status line under the map names the terrain under the pointer.
+   - **Edit tile…** (on the Tiles panel, or for the cell you clicked) shows a
+     tile large with how many cells use it.
+     - **Terrain in this chapter** changes what the game thinks the tile is
+       (make a decorative tile a forest, a wall passable…), for every tile.
+     - **Replace drawing…** redraws one of the chapter's own tiles (0–255)
+       from a picture: 16 × 16 pixels, or bigger pixel art (2× to 8×), or any
+       picture (it is shrunk). Colours become the nearest of the chapter's map
+       palettes. Each 8 × 8 quarter that isn't already in the chapter needs
+       one of its free 8 × 8 tiles, and chapters have only a few (the dialog
+       says how many are left), so drawings that reuse the map's own grass,
+       water or walls fit best. Redrawing a tile the map doesn't use frees
+       its quarters. Tiles 256–1023 are shared by every chapter and can't be
+       redrawn.
    - Units come onto the map in groups (deploy lists) as the chapter goes on;
      the **Units** panel shows or hides each group.
    - **Event areas** outlines each area event of the chapter (*Sigurd
@@ -249,6 +262,8 @@ runs this randomizer from its own menu (Mods → Randomizer).
 | `locations.csv` | 132 | Every castle and village: position, castle name, castle-town facilities, armory stock, village gold |
 | `arena.csv` | 71 | Arena opponents for each chapter and rank |
 | `talks.csv` | 42 | Each chapter's Talk menu: which unit can Talk to which, until which event flag is set |
+| `map_terrain.csv` | 12,288 | The terrain type of each chapter's 1024 tiles |
+| `maps/tiles/<map>/tNNN.png` | – | Your own drawings for a chapter's tile NNN (0–255), 16 × 16 or bigger pixel art; only redrawn ones exist |
 | `map_sprites.csv` | 119 | Which map sprite each class uses (`S0`–`S62` on foot, `T0`–`T30` mounted/flying), with the per-gender and per-character entries; the number of entries per class is fixed |
 | `sprites/sNN.png`, `sprites/tNN.png` | – | Your own drawings for map sprites (48 × 16 or 48 × 24, the map palette's colours); only replaced ones exist |
 | `portraits/pNNN.png` | – | Your own pictures for portrait NNN (80 × 64 sheet or 48 × 64 face, 15 colours + transparency); only replaced ones exist |

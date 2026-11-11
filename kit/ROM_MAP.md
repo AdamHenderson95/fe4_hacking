@@ -462,6 +462,16 @@ Map headers are 12 records of 27 bytes. The pointer table is at `$88:9FC3` (file
   types have no text there. The editor names the others from how they look (8 desert, 9 castle,
   13 castle walls, 14 wasteland, 15 bridge, 18 houses, 22 village, 25 road…).
 
+### Redrawing tiles (kit v24)
+
+- Metatile words: tile (10 bits), palette row << 10, h-flip `$4000`, v-flip `$8000`; the priority
+  bit is never set. Chapter metatiles use rows 1–5 (row 0 = `PAL0` rarely).
+- Chapter 8×8 tiles 640–767: 106–125 are used by the chapter's metatiles (17 of them by shared
+  metatiles), leaving 3–22 free per chapter.
+- Verified: Prologue tile 66 redrawn from a picture (4 new 8×8 tiles, grass reproduced by
+  colour matching) shows on all 50 cells; its terrain set to Peak (0) takes those cells out of
+  Sigurd's move range. The kit recompresses the chapter's +3, +6 and +24 data into free space.
+
 ### Compression
 
 The decompressor is `$80:AA02`. `$80:A9F2` is a second entry that sets `$D2` = 1 and starts the

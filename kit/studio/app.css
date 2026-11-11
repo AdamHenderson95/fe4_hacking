@@ -544,3 +544,11 @@ textarea.fe4box.bad { border-color: #E1606F; }
 .spcell canvas { min-height: 48px; display: flex; align-items: flex-end; }
 .spcell:hover { border-color: #fff; }
 .spcell[aria-pressed="true"] { box-shadow: 0 0 0 3px var(--gilt); }
+
+/* map tile dialog */
+.mtile-edit { margin-left: auto; padding: 3px 10px; font-size: 13px; }
+.mtile-row { display: flex; gap: 20px; align-items: flex-start; flex-wrap: wrap; margin-bottom: 8px; }
+.mtile-big { image-rendering: pixelated; border-radius: var(--r-sm); box-shadow: 0 0 0 1px rgba(0,0,0,.2); }
+.mtile-info { display: flex; flex-direction: column; gap: 8px; min-width: 220px; flex: 1; }
+.mtile-info .sub { margin: 0; color: var(--muted); }
+.mtile-info .chip { align-self: flex-start; cursor: default; }

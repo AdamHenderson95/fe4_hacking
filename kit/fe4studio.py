@@ -36,10 +36,11 @@ import fe4maps                     # noqa: E402
 import fe4events                   # noqa: E402
 import fe4locations                # noqa: E402
 import fe4sprites                  # noqa: E402
+import fe4maptiles                 # noqa: E402
 from fe4project import Project, load_settings, save_settings   # noqa: E402
 
 APP = 'Builder of the Holy War'
-VERSION = '23'
+VERSION = '24'
 STATIC = os.path.join(KIT, 'studio')
 
 # ---------------------------------------------------------------- state
@@ -92,6 +93,8 @@ def open_project(d):
                                            else 'exported by an older kit and edited since; re-export it'))
         if not os.path.exists(os.path.join(d, 'talks.csv')):     # kits before v19 had no Talk lists
             fe4locations.export_talks(rom, os.path.join(d, 'talks.csv'))
+        if not os.path.exists(os.path.join(d, 'map_terrain.csv')):   # kits before v24
+            fe4maptiles.export_terrain(rom, os.path.join(d, 'map_terrain.csv'))
         if not os.path.exists(os.path.join(d, 'map_sprites.csv')):   # kits before v23
             import fe4hack
             names = [r.get('_name', '') for r in csv.DictReader(open(os.path.join(d, 'classes.csv'), newline=''))] \
@@ -159,7 +162,7 @@ def port_exe():
 
 # ---------------------------------------------------------------- data for the pages
 TABLES = {'units_playable', 'units_children', 'units_npc', 'units_generic', 'classes', 'items', 'rings',
-          'item_instances', 'skills', 'names', 'lovers', 'gen2_rules', 'deploy', 'locations', 'arena', 'armies', 'talks', 'map_sprites'}
+          'item_instances', 'skills', 'names', 'lovers', 'gen2_rules', 'deploy', 'locations', 'arena', 'armies', 'talks', 'map_sprites', 'map_terrain'}
 
 
 def unit_portrait(table, row):
@@ -331,6 +334,10 @@ def check_value(table, field, value):
         if len(set(parts)) != len(parts):
             raise ValueError('Each item copy exists once, so a shop can\'t sell the same copy twice.')
         return ';'.join(parts), None
+    if table == 'map_terrain' and field == 'terrain':
+        if not v.isdigit() or not 0 <= int(v) <= 255:
+            raise ValueError('Terrain is a number from 0 to 255.')
+        return str(int(v)), None
     if table == 'map_sprites' and field == 'sprite':
         try:
             return fe4sprites.sprite_name(fe4sprites.parse_sprite(v)), None
@@ -438,7 +445,21 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(404, 'no')
             if rom is None or not 0 <= ch < fe4maps.MAP_COUNT:
                 return self._send(404, 'no')
-            return self._send(200, fe4gfx.map_atlas(rom, ch)[0], 'image/png', cache=True)
+            if tiles_version(ch) == 'rom':
+                return self._send(200, fe4gfx.map_atlas(rom, ch)[0], 'image/png', cache=True)
+            g = chapter_gfx(ch)
+            return self._send(200, g.atlas_png(), 'image/png', cache='c' in parse_qs(u.query))
+        if path.startswith('/gfx/tile/'):
+            q = parse_qs(u.query)
+            try:
+                _, _, _, ch, k = path.split('.')[0].split('/')
+                ch, k = int(ch), int(k)
+                scale = max(1, min(int(q.get('s', ['1'])[0]), 16))
+            except ValueError:
+                return self._send(404, 'no')
+            if rom_data() is None or not 0 <= ch < fe4maps.MAP_COUNT or not 0 <= k < 1024:
+                return self._send(404, 'no')
+            return self._send(200, chapter_gfx(ch).metatile_png(k, scale), 'image/png', cache='c' in q)
         # static files
         if path in ('/', ''):
             path = '/index.html'
@@ -753,7 +774,9 @@ def api_map(b, q):
     if m is None:
         raise KeyError(f'no map for chapter {ch}')
     rom = rom_data()
-    terrain = fe4gfx.map_atlas(rom, ch)[1] if rom is not None else [0] * 1024
+    terrain = list(fe4gfx.map_atlas(rom, ch)[1]) if rom is not None else [0] * 1024
+    for k, t_ in chapter_terrain(ch).items():
+        terrain[k] = t_
     # castles and villages
     locs = []
     lt = p.table('locations')
@@ -805,7 +828,8 @@ def api_map(b, q):
     return {'ch': ch, 'title': CHAPTER_TITLES[ch] if ch < len(CHAPTER_TITLES) else '', 'width': m.WIDTH,
             'height': (len(m.words) + m.WIDTH - 1) // m.WIDTH, 'words': m.words, 'terrain': terrain,
             'terrainNames': {str(k): v for k, v in TERRAIN_NAMES.items()}, 'impassable': sorted(IMPASSABLE),
-            'locations': locs, 'deploy': [lists[k] for k in sorted(lists)], 'areas': chapter_areas(ch)}
+            'locations': locs, 'deploy': [lists[k] for k in sorted(lists)], 'areas': chapter_areas(ch),
+            'tilesVer': tiles_version(ch)}
 
 
 def chapter_areas(ch):
@@ -2003,6 +2027,99 @@ def api_mapsprite(b, q):
     return {'ok': True}
 
 
+# ---------------------------------------------------------------- map tiles
+_gfx_cache = {}
+
+
+def chapter_terrain(ch):
+    """{metatile: terrain} from map_terrain.csv for chapter ch (all 1024 when the table is there)."""
+    p = project()
+    t = p.table('map_terrain') if p else None
+    if t is None:
+        return {}
+    out = {}
+    for r in t.rows[ch * 1024:(ch + 1) * 1024]:
+        if r.get('chapter') == str(ch) and r.get('terrain', '').isdigit():
+            out[int(r['tile'])] = int(r['terrain'])
+    return out
+
+
+def chapter_drawings(ch):
+    p = project()
+    if p is None:
+        return {}
+    out = {}
+    d = os.path.join(p.path, 'maps', 'tiles', fe4maps.MAP_NAMES[ch])
+    names = set(os.listdir(d)) if os.path.isdir(d) else set()
+    names |= {rel.rsplit('/', 1)[1] for rel in p.blobs if rel.startswith(f'maps/tiles/{fe4maps.MAP_NAMES[ch]}/')}
+    for f in names:
+        m = re.fullmatch(r't(\d{3})\.png', f)
+        if m:
+            data = p.blob(fe4maptiles.drawing_file(ch, int(m.group(1)))).data
+            if data is not None:
+                out[int(m.group(1))] = data
+    return out
+
+
+def tiles_version(ch):
+    dr = chapter_drawings(ch)
+    if not dr:
+        return 'rom'
+    return '%08x' % zlib.crc32(b''.join(b'%d:' % k + dr[k] for k in sorted(dr)))
+
+
+def chapter_gfx(ch, drawings=None):
+    """The chapter's tiles with the project's drawings (terrain from the table)."""
+    rom = rom_data()
+    dr = chapter_drawings(ch) if drawings is None else drawings
+    key = (id(rom), ch, tiles_version(ch) if drawings is None else 'x')
+    if drawings is None and key in _gfx_cache:
+        g = _gfx_cache[key]
+    else:
+        g = fe4maptiles.load_project(rom, None, ch, None, dr)
+        if drawings is None:
+            _gfx_cache.clear()
+            _gfx_cache[key] = g
+    return g
+
+
+def api_tileinfo(b, q):
+    p = need_project()
+    ch, k = int(q['ch'][0]), int(q['k'][0])
+    m = p.map(ch)
+    g = chapter_gfx(ch)
+    terr = chapter_terrain(ch)
+    custom = k in chapter_drawings(ch)
+    used = sum(1 for w in m.words if w & 0x3FF == k)
+    rom = rom_data()
+    orig = fe4maptiles.ChapterGfx(rom, ch).terrain[k] if rom is not None else 0
+    return {'ch': ch, 'k': k, 'own': k < 256, 'onMap': used, 'terrain': terr.get(k, g.terrain[k]), 'origTerrain': orig,
+            'row': ch * 1024 + k, 'custom': custom, 'free': len(g.free_tiles()), 'ver': tiles_version(ch)}
+
+
+def api_tiledraw(b, q):
+    """Redraw chapter tile k from a PNG (base64), or {reset: true}.  One undo step."""
+    import base64
+    p = need_project()
+    ch, k = int(b['ch']), int(b['k'])
+    if not 0 <= ch < fe4maps.MAP_COUNT or not 0 <= k < 256:
+        raise ValueError('Only the chapter\'s own tiles (0-255) can be redrawn; 256-1023 are shared by every chapter.')
+    rel = fe4maptiles.drawing_file(ch, k)
+    if b.get('reset'):
+        p.set_blob(rel, None)
+        return {'ok': True}
+    data = base64.b64decode(b['png'])
+    try:
+        fe4maptiles.rgba_from_png(data)
+        dr = dict(chapter_drawings(ch))
+        dr[k] = data
+        g = chapter_gfx(ch, dr)          # raises when the chapter runs out of 8x8 tiles
+    except ValueError as e:
+        raise ValueError(str(e))
+    p.set_blob(rel, data)
+    return {'ok': True, 'free': len(g.free_tiles())}
+
+
 API = {('GET', 'session'): api_session, ('POST', 'ping'): api_ping, ('GET', 'table'): api_table,
        ('POST', 'tables'): api_tables, ('POST', 'set'): api_set, ('POST', 'undo'): api_undo,
        ('POST', 'redo'): api_redo, ('POST', 'save'): api_save, ('POST', 'open'): api_open,
@@ -2013,7 +2130,7 @@ API = {('GET', 'session'): api_session, ('POST', 'ping'): api_ping, ('GET', 'tab
        ('GET', 'chapters'): api_chapters, ('GET', 'scene'): api_scene, ('POST', 'messages'): api_messages,
        ('POST', 'msg'): api_msg, ('POST', 'evtcmd'): api_evtcmd, ('GET', 'dsearch'): api_dsearch, ('GET', 'villages'): api_villages, ('GET', 'itemuse'): api_itemuse, ('POST', 'newevent'): api_newevent, ('POST', 'talkmenu'): api_talkmenu, ('POST', 'delstep'): api_delstep,
        ('POST', 'addstep'): api_addstep, ('GET', 'eventinfo'): api_eventinfo, ('GET', 'maps'): api_maps, ('GET', 'map'): api_map, ('POST', 'paint'): api_paint,
-       ('GET', 'armies'): api_armies, ('GET', 'portraits'): api_portraits, ('GET', 'mapsprites'): api_mapsprites, ('POST', 'mapsprite'): api_mapsprite, ('POST', 'portrait'): api_portrait, ('POST', 'aicmd'): api_aicmd, ('POST', 'airecipe'): api_airecipe}
+       ('GET', 'armies'): api_armies, ('GET', 'portraits'): api_portraits, ('GET', 'mapsprites'): api_mapsprites, ('GET', 'tileinfo'): api_tileinfo, ('POST', 'tiledraw'): api_tiledraw, ('POST', 'mapsprite'): api_mapsprite, ('POST', 'portrait'): api_portrait, ('POST', 'aicmd'): api_aicmd, ('POST', 'airecipe'): api_airecipe}
 
 
 # ---------------------------------------------------------------- window

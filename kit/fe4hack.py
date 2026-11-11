@@ -20,6 +20,7 @@ import fe4maps as MP
 import fe4locations as LOC
 import fe4gfx as GFX
 import fe4sprites as SPR
+import fe4maptiles as MT
 import fe4armies as AR
 import fe4names as NM
 import fe4skills as SK
@@ -90,6 +91,7 @@ def extract(rom_path, proj):
     LOC.export_arena(rom, os.path.join(proj, 'arena.csv'))
     LOC.export_talks(rom, os.path.join(proj, 'talks.csv'))
     export_map_sprites(rom, proj, cnames)
+    MT.export_terrain(rom, os.path.join(proj, 'map_terrain.csv'))
     AR.export(rom, proj)
     G2.export(rom, proj)
     NM.export(rom, os.path.join(proj, 'names.csv'))
@@ -339,6 +341,7 @@ def build(rom_path, proj, out_path, ips=None, hover=False):
     n += EV.apply_events(rom, os.path.join(proj, 'events'), space, far)
     n += G2.apply_scenes(rom, proj, space, far)     # after the project's own scripts
     n += MP.apply_maps(rom, os.path.join(proj, 'maps'), far)
+    n += MT.apply(rom, proj, far)
     n += GFX.apply_portraits(rom, os.path.join(proj, 'portraits'), far)
     n += SPR.apply(rom, proj)
     n += NM.apply(rom, os.path.join(proj, 'names.csv'), far, space)

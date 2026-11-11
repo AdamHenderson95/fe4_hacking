@@ -143,8 +143,9 @@ Making hacks: fe4kit
 --------------------
 The fe4kit folder has BuilderOfTheHolyWar.exe, the editor for making your
 own FE4 hacks: characters with their portraits, stats, holy blood, items and
-skills; classes; chapter maps (paint them with the game's tiles, drag
-castles, villages and units into place); chapter events and all the
+skills; classes; chapter maps (paint them with the game's tiles, redraw
+tiles and change their terrain, drag castles, villages and units into
+place); chapter events and all the
 dialogue (speech bubbles with portraits), including new talks, turn
 events, village visits and battle quotes; weapons, rings, shops,
 villages and the arena; the enemy armies and what their units do; and

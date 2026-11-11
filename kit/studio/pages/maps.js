@@ -1,5 +1,5 @@
 // Maps: paint chapter maps with the game's own tiles; drag castles, villages and units into place.
-import { api, h, app, toast, refreshSession, go } from '../app.js';
+import { api, h, app, toast, refreshSession, go, setField } from '../app.js';
 import { openEventAt } from './events.js';
 
 const TOOLS = [
@@ -74,7 +74,8 @@ export async function mapsPage(root) {
   const terrainSel = h('select', { class: 'in', 'aria-label': 'Show tiles of terrain' });
   const stampInfo = h('span', { class: 'note' });
   const palette = h('section', { class: 'mpanel' },
-    h('div', { class: 'mpanel-head' }, h('h3', {}, 'Tiles'), stampInfo),
+    h('div', { class: 'mpanel-head' }, h('h3', {}, 'Tiles'), stampInfo,
+      h('button', { class: 'btn btn-line mtile-edit', title: 'Redraw the selected tile or change its terrain', onclick: () => tileDialog(st.stamp.tiles[0]) }, 'Edit tile…')),
     h('div', { class: 'mpal-tools' }, terrainSel,
       h('button', { class: 'btn btn-line', title: 'Palette size', onclick: () => { st.palZoom = st.palZoom === 1 ? 2 : 1; drawPalette(); } }, '1× / 2×')),
     h('div', { class: 'mpal-wrap' }, h('div', { class: 'mpal-stage' }, palCanvas, palOver)),
@@ -92,7 +93,7 @@ export async function mapsPage(root) {
   async function load() {
     view.classList.add('loading');
     M = await api('map?ch=' + st.ch);
-    atlas = await loadImage(`/gfx/tiles/${st.ch}.png`);
+    atlas = await loadImage(`/gfx/tiles/${st.ch}.png${M.tilesVer && M.tilesVer !== 'rom' ? '?c=' + M.tilesVer : ''}`);
     view.classList.remove('loading');
     const used = [...new Set(M.terrain)].sort((a, b) => a - b);
     terrainSel.replaceChildren(h('option', { value: '' }, 'All terrain'),
@@ -318,12 +319,71 @@ export async function mapsPage(root) {
       inspector.append(h('div', { class: 'mins-head' }, c,
         h('div', {}, h('h3', {}, terrainName(t)), h('p', { class: 'note', style: 'margin:0' }, `Cell ${sel.x}, ${sel.y} · tile ${k}${w >> 10 ? ` · area flags ${w >> 10}` : ''}`),
           M.impassable.includes(t) ? h('p', { class: 'note', style: 'margin:0' }, 'Most units can\'t enter this terrain.') : null)),
-      h('button', { class: 'btn btn-line', onclick: () => { setStamp({ w: 1, h: 1, tiles: [k] }); setTool('brush'); } }, 'Paint with this tile'));
+      h('div', { style: 'display:flex;gap:8px;flex-wrap:wrap' },
+        h('button', { class: 'btn btn-line', onclick: () => { setStamp({ w: 1, h: 1, tiles: [k] }); setTool('brush'); } }, 'Paint with this tile'),
+        h('button', { class: 'btn btn-line', onclick: () => tileDialog(k) }, 'Edit this tile…')));
       return;
     }
     inspector.append(h('h3', {}, M.title),
       h('p', { class: 'hint', style: 'margin:0' }, `${M.width} × ${M.height} cells · ${M.locations.length} castles and villages · ${M.deploy.reduce((n, l) => n + l.units.length, 0)} deployed units`),
       h('p', { class: 'hint', style: 'margin:6px 0 0' }, 'Click a castle, village or unit to edit it, or drag it to a new spot. Paint (B) changes the ground; right-click picks the tile under the pointer.'));
+  }
+
+  // ------------------------------------------------------------ one tile: terrain and drawing
+  async function tileDialog(k) {
+    let T;
+    try { T = await api(`tileinfo?ch=${st.ch}&k=${k}`); } catch (e) { toast(e.message, true); return; }
+    document.querySelector('.modal.mtile')?.remove();
+    const img = h('img', { class: 'mtile-big', src: `/gfx/tile/${st.ch}/${k}.png?s=8&c=${T.ver}`, alt: `Tile ${k}`, width: 128, height: 128 });
+    const names = Object.entries(M.terrainNames).map(([t, n]) => [Number(t), n]);
+    if (!names.some(([t]) => t === T.terrain)) names.push([T.terrain, `Terrain ${T.terrain}`]);
+    names.sort((a, b) => a[0] - b[0]);
+    const terr = h('select', { class: 'in', 'aria-label': 'Terrain' }, names.map(([t, n]) => h('option', { value: t, selected: t === T.terrain }, `${n} (${t})`)));
+    terr.onchange = async () => {
+      try { await setField('map_terrain', T.row, 'terrain', terr.value); await refreshSession(); await reloadData(); toast(`Tile ${k} is now ${terrainName(Number(terr.value))}`); }
+      catch (e) { toast(e.message, true); }
+    };
+    const file = h('input', { type: 'file', accept: 'image/*', hidden: true });
+    const send = async (body, msg) => {
+      try { await api('tiledraw', { ch: st.ch, k, ...body }); await refreshSession(); modal.remove(); await load(); toast(msg); }
+      catch (e) { toast(e.message, true); }
+    };
+    file.onchange = () => {
+      const f = file.files[0]; file.value = '';
+      if (!f) return;
+      const u = URL.createObjectURL(f), im = new Image();
+      im.onerror = () => { URL.revokeObjectURL(u); toast('That file isn\'t a picture the browser can open.', true); };
+      im.onload = () => {
+        URL.revokeObjectURL(u);
+        const c = document.createElement('canvas'); c.width = 16; c.height = 16;
+        const ctx = c.getContext('2d');
+        const pixel = im.width % 16 === 0 && im.width === im.height;   // pixel art at 1x-8x: keep it sharp
+        ctx.imageSmoothingEnabled = !pixel;
+        const sz = Math.min(im.width, im.height);
+        ctx.drawImage(im, (im.width - sz) / 2, (im.height - sz) / 2, sz, sz, 0, 0, 16, 16);
+        send({ png: c.toDataURL('image/png').split(',')[1] }, `Tile ${k} redrawn (Ctrl+Z undoes it)`);
+      };
+      im.src = u;
+    };
+    const modal = h('div', { class: 'modal mtile', role: 'dialog', 'aria-modal': 'true', 'aria-label': `Tile ${k}` },
+      h('div', { class: 'modal-box' }, h('h2', {}, `Tile ${k}`),
+        h('div', { class: 'mtile-row' }, img, h('div', { class: 'mtile-info' },
+          h('p', { class: 'sub' }, T.onMap ? `On ${T.onMap} cell${T.onMap === 1 ? '' : 's'} of this map.` : 'Not on this map (the chapter may still use it later, e.g. for a destroyed village).'),
+          h('label', { class: 'lbl' }, h('span', {}, 'Terrain in this chapter'), terr),
+          T.terrain !== T.origTerrain ? h('p', { class: 'hint' }, `Originally ${terrainName(T.origTerrain)}.`) : null,
+          T.custom ? h('span', { class: 'chip' }, 'Redrawn in this project') : null)),
+        T.own
+          ? h('div', {},
+            h('div', { class: 'ptactions' },
+              h('button', { class: 'btn btn-gilt', onclick: () => file.click() }, 'Replace drawing…'),
+              h('a', { class: 'btn btn-line', href: `/gfx/tile/${st.ch}/${k}.png?s=1&c=${T.ver}`, download: `${M.title.split(':')[0].replace(/\W+/g, '_')}_tile_${k}.png` }, 'Download PNG'),
+              T.custom ? h('button', { class: 'btn btn-line danger', onclick: () => send({ reset: true }, `Tile ${k} is the game's drawing again`) }, 'Use the original') : null, file),
+            h('p', { class: 'hint' }, `A tile is 16 × 16 pixels (2× to 8× pixel art works too). Colours become the nearest of the chapter's map palettes. `,
+              `Each 8 × 8 quarter that doesn't match one already in the chapter takes one of its free 8 × 8 tiles: ${T.free} left. Redrawing a tile that isn't on the map frees its quarters.`))
+          : h('p', { class: 'hint' }, 'This tile is shared by every chapter, so its drawing can\'t be changed here; its terrain above is this chapter\'s own. To draw a new tile, redraw one of tiles 0–255 that this map doesn\'t use.'),
+        h('div', { class: 'modal-actions' }, h('button', { class: 'btn btn-line', onclick: () => modal.remove() }, 'Close'))));
+    modal.addEventListener('keydown', e => { if (e.key === 'Escape') modal.remove(); });
+    document.body.append(modal);
   }
 
   // ------------------------------------------------------------ edits
@@ -343,7 +403,7 @@ export async function mapsPage(root) {
     const sameWords = fresh.words.length === M.words.length && fresh.words.every((w, i) => w === M.words[i]);
     M = fresh;
     if (!sameWords) drawBase();
-    drawOverlay(); drawObjects(); drawLists(); drawInspector();
+    drawOverlay(); drawObjects(); drawLists(); drawInspector(); drawPalette();
     await refreshSession();
   }
 
@@ -565,7 +625,8 @@ export async function mapsPage(root) {
   return {
     async refresh(change) {
       if (!M) return;
-      if (!change || change.maps?.includes(M.ch) || change.tables?.some(t => t === 'deploy' || t === 'locations')) await reloadData();
+      if (change?.files?.some(f => f.startsWith('maps/tiles/'))) { await load(); return; }
+      if (!change || change.maps?.includes(M.ch) || change.tables?.some(t => t === 'deploy' || t === 'locations' || t === 'map_terrain')) await reloadData();
     },
   };
 }

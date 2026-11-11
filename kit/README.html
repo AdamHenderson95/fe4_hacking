@@ -50,6 +50,21 @@ default browser). The editor runs on your PC only: nothing is sent anywhere.
 <li>The terrain comes with the tile: painting water makes the cell water
      for the game too. <strong>Show → Terrain</strong> colours the map by terrain; the
      status line under the map names the terrain under the pointer.</li>
+<li><strong>Edit tile…</strong> (on the Tiles panel, or for the cell you clicked) shows a
+     tile large with how many cells use it.<ul>
+<li><strong>Terrain in this chapter</strong> changes what the game thinks the tile is
+   (make a decorative tile a forest, a wall passable…), for every tile.</li>
+<li><strong>Replace drawing…</strong> redraws one of the chapter's own tiles (0–255)
+   from a picture: 16 × 16 pixels, or bigger pixel art (2× to 8×), or any
+   picture (it is shrunk). Colours become the nearest of the chapter's map
+   palettes. Each 8 × 8 quarter that isn't already in the chapter needs
+   one of its free 8 × 8 tiles, and chapters have only a few (the dialog
+   says how many are left), so drawings that reuse the map's own grass,
+   water or walls fit best. Redrawing a tile the map doesn't use frees
+   its quarters. Tiles 256–1023 are shared by every chapter and can't be
+   redrawn.</li>
+</ul>
+</li>
 <li>Units come onto the map in groups (deploy lists) as the chapter goes on;
      the <strong>Units</strong> panel shows or hides each group.</li>
 <li><strong>Event areas</strong> outlines each area event of the chapter (<em>Sigurd
@@ -370,6 +385,16 @@ runs this randomizer from its own menu (Mods → Randomizer).</p>
 <td><code>talks.csv</code></td>
 <td>42</td>
 <td>Each chapter's Talk menu: which unit can Talk to which, until which event flag is set</td>
+</tr>
+<tr>
+<td><code>map_terrain.csv</code></td>
+<td>12,288</td>
+<td>The terrain type of each chapter's 1024 tiles</td>
+</tr>
+<tr>
+<td><code>maps/tiles/&lt;map&gt;/tNNN.png</code></td>
+<td>–</td>
+<td>Your own drawings for a chapter's tile NNN (0–255), 16 × 16 or bigger pixel art; only redrawn ones exist</td>
 </tr>
 <tr>
 <td><code>map_sprites.csv</code></td>
