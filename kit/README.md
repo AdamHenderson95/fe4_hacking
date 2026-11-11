@@ -123,16 +123,29 @@ default browser). The editor runs on your PC only: nothing is sent anywhere.
    - **Units on the map**: every deployed unit of the army, grouped by
      deploy list, with the program it follows. **Set all to…** changes a
      whole list at once.
-8. Changes are checked as you type (a value out of range turns red and
+8. **Portraits**: all 247 faces with who uses each one (units, generic
+   classes, people who only speak). Pick one to see it large, with a
+   talking preview.
+   - **Replace with a picture…** takes any image. It is fitted to 48 × 64
+     (fill and crop, or fit inside) and reduced to the 15 colours a
+     portrait can have. The colour in the corners becomes transparent
+     unless you keep the background.
+   - **Download PNG** gives the 80 × 64 sheet: the face, plus the two
+     talking-mouth frames at the right (each is the face's 32 × 16 block at
+     the left, 32 pixels down, with the mouth open). Edit it and replace
+     with it to draw your own talking frames.
+   - **Use the original** goes back to the game's picture. On a character's
+     sheet, **Change picture** opens that character's portrait.
+9. Changes are checked as you type (a value out of range turns red and
    says why). **Undo / Redo** (Ctrl+Z / Ctrl+Y) cover every change (a whole
    paint stroke or fill is one step); **Save** (Ctrl+S) writes the project
    files.
-9. **Build ROM** writes the hacked ROM plus a shareable `.ips` patch next to
+10. **Build ROM** writes the hacked ROM plus a shareable `.ips` patch next to
    the project folder. **Test play** (F6) builds it and opens it straight
    away in the FE4 PC port (FE4Port.zip), without your mods and with its own
    saves. The editor finds FE4.exe when the kit sits in the port's `fe4kit`
    folder (as it comes in FE4Port.zip) or next to it; otherwise it asks once.
-10. On the Project page, **Add unit stats to the map box** puts the PC port's
+11. On the Project page, **Add unit stats to the map box** puts the PC port's
    MT / HIT / AS / AVO box into the ROMs and patches you build, so players
    on emulators get it too (the port can still switch it off).
 
@@ -224,6 +237,7 @@ runs this randomizer from its own menu (Mods → Randomizer).
 | `locations.csv` | 132 | Every castle and village: position, castle name, castle-town facilities, armory stock, village gold |
 | `arena.csv` | 71 | Arena opponents for each chapter and rank |
 | `talks.csv` | 42 | Each chapter's Talk menu: which unit can Talk to which, until which event flag is set |
+| `portraits/pNNN.png` | – | Your own pictures for portrait NNN (80 × 64 sheet or 48 × 64 face, 15 colours + transparency); only replaced ones exist |
 | `armies.csv` | 72 | Every army: name, member units, castles it holds |
 | `ai_orders.evt` | 737 | Enemy AI programs: which castle to seize, which turn to march, what to attack |
 | `skills.csv` | 29+ | Every skill: who has it, activation rates and effect numbers, plus new skills from later games (Aether, Galeforce, Great Shield…) with their Skills-menu entries |

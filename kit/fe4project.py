@@ -86,6 +86,31 @@ class MapGrid:
         self._saved = list(self.words)
 
 
+class BlobFile:
+    """A binary file in the project (e.g. portraits/p012.png); data None = no file."""
+
+    def __init__(self, path):
+        self.path = path
+        self.data = open(path, 'rb').read() if os.path.exists(path) else None
+        self._saved = self.data
+
+    @property
+    def dirty(self):
+        return self.data != self._saved
+
+    def save(self):
+        if not self.dirty:
+            return
+        if self.data is None:
+            if os.path.exists(self.path):
+                os.remove(self.path)
+        else:
+            os.makedirs(os.path.dirname(self.path), exist_ok=True)
+            with open(self.path, 'wb') as f:
+                f.write(self.data)
+        self._saved = self.data
+
+
 EVT_LINE = re.compile(r'^(\s*)([0-9A-Fa-f]{6}|\+)(\s*:?\s*)((?:[0-9A-Fa-f]{2}|@N\d{5}|@L\d{1,3})(?:\s+(?:[0-9A-Fa-f]{2}|@N\d{5}|@L\d{1,3}))*)(\s*)(;.*)?$')
 EVT_HEAD = re.compile(r'^==\s*(.*?)\s*@([0-9A-Fa-f]{6})')
 
@@ -211,6 +236,7 @@ class Project:
         self.maps = {}
         self.evts = {}
         self._dialogue = None
+        self.blobs = {}
         self.undo_stack = []      # [[op, ...]]: ('cell', table, row, field, old, new) | ('map', ch, i, old, new)
         #                           | ('rows', table, start, old_rows, new_rows)
         #                           | ('evt', file, line, old, new) | ('msg', key, old, new)
@@ -267,9 +293,25 @@ class Project:
             self._dialogue = Dialogue(p)
         return self._dialogue
 
+    def blob(self, rel):
+        """A binary project file by its path relative to the project ('portraits/p012.png')."""
+        if rel not in self.blobs:
+            self.blobs[rel] = BlobFile(os.path.join(self.path, *rel.split('/')))
+        return self.blobs[rel]
+
+    def set_blob(self, rel, data):
+        """Replace (or with None remove) a binary file as one undo step."""
+        b = self.blob(rel)
+        if b.data == data:
+            return []
+        op = ('blob', rel, b.data, data)
+        self._apply(op)
+        self._record([op])
+        return [op]
+
     def _files(self):
         return (list(self.tables.values()) + list(self.maps.values()) + list(self.evts.values())
-                + ([self._dialogue] if self._dialogue else []))
+                + ([self._dialogue] if self._dialogue else []) + list(self.blobs.values()))
 
     def dirty(self):
         return any(f.dirty for f in self._files())
@@ -307,6 +349,9 @@ class Project:
             assert t.rows[i:i + len(a)] == [dict(r) for r in a], 'table changed under an undo step'
             t.rows[i:i + len(a)] = [dict(r) for r in b]
             t.dirty = True
+        elif op[0] == 'blob':
+            _, rel, old, new = op
+            self.blob(rel).data = old if back else new
         elif op[0] in ('msgadd', 'msgdel'):
             _, key, where, text = op
             d = self.dialogue()

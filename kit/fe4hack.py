@@ -18,6 +18,7 @@ import fe4lib as L
 import fe4events as EV
 import fe4maps as MP
 import fe4locations as LOC
+import fe4gfx as GFX
 import fe4armies as AR
 import fe4names as NM
 import fe4skills as SK
@@ -330,6 +331,7 @@ def build(rom_path, proj, out_path, ips=None, hover=False):
     n += EV.apply_events(rom, os.path.join(proj, 'events'), space, far)
     n += G2.apply_scenes(rom, proj, space, far)     # after the project's own scripts
     n += MP.apply_maps(rom, os.path.join(proj, 'maps'), far)
+    n += GFX.apply_portraits(rom, os.path.join(proj, 'portraits'), far)
     n += NM.apply(rom, os.path.join(proj, 'names.csv'), far, space)
     n += LOC.apply(rom, os.path.join(proj, 'locations.csv'), space)
     n += LOC.apply_arena(rom, os.path.join(proj, 'arena.csv'), space)

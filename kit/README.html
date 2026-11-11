@@ -128,6 +128,19 @@ default browser). The editor runs on your PC only: nothing is sent anywhere.
 <li><strong>Units on the map</strong>: every deployed unit of the army, grouped by
      deploy list, with the program it follows. <strong>Set all to…</strong> changes a
      whole list at once.</li>
+<li><strong>Portraits</strong>: all 247 faces with who uses each one (units, generic
+   classes, people who only speak). Pick one to see it large, with a
+   talking preview.</li>
+<li><strong>Replace with a picture…</strong> takes any image. It is fitted to 48 × 64
+     (fill and crop, or fit inside) and reduced to the 15 colours a
+     portrait can have. The colour in the corners becomes transparent
+     unless you keep the background.</li>
+<li><strong>Download PNG</strong> gives the 80 × 64 sheet: the face, plus the two
+     talking-mouth frames at the right (each is the face's 32 × 16 block at
+     the left, 32 pixels down, with the mouth open). Edit it and replace
+     with it to draw your own talking frames.</li>
+<li><strong>Use the original</strong> goes back to the game's picture. On a character's
+     sheet, <strong>Change picture</strong> opens that character's portrait.</li>
 <li>Changes are checked as you type (a value out of range turns red and
    says why). <strong>Undo / Redo</strong> (Ctrl+Z / Ctrl+Y) cover every change (a whole
    paint stroke or fill is one step); <strong>Save</strong> (Ctrl+S) writes the project
@@ -345,6 +358,11 @@ runs this randomizer from its own menu (Mods → Randomizer).</p>
 <td><code>talks.csv</code></td>
 <td>42</td>
 <td>Each chapter's Talk menu: which unit can Talk to which, until which event flag is set</td>
+</tr>
+<tr>
+<td><code>portraits/pNNN.png</code></td>
+<td>–</td>
+<td>Your own pictures for portrait NNN (80 × 64 sheet or 48 × 64 face, 15 colours + transparency); only replaced ones exist</td>
 </tr>
 <tr>
 <td><code>armies.csv</code></td>

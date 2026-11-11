@@ -147,7 +147,8 @@ skills; classes; chapter maps (paint them with the game's tiles, drag
 castles, villages and units into place); chapter events and all the
 dialogue (speech bubbles with portraits), including new talks, turn
 events, village visits and battle quotes; weapons, rings, shops,
-villages and the arena; and the enemy armies and what their units do. Its manual is
+villages and the arena; the enemy armies and what their units do; and
+the portraits (replace any face with your own picture). Its manual is
 fe4kit\README.html. Two things connect it to this port:
   * Test play (F6, or the Test play button) builds your project and opens
     it here at once, without your mods, with its own saves.

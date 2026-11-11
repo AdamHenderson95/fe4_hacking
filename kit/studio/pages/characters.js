@@ -1,5 +1,6 @@
 // Characters: a roster of portraits and a status-screen style sheet for the selected unit.
-import { api, h, app, toast, setField, loadTables } from '../app.js';
+import { api, h, app, toast, setField, loadTables, go } from '../app.js';
+import { showPortrait } from './portraits.js';
 
 const GROUPS = [
   { key: 'units_playable', label: 'Generation 1', hint: 'Generation 1 and the generation 2 substitutes. Stats are added to the class; HP and Luck are the unit\'s own.' },
@@ -138,7 +139,10 @@ export async function charactersPage(root) {
     const who = h('div', { class: 'who' }, h('h2', {}, unitName(table, r)));
     if (nameEl) who.append(h('div', { style: 'max-width:220px;margin:-4px 0 12px' }, labeled('Name in the game', nameEl)));
     who.append(facts);
-    sheet.append(h('div', { class: 'sheet-head' }, pic, who));
+    const picBox = r._portrait !== null && r._portrait !== undefined
+      ? h('div', {}, pic, h('button', { class: 'btn btn-line ptlink', title: 'Replace this picture on the Portraits page', onclick: () => { showPortrait(r._portrait); go('portraits'); } }, 'Change picture'))
+      : pic;
+    sheet.append(h('div', { class: 'sheet-head' }, picBox, who));
 
     const body = h('div', { class: 'sheet-body' });
     sheet.append(body);

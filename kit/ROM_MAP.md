@@ -394,7 +394,13 @@ and 785 messages, with every script decoded to its end.
   (not `$80:A9F2`: streams in the lower half of a HiROM bank need the `AA02` entry).
 - `$8A:B7E1`: ptr24 per portrait number: 16 colours, raw; colour 0 is transparent.
 - The 64 tiles form a 16-tile-wide block: the face is tiles 0–5 of rows 0–3 (top half) and tiles 6–11 of
-  rows 0–3 (bottom half), 48×64 pixels; tiles 12–15 hold mouth and eye frames.
+  rows 0–3 (bottom half), 48×64 pixels.
+- Tiles 12–15 of rows 0–3 are a 32×32 block holding two 32×16 talking frames (rows 0–1 and 2–3).
+  Each matches the face's 32×16 block at (0, 32) in about 490 of 512 pixels across portraits:
+  they are that block with the mouth open.
+- Verified (kit v22): a 15-colour picture written as portrait 0 (tiles compressed with `fe4lz`,
+  palette next to them, both pointers repointed) shows as Sigurd's face in a talk scene, with
+  colour 0 transparent over the map.
 - Most numbers from 185 on are class pictures for generic units. The status screen loads portraits at `$8A:B369`.
 
 ## Maps (V)

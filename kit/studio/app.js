@@ -6,6 +6,7 @@ import { mapsPage } from './pages/maps.js';
 import { eventsPage } from './pages/events.js';
 import { itemsPage } from './pages/items.js';
 import { armiesPage } from './pages/armies.js';
+import { portraitsPage } from './pages/portraits.js';
 import { soonPage } from './pages/soon.js';
 
 const TOKEN = location.hash.slice(1).split('/')[0] || sessionStorage.getItem('fe4studio-token') || '';
@@ -145,6 +146,7 @@ const PAGES = {
   events: { title: 'Events & dialogue', make: eventsPage, needsProject: true },
   items: { title: 'Items, shops & villages', make: itemsPage, needsProject: true },
   armies: { title: 'Armies & AI', make: armiesPage, needsProject: true },
+  portraits: { title: 'Portraits', make: portraitsPage, needsProject: true },
 };
 
 async function show() {

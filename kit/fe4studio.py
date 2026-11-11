@@ -13,6 +13,7 @@ import mimetypes
 import os
 import queue
 import re
+import zlib
 import secrets
 import shutil
 import subprocess
@@ -36,7 +37,7 @@ import fe4locations                # noqa: E402
 from fe4project import Project, load_settings, save_settings   # noqa: E402
 
 APP = 'Builder of the Holy War'
-VERSION = '21'
+VERSION = '22'
 STATIC = os.path.join(KIT, 'studio')
 
 # ---------------------------------------------------------------- state
@@ -175,6 +176,102 @@ def unit_portrait(table, row):
     return fe4gfx.portrait_of_char(rom, int(cid)) if cid.isdigit() else None
 
 
+# ---------------------------------------------------------------- portraits
+PORTRAIT_DIR = 'portraits'
+_pcache = {}
+
+
+def portrait_rel(n):
+    return f'{PORTRAIT_DIR}/p{n:03d}.png'
+
+
+def portrait_custom(n):
+    """The project's own picture for portrait n (PNG bytes), or None."""
+    p = project()
+    if p is None:
+        return None
+    return p.blob(portrait_rel(n)).data
+
+
+def portrait_sheet(n):
+    """(indices, palette, custom) of portrait n: the project's picture if it has one, else the ROM's."""
+    data = portrait_custom(n)
+    if data is not None:
+        key = ('sheet', hash(data))
+        if key not in _pcache:
+            _pcache[key] = fe4gfx.sheet_from_png(data)
+        return (*_pcache[key], True)
+    rom = rom_data()
+    if rom is None:
+        return None
+    key = ('rom', id(rom), n)
+    if key not in _pcache:
+        _pcache[key] = fe4gfx.portrait_sheet(rom, n)
+    return (*_pcache[key], False) if _pcache[key] else None
+
+
+def portrait_image(n, scale, sheet=False):
+    if sheet:
+        got = portrait_sheet(n)
+        return fe4gfx.indexed_png(fe4gfx.SHEET_W, fe4gfx.SHEET_H, got[0], got[1], scale) if got else None
+    if portrait_custom(n) is None:
+        rom = rom_data()
+        return fe4gfx.portrait_png(rom, n, scale) if rom else None
+    got = portrait_sheet(n)
+    return fe4gfx.face_png(got[0], got[1], scale) if got else None
+
+
+def api_portraits(b, q):
+    """Every portrait number with who uses it and whether the project replaced it."""
+    p = need_project()
+    users = {}
+    for t in ('units_playable', 'units_children', 'units_npc'):
+        tb = p.table(t)
+        for r in tb.rows if tb else []:
+            n = unit_portrait(t, r)
+            if n is not None and r.get('_name'):
+                users.setdefault(n, []).append(r['_name'])
+    gt = p.table('units_generic')
+    for r in gt.rows if gt else []:
+        pn = (r.get('portrait') or '').strip()
+        if pn.isdigit():
+            users.setdefault(int(pn), [])
+            nm = r.get('_class_name') or r.get('_name') or ''
+            if nm and nm not in users[int(pn)]:
+                users[int(pn)].append(nm)
+    for x in people():
+        if x.get('speaker') and x['portrait'] is not None and x['name'] not in users.get(x['portrait'], []):
+            users.setdefault(x['portrait'], []).append(x['name'])
+    out = []
+    for n in range(fe4gfx.PORTRAIT_COUNT):
+        if n == fe4gfx.NO_PORTRAIT:
+            continue
+        data = portrait_custom(n)
+        out.append({'n': n, 'users': sorted(set(users.get(n, [])), key=str.lower)[:12],
+                    'custom': data is not None, 'ver': '%08x' % zlib.crc32(data) if data is not None else 'rom'})
+    return {'portraits': out}
+
+
+def api_portrait(b, q):
+    """Replace portrait n with a PNG (base64): 48x64 or 80x64, at most 15 colours + transparency."""
+    import base64
+    p = need_project()
+    n = int(b['n'])
+    if not 0 <= n < fe4gfx.PORTRAIT_COUNT or n == fe4gfx.NO_PORTRAIT:
+        raise ValueError('No such portrait.')
+    if b.get('reset'):
+        p.set_blob(portrait_rel(n), None)
+        return {'ok': True}
+    try:
+        idx, pal = fe4gfx.sheet_from_png(base64.b64decode(b['png']))
+    except (ValueError, KeyError) as e:
+        raise ValueError(str(e))
+    except Exception:          # noqa: BLE001
+        raise ValueError('That file could not be read as a PNG picture.')
+    p.set_blob(portrait_rel(n), fe4gfx.indexed_png(fe4gfx.SHEET_W, fe4gfx.SHEET_H, idx, pal))
+    return {'ok': True}
+
+
 def table_json(name):
     t = project().table(name)
     if t is None:
@@ -306,8 +403,10 @@ class Handler(BaseHTTPRequestHandler):
                 scale = int(parse_qs(u.query).get('s', ['1'])[0])
             except ValueError:
                 return self._send(404, 'no')
-            data = fe4gfx.portrait_png(rom, n, max(1, min(scale, 4))) if rom else None
-            return self._send(200, data, 'image/png', cache=True) if data else self._send(404, 'no')
+            data = portrait_image(n, max(1, min(scale, 4)), sheet=path.startswith('/gfx/portrait/sheet'))
+            # ?c=<version> URLs (the Portraits page) change whenever the picture does, so they can be cached
+            return (self._send(200, data, 'image/png', cache='c' in parse_qs(u.query)) if data
+                    else self._send(404, 'no'))
         if path.startswith('/gfx/tiles/'):
             rom = rom_data()
             try:
@@ -419,7 +518,8 @@ def ops_json(ops):
     cells = [{'table': o[1], 'row': o[2], 'field': o[3]} for o in ops if o[0] == 'cell'][:50]
     evts = sorted({o[1] for o in ops if o[0] in ('evt', 'lines')})
     msgs = sorted({o[1] for o in ops if o[0] in ('msg', 'msgadd', 'msgdel')})
-    return {'change': {'tables': tables, 'maps': maps, 'cells': cells, 'events': evts, 'messages': msgs,
+    blobs = sorted({o[1] for o in ops if o[0] == 'blob'})
+    return {'change': {'tables': tables, 'maps': maps, 'cells': cells, 'events': evts, 'messages': msgs, 'files': blobs,
                        'count': len(ops)}}
 
 
@@ -1817,7 +1917,7 @@ API = {('GET', 'session'): api_session, ('POST', 'ping'): api_ping, ('GET', 'tab
        ('GET', 'chapters'): api_chapters, ('GET', 'scene'): api_scene, ('POST', 'messages'): api_messages,
        ('POST', 'msg'): api_msg, ('POST', 'evtcmd'): api_evtcmd, ('GET', 'dsearch'): api_dsearch, ('GET', 'villages'): api_villages, ('GET', 'itemuse'): api_itemuse, ('POST', 'newevent'): api_newevent, ('POST', 'talkmenu'): api_talkmenu, ('POST', 'delstep'): api_delstep,
        ('POST', 'addstep'): api_addstep, ('GET', 'eventinfo'): api_eventinfo, ('GET', 'maps'): api_maps, ('GET', 'map'): api_map, ('POST', 'paint'): api_paint,
-       ('GET', 'armies'): api_armies, ('POST', 'aicmd'): api_aicmd, ('POST', 'airecipe'): api_airecipe}
+       ('GET', 'armies'): api_armies, ('GET', 'portraits'): api_portraits, ('POST', 'portrait'): api_portrait, ('POST', 'aicmd'): api_aicmd, ('POST', 'airecipe'): api_airecipe}
 
 
 # ---------------------------------------------------------------- window
