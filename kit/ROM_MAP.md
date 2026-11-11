@@ -672,6 +672,13 @@ adds working Armory and Arena buttons to the Prologue.
     `$2004` = `$0D` when it is 0).
   - `$0A`: action 4, mode 4 unless `$87:D411` says otherwise, then `$18`.
   - `$13`: action 7, mode 5.
+  - Read but not named yet (v26): `$05` sets bit 9 of `$7E:2000`; `$0B` acts (action 5, mode 5)
+    only when `$2000` bit 2 is set; `$0E unit n` aims at the unit's position (action 8,
+    `$201C` = n); `$0F` action 9, mode 2, sets `$2000` bit 8; `$10` action 12, mode 2 while
+    `$7E:5025` = 0; `$11 n` acts (via `$18`'s target code, action 10) when the unit in `$2020` has
+    bit 7 of `$7E:438B` and `$87:D3BD` + 1 < n; `$12` action 11, mode 2; `$14 n` acts on turns
+    that are a multiple of n (calls `$84:C54C` with the army); `$19` sets mode 7 and falls
+    through. The action numbers (`$201A`) still need naming from the code that carries them out.
 - **Unit positions (RAM):** unit object +4 = index i, x = `$7E:441B + i`,
   y = `$7E:44AB + i` (words); +6 army slot, +7 deploy `orders`.
 - **Verified in-game:**
