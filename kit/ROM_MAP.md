@@ -469,8 +469,23 @@ Found by watching a Prologue battle (Gandolf vs Midir) in the emulator: DMA log,
 - **Weapon** (`$95:8697`, A = item id): word `$99:8725 + 2 item`: low byte = sheet (ptr24 at
   `$99:881F + 3k`, 32 tiles to OBJ tiles `$40-$5F`), high byte = palette (15 colours at
   `$E0:0F30 + 30 p`) to OBJ palette 2.
+- **Cue table** `$97:C884` (`$95:E400`, read when a motion's `$FA` cue fires): byte per animation id
+  -> record at `+$60 + 9k`: ptr24, ptr24 (cue list, read with Y), word (to object `+$2F`). A new
+  animation id needs an entry here too.
+- **Data bank**: the frame code (`$95:C51F` and others) sets DB to the script's bank and also reaches
+  RAM buffers through it, so a script (and its page table) must sit in a bank whose `$0000-$1FFF` is
+  RAM: `$80-$9F`/`$00-$3F` style banks. The kit puts new ones in the upper halves of `$70-$7D`, used
+  through their `$30-$3D` mirrors.
+- **Kit v33 (redrawn looks)**: the animation, body and cue tables are copied to free space with 256
+  id bytes each (records after `+$100`); the reads above are repointed (`$95:8ABF`/`8AD2`/`8AD9`/
+  `8AE0`/`8AE7`, `ADC` at `$95:8ACD`; `$95:84E2`/`84F5`/`84FB`/`8527`/`8538`, `ADC` at `$95:84F0`;
+  `$95:E41E`/`E432`/`E438`/`E43E`/`E444`/`E44A`/`E450`, `ADC` at `$95:E42D`). New animations get ids
+  `$5F+`, new bodies `$67+`; a new animation is a copy of its base script with new layouts for the
+  redrawn frames and a page table with one new page each (one chunk to OBJ tiles `$00-$3F`), and the
+  new body is the base sheet plus the new tiles (at most `$6000` bytes decompressed).
 - Verified: rendering frames from these tables matches the battle on screen; changing row 10 (Bow
-  Knight, bow) to the Paladin row's four numbers made Midir fight as a Paladin.
+  Knight, bow) to the Paladin row's four numbers made Midir fight as a Paladin; a redrawn Bow Knight
+  look (frames 1-5 recoloured) plays frame for frame like the original with the new drawings.
 
 ## Maps (V)
 

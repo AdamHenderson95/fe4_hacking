@@ -650,3 +650,6 @@ textarea.fe4box.bad { border-color: #E1606F; }
 .baframe { image-rendering: pixelated; width: auto; height: 56px; }
 .baused { font-size: 13px; }
 .bacopy { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 14px; }
+.baredraw { margin: 6px 24px 8px; padding: 14px 16px; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--vellum-2); }
+.baredraw h3 { margin: 0 0 6px; }
+.basteps { margin: 8px 0; padding-left: 22px; display: grid; gap: 8px; line-height: 1.45; }

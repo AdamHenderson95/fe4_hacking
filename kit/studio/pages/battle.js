@@ -138,7 +138,7 @@ export async function battlePage(root) {
     const r = c.rows.find(x => x.row === st.row) || c.rows[0];
     st.row = r.row; remember();
     const tabs = h('div', { class: 'chips', role: 'tablist', 'aria-label': 'Weapon' }, c.rows.map(x =>
-      h('button', { class: 'chip', role: 'tab', 'aria-selected': String(x === r), onclick: () => { st.row = x.row; st.item = null; drawDetail(); } }, rowLabel(x))));
+      h('button', { class: 'chip', role: 'tab', 'aria-selected': String(x === r), onclick: () => { st.row = x.row; st.item = null; drawDetail(); } }, rowLabel(x), x._redrawn ? ' ✎' : '')));
     const fields = h('div', { class: 'itgrid wide' }, FIELDS.map(([f, label, hint]) => {
       const inp = h('input', { class: 'in num', value: r[f], inputmode: 'numeric', 'aria-label': label, title: hint });
       inp.onchange = () => setCells([{ field: f, value: inp.value.trim() }], r, inp);
@@ -156,9 +156,40 @@ export async function battlePage(root) {
       const m = o.rows.find(x => x.weapon === r.weapon && x.gender === r.gender) || o.rows.find(x => x.weapon === r.weapon) || o.rows[0];
       setCells(FIELDS.map(([f]) => ({ field: f, value: m[f] })), r, null, `${r._class} (${rowLabel(r)}) now looks like ${o.name} (${rowLabel(m)})`);
     };
+    // redraw frames
+    const fileIn = h('input', { type: 'file', accept: '.png,image/png', hidden: true });
+    const every = h('input', { type: 'checkbox' });
+    const drawUrl = `/gfx/battledraw/?row=${r.row}&v=${Date.now()}`;
+    const importBtn = h('button', { class: 'btn btn-gilt', type: 'button', onclick: () => fileIn.click() }, 'Import drawn frames…');
+    fileIn.onchange = async () => {
+      const f = fileIn.files[0]; fileIn.value = '';
+      if (!f) return;
+      const buf = new Uint8Array(await f.arrayBuffer());
+      let bin = ''; for (let i = 0; i < buf.length; i += 0x8000) bin += String.fromCharCode(...buf.subarray(i, i + 0x8000));
+      importBtn.disabled = true; importBtn.textContent = 'Importing…';
+      try {
+        const res = await api('battleimport', { row: Number(r.row), png: btoa(bin), every: every.checked });
+        D = await api('battleanims'); await refreshSession(); drawDetail();
+        toast(`Redrew frame${res.changed.length === 1 ? '' : 's'} ${res.changed.join(', ')} (${res.tiles} tiles) for ${res.rows} row${res.rows === 1 ? '' : 's'}`);
+      } catch (e) { toast(e.message, true); importBtn.disabled = false; importBtn.textContent = 'Import drawn frames…'; }
+    };
+    const resetBtn = r._redrawn ? h('button', { class: 'btn btn-line', type: 'button', onclick: async () => {
+      try { await api('battlereset', { row: Number(r.row) }); D = await api('battleanims'); await refreshSession(); drawDetail(); toast('Back to the game\'s drawings (Undo brings yours back)'); }
+      catch (e) { toast(e.message, true); }
+    } }, 'Use the original drawings') : null;
+    const redraw = h('div', { class: 'baredraw' },
+      h('h3', {}, 'Redraw frames'),
+      h('p', { class: 'hint' }, r._redrawn ? 'This row uses your drawings. Download them, change more, and import again.' :
+        'Download the frames, paint over them in any paint program, then import the PNG.'),
+      h('ol', { class: 'basteps' },
+        h('li', {}, h('a', { href: drawUrl, download: `${(r._class || 'class').replace(/[^A-Za-z0-9]+/g, '_')}_${weaponName(r)}_frames.png` }, 'Download frames to draw on'),
+          ': the body and rider of every frame, side by side, with the two palettes as swatches along the top. The weapon and the shadow aren\'t in it; they stay as they are.'),
+        h('li', {}, 'Paint with the swatch colours only and keep the picture\'s size. Transparent stays empty. Each 8×8 square of a frame may use both palettes; frames you don\'t touch stay exactly as they were.'),
+        h('li', {}, importBtn, ' ', h('label', { class: 'bacheck' }, every, ` Every row that looks like this (${D.rows.filter(x => ['anim', 'body', 'upper', 'palette'].every(k => x[k] === r[k])).length})`), fileIn, ' ', resetBtn)),
+      h('p', { class: 'hint' }, 'Imported drawings become a new animation and body graphics just for the rows you choose, so other classes that shared the old ones don\'t change. A frame can use up to 64 tiles of 8×8.'));
     detail.replaceChildren(h('div', { class: 'sheet basheet' },
       h('div', { class: 'sheet-head' }, h('h2', {}, c.name), h('p', { class: 'sub' }, `Row ${r.row} of the game's table · class ${c.id}`)),
-      tabs, player(r),
+      tabs, player(r), redraw,
       h('h3', {}, 'What it uses'), fields,
       h('div', { class: 'bacopy' }, h('span', {}, `Look like another class (with ${weaponName(r)}):`), from, copyBtn),
       h('p', { class: 'hint' }, 'The game picks a row by class, weapon kind, gender and (for a few) the character. A class with no row for a weapon uses its first row. Named characters such as bosses can have their own colours on top of the palette shown here. Editing here changes which animation, drawings and colours are used; new drawings and new animations come in a later version.')));

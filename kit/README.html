@@ -237,8 +237,18 @@ default browser). The editor runs on your PC only: nothing is sent anywhere.
    uses: <strong>Animation</strong> (moves, frames and timing), <strong>Body graphics</strong> (the
    drawings), <strong>Upper body</strong> (rider, torso and head tiles) and <strong>Palette</strong>,
    each saying which other classes share it. <strong>Use its look</strong> gives the row
-   another class's look in one step (Undo puts it back). Drawing new frames
-   and making new animations come in later versions.</li>
+   another class's look in one step (Undo puts it back).
+   <strong>Redraw frames</strong>: <strong>Download frames to draw on</strong> gives a PNG of every
+   frame's body and rider side by side, with the look's two palettes as
+   swatches along the top (the weapon and shadow aren't in it and stay as
+   they are). Paint over it with the swatch colours, keep its size, and
+   <strong>Import drawn frames…</strong>. Only frames you changed are re-cut into the
+   game's sprite pieces (up to 64 tiles of 8x8 a frame); the import says which
+   frames changed. Your drawings become a new animation and body graphics for
+   that row only (or <strong>every row that looks like this</strong>), so classes that
+   shared the old ones don't change. Rows using your drawings show ✎;
+   <strong>Use the original drawings</strong> goes back. Brand-new animations (new moves
+   and timing) come in a later version.</li>
 <li>On the Project page, <strong>Add unit stats to the map box</strong> puts the PC port's
    MT / HIT / AS / AVO box into the ROMs and patches you build, so players
    on emulators get it too (the port can still switch it off).</li>

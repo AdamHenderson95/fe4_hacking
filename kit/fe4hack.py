@@ -351,6 +351,11 @@ def apply_ips(orig, patch):
     return bytes(out)
 
 
+def _read_file(proj, rel):
+    p = os.path.join(proj, *rel.split('/'))
+    return open(p, 'rb').read() if os.path.exists(p) else None
+
+
 def build(rom_path, proj, out_path, ips=None, hover=False):
     copier, rom = L.load_rom(rom_path)
     clean = bytes(rom)
@@ -370,6 +375,7 @@ def build(rom_path, proj, out_path, ips=None, hover=False):
     n += GFX.apply_portraits(rom, os.path.join(proj, 'portraits'), far)
     n += SPR.apply(rom, proj, space)
     n += BA.apply(rom, proj)
+    n += BA.apply_custom(rom, lambda rel: _read_file(proj, rel), far)
     n += NM.apply(rom, os.path.join(proj, 'names.csv'), far, space)
     n += LOC.apply(rom, os.path.join(proj, 'locations.csv'), space)
     n += LOC.apply_arena(rom, os.path.join(proj, 'arena.csv'), space)
