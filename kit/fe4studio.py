@@ -40,7 +40,7 @@ import fe4maptiles                 # noqa: E402
 from fe4project import Project, load_settings, save_settings   # noqa: E402
 
 APP = 'Builder of the Holy War'
-VERSION = '30'
+VERSION = '31'
 STATIC = os.path.join(KIT, 'studio')
 
 # ---------------------------------------------------------------- state
@@ -664,6 +664,100 @@ def api_build(b, q):
     ips = os.path.splitext(out)[0] + '.ips'
     hover = bool(settings.get('hover_stats', False))
     return job_json_of(run_job(f'Building {os.path.basename(out)}', lambda: (fe4hack.build(rom, p.path, out, ips, hover), out)[1]))
+
+
+def _patch_name(s):
+    s = re.sub(r'[\\/:*?"<>|\x00-\x1f]', '', (s or '').strip()).strip(' .')
+    return s[:60]
+
+
+def api_ipspatch(b, q):
+    """Create IPS patch: {name, author?, notes?, out?} -> builds, writes <out>.ips and a <out>.txt
+    read-me next to it (what it is, which ROM it needs, how to apply it). Runs as a job."""
+    import zlib
+    p = need_project()
+    rom = rom_path()
+    if not rom:
+        raise ValueError('Choose your FE4 ROM first.')
+    name = _patch_name(b.get('name')) or os.path.basename(os.path.normpath(p.path))
+    author, notes = (b.get('author') or '').strip()[:80], (b.get('notes') or '').strip()[:4000]
+    out = b.get('out') or os.path.join(os.path.dirname(os.path.normpath(p.path)), name + '.ips')
+    if not out.lower().endswith('.ips'):
+        out += '.ips'
+    settings.setdefault('patch', {})[p.path] = {'name': name, 'author': author, 'notes': notes, 'out': out}
+    save_settings(settings)
+    p.save()
+    hover = bool(settings.get('hover_stats', False))
+
+    def go():
+        d = os.path.join(p.path, '_patch')
+        os.makedirs(d, exist_ok=True)
+        tmp = os.path.join(d, 'patched.smc')
+        fe4hack.build(rom, p.path, tmp, out, hover)
+        copier, clean = L.load_rom(rom)
+        _, new = L.load_rom(tmp)
+        # check the patch: apply it to the clean ROM and compare
+        if fe4hack.apply_ips(bytes(copier) + bytes(clean), open(out, 'rb').read()) != bytes(copier) + bytes(new):
+            raise RuntimeError('the patch did not reproduce the built ROM, so do not use it (please report this)')
+        sha = L.sha1(clean)
+        hdr = 'with a 512-byte copier header' if copier else 'without a copier header (headerless)'
+        lines = [name, '=' * len(name)]
+        if author:
+            lines.append('by ' + author)
+        lines.append('')
+        if notes:
+            lines += [notes, '']
+        lines += ['How to play it',
+                  '--------------',
+                  '1. You need your own copy of Fire Emblem: Genealogy of the Holy War (Seisen no Keifu)',
+                  '   with the Project Naga English translation. This patch is for that ROM ' + hdr + ':',
+                  '     SHA-1 (no header): ' + sha,
+                  '     CRC32 (no header): %08X' % (zlib.crc32(bytes(clean)) & 0xFFFFFFFF),
+                  ]
+        if sha != L.EXPECTED_SHA1:
+            lines.append('   (Not the usual Naga ROM: the usual one has SHA-1 %s.)' % L.EXPECTED_SHA1)
+        lines += ['2. Apply %s with an IPS patcher such as Flips or Lunar IPS, or give it the same' % os.path.basename(out),
+                  '   name as the ROM and put it next to it (most emulators then load it by themselves).',
+                  '3. Play the patched ROM in an emulator, or in the FE4 PC port.',
+                  '',
+                  'The patch holds only the changes, not the game: the ROM is not included.',
+                  'Made with Builder of the Holy War v%s on %s.' % (VERSION, time.strftime('%Y-%m-%d')),
+                  ]
+        txt = os.path.splitext(out)[0] + '.txt'
+        with open(txt, 'w', encoding='utf-8', newline='\r\n') as f:
+            f.write('\n'.join(lines) + '\n')
+        os.remove(tmp)
+        try:
+            os.rmdir(d)
+        except OSError:
+            pass
+        print('wrote', txt)
+        print('patch checked: applying it to your ROM gives the built ROM (%d bytes of patch)' % os.path.getsize(out))
+        return out
+    return job_json_of(run_job('Creating IPS patch', go))
+
+
+def api_patchinfo(b, q):
+    """What the Create IPS patch dialog starts with: last values for this project."""
+    p = need_project()
+    last = settings.get('patch', {}).get(p.path) or {}
+    name = last.get('name') or os.path.basename(os.path.normpath(p.path))
+    return {'name': name, 'author': last.get('author', ''), 'notes': last.get('notes', ''),
+            'out': last.get('out') or os.path.join(os.path.dirname(os.path.normpath(p.path)), name + '.ips')}
+
+
+def api_reveal(b, q):
+    """Show a file in the system file manager."""
+    path = b.get('path') or ''
+    if not os.path.exists(path):
+        raise ValueError('That file is gone.')
+    if os.name == 'nt':
+        subprocess.Popen(['explorer', '/select,', os.path.normpath(path)])
+    elif sys.platform == 'darwin':
+        subprocess.Popen(['open', '-R', path])
+    else:
+        subprocess.Popen(['xdg-open', os.path.dirname(path)])
+    return {'ok': True}
 
 
 def api_testplay(b, q):
@@ -2515,7 +2609,8 @@ API = {('GET', 'session'): api_session, ('POST', 'ping'): api_ping, ('GET', 'tab
        ('POST', 'tables'): api_tables, ('POST', 'set'): api_set, ('POST', 'undo'): api_undo,
        ('POST', 'redo'): api_redo, ('POST', 'save'): api_save, ('POST', 'open'): api_open,
        ('POST', 'rom'): api_set_rom, ('POST', 'new'): api_new_project, ('GET', 'job'): api_job,
-       ('POST', 'build'): api_build, ('POST', 'testplay'): api_testplay, ('POST', 'settings'): api_settings,
+       ('POST', 'build'): api_build, ('POST', 'ipspatch'): api_ipspatch, ('POST', 'reveal'): api_reveal,
+       ('GET', 'patchinfo'): api_patchinfo, ('POST', 'testplay'): api_testplay, ('POST', 'settings'): api_settings,
        ('POST', 'dialog'): api_dialog, ('POST', 'quit'): api_quit, ('POST', 'classic'): api_classic,
        ('POST', 'setmany'): api_setmany, ('GET', 'people'): api_people, ('GET', 'textinfo'): api_textinfo, ('GET', 'events'): api_events,
        ('GET', 'chapters'): api_chapters, ('GET', 'scene'): api_scene, ('POST', 'messages'): api_messages,
@@ -2598,8 +2693,9 @@ def main_loop(win, httpd):
                 path = filedialog.askdirectory(parent=tk, title=b.get('title') or 'Choose a folder')
             elif kind == 'save':
                 path = filedialog.asksaveasfilename(parent=tk, title=b.get('title') or 'Save as',
-                                                    defaultextension='.smc', initialfile=b.get('initial') or '',
-                                                    filetypes=[('SNES ROM', '*.smc *.sfc')])
+                                                    defaultextension=b.get('ext') or '.smc', initialfile=b.get('initial') or '',
+                                                    filetypes=[('IPS patch', '*.ips')] if b.get('ext') == '.ips'
+                                                    else [('SNES ROM', '*.smc *.sfc')])
             elif kind == 'exe':
                 path = filedialog.askopenfilename(parent=tk, title=b.get('title') or 'Where is FE4.exe?',
                                                   filetypes=[('FE4 PC port', 'FE4.exe fe4'), ('All files', '*.*')])

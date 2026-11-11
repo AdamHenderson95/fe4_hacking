@@ -61,7 +61,7 @@ export async function refreshSession() {
   document.getElementById('dirty').hidden = !s.dirty;
   document.getElementById('btnUndo').disabled = !s.canUndo;
   document.getElementById('btnRedo').disabled = !s.canRedo;
-  for (const id of ['btnSave', 'btnBuild', 'btnPlay']) document.getElementById(id).disabled = !s.project;
+  for (const id of ['btnSave', 'btnBuild', 'btnIps', 'btnPlay']) document.getElementById(id).disabled = !s.project;
   document.getElementById('btnSave').disabled = !s.dirty;
   document.title = (s.projectName ? s.projectName + (s.dirty ? ' (unsaved)' : '') + ' - ' : '') + 'Builder of the Holy War';
   return s;
@@ -105,8 +105,9 @@ export async function save() {
 }
 
 // ---------------------------------------------------------------- jobs (build, test play, new project)
-export async function watchJob(job, onDone) {
+export async function watchJob(job, onDone, keepOpen = false) {
   const box = document.getElementById('job');
+  box.querySelector('.ipsreveal')?.remove();
   box.hidden = false; box.className = 'job';
   document.getElementById('jobTitle').textContent = job.what + '…';
   const log = document.getElementById('jobLog');
@@ -119,7 +120,7 @@ export async function watchJob(job, onDone) {
   box.className = 'job ' + (job.ok ? 'ok' : 'err');
   document.getElementById('jobTitle').textContent = job.ok ? job.what + ': done' : job.what + ': stopped with an error';
   log.textContent = job.log; log.scrollTop = log.scrollHeight;
-  if (job.ok) setTimeout(() => { if (!box.matches(':hover')) box.hidden = true; }, 6000);
+  if (job.ok && !keepOpen) setTimeout(() => { if (!box.matches(':hover')) box.hidden = true; }, 6000);
   await refreshSession();
   if (job.ok && onDone) onDone(job);
 }
@@ -127,6 +128,53 @@ export async function watchJob(job, onDone) {
 async function build() {
   try { await watchJob(await api('build', {})); }
   catch (e) { toast(e.message, true); }
+}
+
+async function ipsPatch() {
+  document.querySelector('.modal.ipsdlg')?.remove();
+  let info;
+  try { info = await api('patchinfo'); } catch (e) { toast(e.message, true); return; }
+  const name = h('input', { class: 'in', value: info.name, maxlength: 60, 'aria-label': 'Patch name' });
+  const author = h('input', { class: 'in', value: info.author, maxlength: 80, placeholder: 'optional', 'aria-label': 'Made by' });
+  const notes = h('textarea', { class: 'in', rows: 5, maxlength: 4000, placeholder: 'What your hack changes (optional; goes in the read-me)', 'aria-label': 'Description' }, info.notes);
+  let out = info.out;
+  const where = h('span', { class: 'ipswhere' }, out);
+  const pick = h('button', { class: 'btn btn-line', type: 'button' }, 'Change…');
+  pick.onclick = async () => {
+    const r = await api('dialog', { kind: 'save', ext: '.ips', title: 'Save the IPS patch as', initial: (name.value.trim() || 'patch') + '.ips' }).catch(() => ({}));
+    if (r.path) { out = r.path; where.textContent = out; }
+  };
+  name.oninput = () => {
+    // follow the name until a place was picked by hand
+    if (out === info.out || out.endsWith(`${info.name}.ips`)) {
+      const dir = out.slice(0, Math.max(out.lastIndexOf('/'), out.lastIndexOf('\\')) + 1);
+      out = dir + (name.value.trim() || 'patch') + '.ips'; where.textContent = out; info.out = out; info.name = name.value.trim();
+    }
+  };
+  const ok = h('button', { class: 'btn btn-gilt' }, 'Create IPS patch');
+  const modal = h('div', { class: 'modal ipsdlg', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Create IPS patch' },
+    h('div', { class: 'modal-box' }, h('h2', {}, 'Create IPS patch'),
+      h('p', { class: 'hint' }, 'Builds your hack and saves only the changes as an .ips file, with a .txt read-me that says which ROM it needs and how to apply it. Players apply it to their own ROM; the game itself is never in the patch.'),
+      h('div', { class: 'itgrid wide' },
+        h('label', { class: 'lbl' }, h('span', {}, 'Patch name'), name), h('label', { class: 'lbl' }, h('span', {}, 'Made by'), author)),
+      h('label', { class: 'lbl ipsnotes' }, h('span', {}, 'Description'), notes),
+      h('div', { class: 'ipsout' }, h('span', { class: 'lbl-t' }, 'Saved to'), where, pick),
+      h('div', { class: 'modal-actions' }, h('button', { class: 'btn btn-line', onclick: () => modal.remove() }, 'Cancel'), ok)));
+  ok.onclick = async () => {
+    try {
+      const job = await api('ipspatch', { name: name.value.trim(), author: author.value.trim(), notes: notes.value, out });
+      modal.remove();
+      await watchJob(job, () => {
+        const box = document.getElementById('job');
+        const btn = h('button', { class: 'btn btn-line ipsreveal', onclick: () => api('reveal', { path: out }).catch(e => toast(e.message, true)) }, 'Show the patch');
+        box.querySelector('.ipsreveal')?.remove(); box.append(btn);
+        toast('IPS patch created');
+      }, true);
+    } catch (e) { toast(e.message, true); }
+  };
+  modal.addEventListener('keydown', e => { if (e.key === 'Escape') modal.remove(); });
+  document.body.append(modal);
+  name.focus();
 }
 
 async function testPlay() {
@@ -180,6 +228,7 @@ async function start() {
   for (const a of document.querySelectorAll('#nav a')) a.href = '#' + TOKEN + '/' + a.dataset.page;
   document.getElementById('btnSave').onclick = () => save().catch(e => toast(e.message, true));
   document.getElementById('btnBuild').onclick = build;
+  document.getElementById('btnIps').onclick = ipsPatch;
   document.getElementById('btnPlay').onclick = testPlay;
   document.getElementById('btnUndo').onclick = () => undoRedo('undo').catch(e => toast(e.message, true));
   document.getElementById('btnRedo').onclick = () => undoRedo('redo').catch(e => toast(e.message, true));

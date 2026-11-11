@@ -212,6 +212,14 @@ default browser). The editor runs on your PC only: nothing is sent anywhere.
    away in the FE4 PC port (FE4Port.zip), without your mods and with its own
    saves. The editor finds FE4.exe when the kit sits in the port's `fe4kit`
    folder (as it comes in FE4Port.zip) or next to it; otherwise it asks once.
+   **Create IPS patch** is the one to give other people: name the patch, add
+   who made it and a description, pick where to save it. It writes
+   `name.ips` plus `name.txt`, a read-me with your description, which ROM
+   the patch needs (Project Naga, headerless or not, with its SHA-1 and
+   CRC32) and how to apply it (Flips, Lunar IPS, or soft-patching in an
+   emulator). It checks the patch by applying it to your ROM before it
+   finishes. The patch holds only your changes, never the game. The dialog
+   remembers what you typed for next time.
 14. On the Project page, **Add unit stats to the map box** puts the PC port's
    MT / HIT / AS / AVO box into the ROMs and patches you build, so players
    on emulators get it too (the port can still switch it off).

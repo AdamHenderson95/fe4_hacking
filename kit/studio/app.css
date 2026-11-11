@@ -624,3 +624,11 @@ textarea.fe4box.bad { border-color: #E1606F; }
 .lvwarn { color: #8E1F2B; margin: 0 0 12px; }
 .lvnew { margin-left: 8px; font-size: 11px; padding: 1px 7px; cursor: default; }
 .lvdel { margin-left: 8px; padding: 1px 8px; font-size: 12px; }
+
+/* Create IPS patch */
+.ipsnotes { margin-top: 12px; }
+.ipsnotes textarea { resize: vertical; min-height: 90px; font: inherit; }
+.ipsout { display: flex; align-items: center; gap: 10px; margin-top: 12px; flex-wrap: wrap; }
+.ipsout .lbl-t { font-size: 13px; color: var(--muted); }
+.ipswhere { flex: 1 1 240px; min-width: 0; overflow-wrap: anywhere; font-size: 13px; font-family: ui-monospace, Consolas, monospace; }
+.job .ipsreveal { margin-top: 8px; }

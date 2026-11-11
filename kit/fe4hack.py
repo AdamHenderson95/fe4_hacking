@@ -326,6 +326,29 @@ def write_ips(orig, new, path):
     open(path, 'wb').write(out)
 
 
+def apply_ips(orig, patch):
+    """Apply an IPS patch (with RLE records) to bytes; returns the new bytes."""
+    if patch[:5] != b'PATCH':
+        raise ValueError('not an IPS patch')
+    out, i = bytearray(orig), 5
+    while patch[i:i + 3] != b'EOF':
+        off = int.from_bytes(patch[i:i + 3], 'big')
+        n = int.from_bytes(patch[i + 3:i + 5], 'big')
+        i += 5
+        if n:
+            data = patch[i:i + n]
+            i += n
+        else:
+            data = patch[i + 2:i + 3] * int.from_bytes(patch[i:i + 2], 'big')
+            i += 3
+        if off + len(data) > len(out):
+            out.extend(bytes(off + len(data) - len(out)))
+        out[off:off + len(data)] = data
+    if len(patch) >= i + 6:           # optional truncate size
+        out = out[:int.from_bytes(patch[i + 3:i + 6], 'big')]
+    return bytes(out)
+
+
 def build(rom_path, proj, out_path, ips=None, hover=False):
     copier, rom = L.load_rom(rom_path)
     clean = bytes(rom)
