@@ -49,4 +49,6 @@ void dma_handleDma(Dma* dma, int cpuCycles);
 void dma_startDma(Dma* dma, uint8_t val, bool hdma);
 
 
+extern void (*dma_logHook)(Dma* dma, int ch);
+
 #endif

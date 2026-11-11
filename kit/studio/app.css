@@ -165,7 +165,7 @@ input.in.bad { border-color: var(--blood); background: var(--blood-soft); }
 /* skills: toggles */
 .chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .chip { border: 1px solid var(--line); background: #FBFAF6; border-radius: 999px; padding: 3px 11px; cursor: pointer; font-size: 15px; }
-.chip[aria-pressed="true"] { background: var(--night); color: #F3E3B8; border-color: var(--night); }
+.chip[aria-pressed="true"], .chip[aria-selected="true"] { background: var(--night); color: #F3E3B8; border-color: var(--night); }
 .chip:hover { border-color: #8E8878; }
 
 .items { display: flex; flex-direction: column; gap: 6px; }
@@ -632,3 +632,21 @@ textarea.fe4box.bad { border-color: #E1606F; }
 .ipsout .lbl-t { font-size: 13px; color: var(--muted); }
 .ipswhere { flex: 1 1 240px; min-width: 0; overflow-wrap: anywhere; font-size: 13px; font-family: ui-monospace, Consolas, monospace; }
 .job .ipsreveal { margin-top: 8px; }
+
+/* Battle animations */
+.basheet { padding-bottom: 8px; }
+.basheet > .chips { margin: 0 24px 12px; flex-wrap: wrap; }
+.basheet > h3, .basheet > .itgrid, .basheet > .hint, .basheet > .bacopy { margin-left: 24px; margin-right: 24px; }
+.baplayer { margin: 0 24px 8px; }
+.bastage { background: #2B3150; border-radius: var(--r-md); padding: 12px; overflow: auto; display: flex; justify-content: center; }
+.bacanvas { image-rendering: pixelated; max-width: 100%; height: auto; }
+.bacontrols { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 10px 14px; margin-top: 12px; align-items: end; }
+.bacbtns { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; grid-column: 1 / -1; }
+.bacheck { display: inline-flex; gap: 6px; align-items: center; font-size: 15px; }
+.bafr { color: var(--muted); font-size: 14px; font-variant-numeric: tabular-nums; }
+.bastrip { display: flex; flex-wrap: wrap; gap: 6px; max-height: 300px; overflow: auto; padding: 4px; background: var(--vellum-2); border-radius: var(--r-md); }
+.babtn { border: 1px solid var(--line); background: #2B3150; border-radius: 4px; padding: 2px; cursor: pointer; display: flex; flex-direction: column; align-items: center; color: #D6DAEC; font-size: 11px; }
+.babtn[aria-pressed="true"] { outline: 2px solid var(--gilt); }
+.baframe { image-rendering: pixelated; width: auto; height: 56px; }
+.baused { font-size: 13px; }
+.bacopy { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 14px; }

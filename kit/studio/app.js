@@ -8,6 +8,7 @@ import { itemsPage } from './pages/items.js';
 import { armiesPage } from './pages/armies.js';
 import { portraitsPage } from './pages/portraits.js';
 import { spritesPage } from './pages/sprites.js';
+import { battlePage } from './pages/battle.js';
 import { skillsPage } from './pages/skills.js';
 import { lovePage } from './pages/love.js';
 import { soonPage } from './pages/soon.js';
@@ -201,6 +202,7 @@ const PAGES = {
   armies: { title: 'Armies & AI', make: armiesPage, needsProject: true },
   portraits: { title: 'Portraits', make: portraitsPage, needsProject: true },
   sprites: { title: 'Map sprites', make: spritesPage, needsProject: true },
+  battle: { title: 'Battle animations', make: battlePage, needsProject: true },
 };
 
 async function show() {

@@ -37,10 +37,11 @@ import fe4events                   # noqa: E402
 import fe4locations                # noqa: E402
 import fe4sprites                  # noqa: E402
 import fe4maptiles                 # noqa: E402
+import fe4battle                  # noqa: E402
 from fe4project import Project, load_settings, save_settings   # noqa: E402
 
 APP = 'Builder of the Holy War'
-VERSION = '31'
+VERSION = '32'
 STATIC = os.path.join(KIT, 'studio')
 
 # ---------------------------------------------------------------- state
@@ -95,6 +96,10 @@ def open_project(d):
             fe4locations.export_talks(rom, os.path.join(d, 'talks.csv'))
         if not os.path.exists(os.path.join(d, 'map_terrain.csv')):   # kits before v24
             fe4maptiles.export_terrain(rom, os.path.join(d, 'map_terrain.csv'))
+        if not os.path.exists(os.path.join(d, 'battle_anims.csv')):   # kits before v32
+            names = [r.get('_name', '') for r in csv.DictReader(open(os.path.join(d, 'classes.csv'), newline=''))] \
+                if os.path.exists(os.path.join(d, 'classes.csv')) else []
+            fe4battle.export(rom, os.path.join(d, 'battle_anims.csv'), dict(enumerate(names)))
         if not os.path.exists(os.path.join(d, 'map_sprites.csv')):   # kits before v23
             import fe4hack
             names = [r.get('_name', '') for r in csv.DictReader(open(os.path.join(d, 'classes.csv'), newline=''))] \
@@ -162,7 +167,7 @@ def port_exe():
 
 # ---------------------------------------------------------------- data for the pages
 TABLES = {'units_playable', 'units_children', 'units_npc', 'units_generic', 'classes', 'items', 'rings',
-          'item_instances', 'skills', 'names', 'lovers', 'gen2_rules', 'deploy', 'locations', 'arena', 'armies', 'talks', 'map_sprites', 'map_terrain'}
+          'item_instances', 'skills', 'names', 'lovers', 'gen2_rules', 'deploy', 'locations', 'arena', 'armies', 'talks', 'map_sprites', 'map_terrain', 'battle_anims'}
 
 
 def unit_portrait(table, row):
@@ -349,6 +354,11 @@ def check_value(table, field, value):
         if not v.isdigit():
             raise ValueError('Enter a whole number.')
         return str(int(v)), None
+    if table == 'battle_anims' and field in ('anim', 'body', 'upper', 'palette'):
+        hi = fe4battle.id_limits(rom_data())[field]
+        if not v.isdigit() or not 0 <= int(v) <= hi:
+            raise ValueError(f'Enter a number from 0 to {hi}.')
+        return str(int(v)), None
     if table == 'map_terrain' and field == 'terrain':
         if not v.isdigit() or not 0 <= int(v) <= 255:
             raise ValueError('Terrain is a number from 0 to 255.')
@@ -452,6 +462,14 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(404, 'no')
             data = sprite_image(sid, army, scale, indexed=path.endswith('.idx.png'))
             return (self._send(200, data, 'image/png', cache='c' in q) if data else self._send(404, 'no'))
+        if path.startswith('/gfx/battle/'):
+            q = parse_qs(u.query)
+            try:
+                a, bd, up, pl, it = (int(q.get(k, ['-1'])[0]) for k in ('a', 'b', 'u', 'p', 'i'))
+            except ValueError:
+                return self._send(404, 'no')
+            got = battle_strip(a, bd, up, pl, it)
+            return self._send(200, got[0], 'image/png', cache=True) if got else self._send(404, 'no')
         if path.startswith('/gfx/tiles/'):
             rom = rom_data()
             try:
@@ -758,6 +776,71 @@ def api_reveal(b, q):
     else:
         subprocess.Popen(['xdg-open', os.path.dirname(path)])
     return {'ok': True}
+
+
+# ---------------------------------------------------------------- battle animations
+BATTLE_ITEMS = {0: 0, 1: 28, 2: 40, 3: 49, 4: 58, 5: 31, 6: 45, 7: 62, 8: 88, 9: 0}
+_battle_cache = {}
+
+
+def battle_strip(a, bd, up, pl, it):
+    """(png bytes, info) for one look; cached (the ROM's animation data doesn't change in the editor)."""
+    rom = rom_data()
+    if rom is None:
+        return None
+    lim = fe4battle.id_limits(rom)
+    if not (0 <= a <= lim['anim'] and 0 <= bd <= lim['body'] and 0 <= up <= lim['upper'] and 0 <= pl <= lim['palette']):
+        return None
+    key = (a, bd, up, pl, it)
+    if key not in _battle_cache:
+        try:
+            look = fe4battle.Look(rom, a, bd, up, pl, it if 0 <= it < 256 else None)
+            png, cell, origin = look.strip()
+        except Exception as e:                # noqa: BLE001  (a bad combination: show nothing, say why)
+            _battle_cache[key] = (None, {'error': f'{type(e).__name__}: {e}'})
+        else:
+            _battle_cache[key] = (png, {'cell': cell, 'origin': origin, 'frames': len(look.layouts),
+                                                    'motions': [[list(c) for c in m] for m in look.motions]})
+        if len(_battle_cache) > 300:
+            _battle_cache.pop(next(iter(_battle_cache)))
+    png, info = _battle_cache[key]
+    return (png, info) if png else None
+
+
+def api_battleanims(b, q):
+    """The class/weapon -> battle animation table, with names, for the Battle animations page."""
+    p = need_project()
+    t = p.table('battle_anims')
+    if t is None:
+        raise KeyError('This project has no battle_anims.csv; reopen it with this version to add one.')
+    rom = rom_data()
+    ct = p.table('classes')
+    cnames = {int(r['index']): r.get('_name', '') for r in ct.rows} if ct else {}
+    chars = {}
+    for tn in ('units_playable', 'units_children', 'units_npc'):
+        tt = p.table(tn)
+        for r in tt.rows if tt else []:
+            if (r.get('char_id') or '').isdigit():
+                chars.setdefault(int(r['char_id']), r.get('_name', ''))
+    it = p.table('items')
+    items = [[int(r['index']), r.get('_name', ''), r.get('weapon_type', '')] for r in it.rows] if it else []
+    rows = [{**r, '_class': cnames.get(int(r['class']), r.get('_class', '')),
+             '_char': chars.get(int(r['character']), '') if r['character'] not in ('', '0') else ''} for r in t.rows]
+    return {'rows': rows, 'limits': fe4battle.id_limits(rom), 'weapons': {str(k): v for k, v in fe4battle.WEAPON_KINDS.items()},
+            'defaultItems': {str(k): v for k, v in BATTLE_ITEMS.items()}, 'items': items}
+
+
+def api_battleinfo(b, q):
+    """Frame size, frame count and motion scripts for one look (the image is /gfx/battle/?a=..)."""
+    def g(k):
+        return int((q.get(k) or [b.get(k, -1)])[0])
+    got = battle_strip(g('a'), g('b'), g('u'), g('p'), g('i'))
+    if not got:
+        rom = rom_data()
+        key = (g('a'), g('b'), g('u'), g('p'), g('i'))
+        err = (_battle_cache.get(key) or (None, {}))[1].get('error')
+        raise ValueError('This combination can\'t be shown' + (f' ({err}).' if err else '.'))
+    return got[1]
 
 
 def api_testplay(b, q):
@@ -2609,7 +2692,8 @@ API = {('GET', 'session'): api_session, ('POST', 'ping'): api_ping, ('GET', 'tab
        ('POST', 'tables'): api_tables, ('POST', 'set'): api_set, ('POST', 'undo'): api_undo,
        ('POST', 'redo'): api_redo, ('POST', 'save'): api_save, ('POST', 'open'): api_open,
        ('POST', 'rom'): api_set_rom, ('POST', 'new'): api_new_project, ('GET', 'job'): api_job,
-       ('POST', 'build'): api_build, ('POST', 'ipspatch'): api_ipspatch, ('POST', 'reveal'): api_reveal,
+       ('POST', 'build'): api_build, ('GET', 'battleanims'): api_battleanims, ('GET', 'battleinfo'): api_battleinfo,
+       ('POST', 'ipspatch'): api_ipspatch, ('POST', 'reveal'): api_reveal,
        ('GET', 'patchinfo'): api_patchinfo, ('POST', 'testplay'): api_testplay, ('POST', 'settings'): api_settings,
        ('POST', 'dialog'): api_dialog, ('POST', 'quit'): api_quit, ('POST', 'classic'): api_classic,
        ('POST', 'setmany'): api_setmany, ('GET', 'people'): api_people, ('GET', 'textinfo'): api_textinfo, ('GET', 'events'): api_events,

@@ -220,7 +220,18 @@ default browser). The editor runs on your PC only: nothing is sent anywhere.
    emulator). It checks the patch by applying it to your ROM before it
    finishes. The patch holds only your changes, never the game. The dialog
    remembers what you typed for next time.
-14. On the Project page, **Add unit stats to the map box** puts the PC port's
+14. **Battle animations** lists every class with a row for each weapon kind
+   (and gender, and the few character-only rows such as Julia's). Pick one
+   to watch it: a player runs any of the animation's motions (the game's own
+   scripts: frames, timings and loops) at ¼× to 2× speed, frame by frame or
+   mirrored as the left-hand fighter, with any weapon in hand, plus a strip of
+   every frame and a PNG download. Below it are the four numbers the game
+   uses: **Animation** (moves, frames and timing), **Body graphics** (the
+   drawings), **Upper body** (rider, torso and head tiles) and **Palette**,
+   each saying which other classes share it. **Use its look** gives the row
+   another class's look in one step (Undo puts it back). Drawing new frames
+   and making new animations come in later versions.
+15. On the Project page, **Add unit stats to the map box** puts the PC port's
    MT / HIT / AS / AVO box into the ROMs and patches you build, so players
    on emulators get it too (the port can still switch it off).
 

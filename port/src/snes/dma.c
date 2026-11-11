@@ -205,6 +205,8 @@ static void dma_waitCycle(Dma* dma) {
   snes_runCycles(dma->snes, 8);
 }
 
+void (*dma_logHook)(Dma* dma, int ch) = NULL;
+
 static void dma_doDma(Dma* dma, int cpuCycles) {
   // nmi/irq is delayed by 1 opcode if requested during dma/hdma
   dma->snes->cpu->intDelay = true;
@@ -216,6 +218,7 @@ static void dma_doDma(Dma* dma, int cpuCycles) {
     if(!dma->channel[i].dmaActive) continue;
     // do channel i
     dma_waitCycle(dma); // overhead per channel
+    if(dma_logHook) dma_logHook(dma, i);
     int offIndex = 0;
     while(dma->channel[i].dmaActive) {
       dma_waitCycle(dma);

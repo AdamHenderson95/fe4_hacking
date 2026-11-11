@@ -104,6 +104,13 @@ static void exec_hook(Cpu* c) {
     printf("RET %s at %02X:%04X A=%d -> %06X\n", op == 0x6B ? "RTL" : "RTS", c->k, c->pc, a, ret);
   }
 }
+static int dmaFrame, dmaOn, dmaLo, dmaHi;
+static void dma_log(Dma* d, int ch) {
+  if(!dmaOn) return;
+  Ppu* p = gSnes->ppu;
+  printf("DMA %d ch%d %02X:%04X n=%04X b=21%02X mode=%d%s vram=%04X cg=%02X\n", dmaFrame, ch, d->channel[ch].aBank, d->channel[ch].aAdr,
+         d->channel[ch].size, d->channel[ch].bAdr, d->channel[ch].mode, d->channel[ch].fromB ? " fromB" : "", p->vramPointer, p->cgramPointer);
+}
 static FILE* lineLog;
 static int line60Battle; static int battleEvery;
 static void battle_hook(Ppu* p, int line) { if(line == 60) line60Battle = p->mode == 1 && p->bgLayer[1].tilemapAdr == 0x6000 && p->bgLayer[1].tilemapWider && p->layer[1].mainScreenEnabled && p->brightness == 15; }
@@ -145,6 +152,7 @@ int main(int argc, char** argv) {
     else if(!strcmp(argv[i], "--rets")) { char* s = argv[++i]; while(*s) { retWatch[nRetWatch++] = strtol(s, &s, 10); if(*s == ',') s++; } cpu_execHook = exec_hook; }
     else if(!strcmp(argv[i], "--battles")) { battleEvery = atoi(argv[++i]); ppu_lineHook = battle_hook; }
     else if(!strcmp(argv[i], "--widetest")) { wideOn = 1; fe4wide_selftest = 1; }
+    else if(!strcmp(argv[i], "--dma")) { dmaLo = atoi(argv[++i]); dmaHi = atoi(argv[++i]); dma_logHook = dma_log; }
     else if(!strcmp(argv[i], "--watch")) { watchLo = strtol(argv[++i], NULL, 16); watchHi = strtol(argv[++i], NULL, 16); snes_writeHook = write_hook; }
     else { char* s = argv[i]; while(*s) { shots[nshots++] = strtol(s, &s, 10); if(*s == ',') s++; } }
   }
@@ -154,6 +162,7 @@ int main(int argc, char** argv) {
     for(int b = 0; b < 12; b++) snes_setButtonState(snes, 1, b, (m >> b) & 1);
     execOn = fr >= (getenv("EXECFROM") ? atoi(getenv("EXECFROM")) : 0);
     watching = fr >= (getenv("WATCHFROM") ? atoi(getenv("WATCHFROM")) : frames - 10);
+    dmaFrame = fr; dmaOn = fr >= dmaLo && fr <= dmaHi;
     if(dumpPrefix && fr == frames - 1) { char p[512]; snprintf(p, sizeof p, "%s.lines", dumpPrefix); lineLog = fopen(p, "w"); ppu_lineHook = line_hook; }
     snes_runFrame(snes);
     if(wideOn && getenv("OAMSTAT")) {

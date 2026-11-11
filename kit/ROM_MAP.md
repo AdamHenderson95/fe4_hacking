@@ -429,6 +429,49 @@ and 785 messages, with every script decoded to its end.
   on the Prologue map; a new drawing for small sprite 6 replaces the Verdane
   axe fighters (in enemy colours).
 
+## Battle animations (v32)
+
+Found by watching a Prologue battle (Gandolf vs Midir) in the emulator: DMA log, RAM writes, traces.
+
+- **Lookup** `$95:A2C8`: each fighter's (class `$0D4E`/`$0D5C`, weapon kind `$0D5B`/`$0D69` high
+  nibble, character `$0D50`/`$0D5E`, gender `$0D5A`/`$0D68`) is matched against **`$97:88C9`**,
+  206 rows of 8 bytes: `class, kind, character (0 = any), gender, anim, body, upper, palette`. Class
+  must match; then kind (9 = any), then character when the row's is non-zero, then gender. When the
+  search fails part-way it takes the result of the row before (`$95:A378`); no class match uses row 0. Results go to `$7F:E1B6`-`E1B9` (and `E1BA`-`E1BD` for the other side). Weapon kinds:
+  0 sword, 1 lance, 2 axe, 3 bow, 5 thrown lance, 6 thrown axe, 7 magic, 8 staff. Rows 184/185 are
+  Julia's own (character 43).
+- **Animation** (`$95:8AB7`): byte at `$97:874F + 1 + id` -> record `$97:87AF + 6k`: ptr24 script
+  base, ptr24 tile-page table. 47 records, ids 0-94.
+  - Script base: word ?, word `lt` (offset of the frame-layout table), then motion offsets from +4
+    up to `lt`. Layout table: one offset per frame (count = first motion offset - `lt`) / 2.
+  - Frame layout: `page` (`$FF` = keep), `count`, a byte, then `count` x 5 bytes:
+    x low, x high (bit 0 = sign, bit 1 = 16x16), y (signed), tile, OAM attribute (palette in bits 1-3:
+    0 body, 1 second body palette, 2 weapon, 3 shadow; bits 6/7 flips). The right-hand fighter is drawn
+    as stored; the left one mirrored. Second fighter's palettes are +4.
+  - Motion: 2-byte steps `frame, ticks` (1/60 s); `$EF n` .. `$EE` repeat n times; `$FE`/`$FF` end;
+    `$F7`, `$FA n` (sound/effect cue), `$F4`, `$F3`, `$FD` and others are cues (`$95:C022` scans
+    for `$FD`/`$F3`).
+  - Tile pages (`$95:C2A9`): word offsets per page; page = count, then count x (word sheet offset,
+    word bytes); row r goes to OBJ tile 16 r. Sent each time the frame's page changes
+    (`$95:C46F` queues DMAs at `$0CC4`). Fighter objects: `$0B00 + $43 n` (+`$19` script ptr24,
+    +`$1D` frame, +`$21` script position, +`$27` sheet ptr24 in `$7F`, +`$2A` page table ptr24,
+    +`$2D` VRAM base `$4000`/`$5000`).
+- **Body graphics** (`$95:84D7`, uses `E1B7`): byte `$97:8039 + 1 + id` -> record `$97:80A1 + 5k`:
+  ptr24 compressed sheet (`$80:AA02` format) to `$7F:0000` / `$7F:6000`, word overlay (`$FFFF` none,
+  else `& $7FF` indexes ptr24s at `$97:84B6`; overlay = word count, then count x (word offset, 32-byte
+  tile) patched into the sheet, `$95:90C6`).
+- **Upper body** (`$95:8400`, uses `E1B8`): byte `$97:828B + 1 + id` -> record `$97:82D3 + 7k`: OBJ
+  tile, tile count (both `$80` = tiles `$80-$FF`), ptr24 compressed tiles, word overlay. Record 0 =
+  none.
+- **Palette** (`$95:858D`, uses `E1B9`): byte `$97:84B6 + 1 + id` -> `$97:8521 + 4k`: ptr24 colours,
+  byte count (30 = one palette, 62 = two). Colours go from OBJ colour 1 (`$0200 + 2`, other side
+  `+$82`). `$97:86AD` overrides it per character: word character, byte class, byte palette; `$FFFF` ends.
+- **Weapon** (`$95:8697`, A = item id): word `$99:8725 + 2 item`: low byte = sheet (ptr24 at
+  `$99:881F + 3k`, 32 tiles to OBJ tiles `$40-$5F`), high byte = palette (15 colours at
+  `$E0:0F30 + 30 p`) to OBJ palette 2.
+- Verified: rendering frames from these tables matches the battle on screen; changing row 10 (Bow
+  Knight, bow) to the Paladin row's four numbers made Midir fight as a Paladin.
+
 ## Maps (V)
 
 ### Chapter map headers
