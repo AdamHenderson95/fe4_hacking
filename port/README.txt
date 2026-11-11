@@ -231,8 +231,9 @@ How the translation works, and "learning"
 -----------------------------------------
 fe4port.cov lists the places in the game's code where translated blocks
 start (addresses only, no game data). It was recorded by playing from the
-opening through Chapter 1 battles and menus, and covers more than 99% of
-the code those parts run.
+opening through Chapter 1 battles and menus, plus the start of Chapter 6
+(the generation 2 handover and its first enemy phase), and covers more than
+99% of the code those parts run.
 
 When the game reaches code that hasn't been translated yet, that code runs
 in the built-in interpreter instead, so nothing breaks; it is only a little
@@ -274,6 +275,12 @@ Chapter 1 (including an in-game save), and for three 11-minute random-input
 sessions in Chapter 1 (moving units, battles, enemy phases, scripted events,
 menus): about 2 billion instructions in total, with zero differences. The
 picture at the end of the Chapter 1 run is also identical to Snes9x's.
+It also held for a run into Chapter 6 (a test copy of the ROM whose New
+Game jumps there, with the usual couples married): the children's births,
+the chapter 6 opening scenes, the map, unit lists and menus, ending the
+turn and the enemy phase, then turn 2. That is 42,000 frames and 586
+million more instructions with zero differences. Later chapters and a save
+made in generation 2 haven't been checked yet.
 
 Tested on: Linux, and the Windows build under Wine. It has not yet been run
 on a real Windows PC.
