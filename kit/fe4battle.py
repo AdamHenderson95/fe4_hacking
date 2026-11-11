@@ -487,16 +487,99 @@ def _match(pals, rgb):
     return {p: v[0] for p, v in out.items()}, best
 
 
-def import_drawing(rom, base, png_data):
-    """Re-cut a drawing PNG of look `base` (anim, body, upper, palette) into new frames.
-    Returns {'script': bytes, 'pages': bytes, 'sheet': bytes, 'changed': [frames], 'tiles': n}.
-    The script and page blocks are position-independent (offsets are relative to their start)."""
+COMMANDS = {
+    # command byte: (name, takes an argument, what it does)
+    0xFE: ('End', False, 'stop here'),
+    0xFD: ('Hold', False, 'keep showing the frame'),
+    0xFC: ('Start over', False, 'play the motion again from its first step'),
+    0xFB: ('Go back', True, 'jump back this many steps'),
+    0xFA: ('Wait', True, 'keep the frame for this many 1/60 s'),
+    0xF7: ('Signal', False, 'tell the other fighter (e.g. the hit lands); usually before End'),
+    0xF4: ('Wait for signal', False, 'wait until the other fighter signals'),
+    0xF3: ('Repeat back', True, 'jump back this many steps (game-controlled repeat)'),
+    0xF1: ('Finish', False, 'end the attack'),
+    0xF0: ('Effect F0', False, ''), 0xEF: ('Effect', True, 'start an effect (e.g. a thrown weapon)'),
+    0xEE: ('Weapon effect', True, 'effect from the weapon in hand'), 0xED: ('Effect ED', False, ''),
+    0xEC: ('Layer', True, 'which layer the fighter is drawn on'), 0xEB: ('Show/hide', True, ''),
+    0xE9: ('Flag E9', False, ''), 0xE8: ('Effect E8', False, ''), 0xE7: ('Count hit', False, ''),
+}
+
+
+def check_motion(steps, n_frames):
+    """Steps are [command or frame, value]; raises ValueError with a readable reason."""
+    if not steps:
+        raise ValueError('A motion needs at least one step.')
+    if len(steps) > 200:
+        raise ValueError('A motion can have at most 200 steps.')
+    for i, (c, v) in enumerate(steps):
+        if not (0 <= c <= 255 and 0 <= v <= 255):
+            raise ValueError(f'Step {i + 1}: values are 0-255.')
+        if c < 0xE7:
+            if c >= n_frames:
+                raise ValueError(f'Step {i + 1}: there is no frame {c} (frames 0-{n_frames - 1}).')
+        elif c not in COMMANDS:
+            raise ValueError(f'Step {i + 1}: command ${c:02X} isn\'t one the editor knows.')
+        if c in (0xFB, 0xF3) and not 1 <= v <= i:
+            raise ValueError(f'Step {i + 1}: can only go back 1 to {i} steps.')
+    if steps[-1][0] not in (0xFE, 0xFD, 0xFC, 0xFB, 0xF3, 0xF1):
+        raise ValueError('The last step must be End, Hold, Start over, Go back or Finish, '
+                         'or the game would read past the motion.')
+
+
+def extended_look(rom, base, extra):
+    """Look for base (anim, body, upper, palette) with extra frames appended (copies by number)."""
     a, bd, up, pl = base
     look = Look(rom, a, bd, up, pl)
+    n0 = len(look.layouts)
+    for j, k in enumerate(extra or []):
+        if not 0 <= int(k) < n0 + j:
+            raise ValueError(f'Frame {k} doesn\'t exist.')
+        look.layouts.append(look.layouts[int(k)])
+    return look
+
+
+def grow_drawing(png_data, cell, src):
+    """Append a copy of frame src's cell to a drawing PNG (for a frame added after it was drawn)."""
+    w, h, px = G.read_png(png_data)
+    cw = cell[0]
+    rows = []
+    for y in range(h):
+        row = list(px[y * w:(y + 1) * w])
+        row += row[src * cw:(src + 1) * cw] if y >= BAND else [(0, 0, 0, 0)] * cw
+        rows.append(bytes(v for p in row for v in p))
+    return G.png(w + cw, h, rows)
+
+
+def import_drawing(rom, base, png_data, motions_over=None, extra=None):
+    """Build a new look from base (anim, body, upper, palette): an optional drawing PNG (changed frames are
+    re-cut), motion overrides {index: steps} and extra frames (copies of existing ones, by number).
+    Returns {'script', 'pages', 'sheet' (None = keep the base sheet), 'changed', 'tiles'}."""
+    a, bd, up, pl = base
+    extra = [int(k) for k in (extra or [])]
+    look = extended_look(rom, base, extra)
     dr = Drawing(look)
     cw, chh = dr.cell
     ox, oy = dr.origin
     n = len(look.layouts)
+    sbase = script_base(rom, a)
+    old_offs = layouts_offsets(rom, sbase)
+    sraw = rom[snes_to_file(sbase):snes_to_file(sbase) + _script_extent(rom, sbase)]
+    layout_recs = [bytes(sraw[o:o + 3 + 5 * sraw[o + 1]]) for o in old_offs]
+    layout_recs += [layout_recs[int(k)] for k in extra]
+    mot = [list(m) for m in motions(rom, a)]
+    for i, steps in (motions_over or {}).items():
+        i = int(i)
+        if not 0 <= i < len(mot):
+            raise ValueError(f'There is no motion {i}.')
+        steps = [[int(c), int(v)] for c, v in steps]
+        check_motion(steps, n)
+        mot[i] = steps
+    sheet_out = bytearray(look.sheet)
+    new_pages = []
+    changed = []
+    total_tiles = 0
+    if png_data is None:
+        png_data = dr.png()
     try:
         w, h, px = G.read_png(png_data)
     except Exception as e:      # noqa: BLE001 (zlib, struct and format errors alike)
@@ -504,13 +587,6 @@ def import_drawing(rom, base, png_data):
     if (w, h) != (max(cw * n, 9 * 31 + 2), BAND + chh):
         raise ValueError(f'The picture is {w}x{h}; this animation\'s drawing is {max(cw * n, 9 * 31 + 2)}x{BAND + chh}. '
                          'Start from "Download frames to draw on" and keep its size.')
-    sbase = script_base(rom, a)
-    script = bytearray(rom[snes_to_file(sbase):snes_to_file(sbase) + _script_extent(rom, sbase)])
-    lt = _w(rom, sbase + 2)
-    sheet_out = bytearray(look.sheet)
-    new_pages = []
-    changed = []
-    total_tiles = 0
     for k in range(n):
         old = dr.frame_px(k)
         cand = [None] * (cw * chh)
@@ -598,11 +674,11 @@ def import_drawing(rom, base, png_data):
         page_no = len(look.pages) + len(new_pages)
         new_pages.append([(off, len(tile_bytes))])
         # the frame's new layout: kept pieces in their places, the new ones where the first drawn piece was
-        orig_off = layouts_offsets(rom, sbase)[k]
-        hdr = script[orig_off:orig_off + 3]
+        orig = layout_recs[k]
+        hdr = orig[:3]
         kept_before, kept_after, seen = [], [], False
         for i in range(hdr[1]):
-            e = bytes(script[orig_off + 3 + 5 * i: orig_off + 8 + 5 * i])
+            e = orig[3 + 5 * i: 8 + 5 * i]
             if is_drawn(e[3], e[4]):
                 seen = True
                 continue
@@ -613,14 +689,25 @@ def import_drawing(rom, base, png_data):
         rec = bytes([page_no, len(allents), hdr[2]]) + b''.join(allents)
         if page_no > 0xFE:
             raise ValueError('Too many tile pages in one animation.')
-        script[lt + 2 * k:lt + 2 * k + 2] = len(script).to_bytes(2, 'little')
-        script += rec
-    if not changed:
-        raise ValueError('Nothing changed: every frame matches the original.')
+        layout_recs[k] = rec
     if len(sheet_out) > MAX_SHEET:
         raise ValueError(f'The drawings need {len(sheet_out)} bytes of tiles; a fighter can use at most {MAX_SHEET}. '
                          'Redraw fewer frames or make them smaller.')
-    if len(script) > 0xFFFF:
+    # the script block, rebuilt: header, motion offsets, layout offsets, motions, layouts
+    nm = len(mot)
+    lt = 4 + 2 * nm
+    body = bytearray()
+    m_offs, l_offs = [], []
+    start = lt + 2 * n
+    for steps in mot:
+        m_offs.append(start + len(body))
+        body += b''.join(bytes([c, v]) for c, v in steps)
+    for rec in layout_recs:
+        l_offs.append(start + len(body))
+        body += rec
+    script = (b'\x04\x00' + lt.to_bytes(2, 'little') + b''.join(o.to_bytes(2, 'little') for o in m_offs)
+              + b''.join(o.to_bytes(2, 'little') for o in l_offs) + bytes(body))
+    if len(script) > 0x7FFF:
         raise ValueError('This animation got too big.')
     # page table: offsets for old + new pages, then the records
     allp = look.pages + new_pages
@@ -631,8 +718,8 @@ def import_drawing(rom, base, png_data):
         offs.append(head + len(recs))
         recs += bytes([len(pg)]) + b''.join(o.to_bytes(2, 'little') + s.to_bytes(2, 'little') for o, s in pg)
     pages_blk = b''.join(o.to_bytes(2, 'little') for o in offs) + bytes(recs)
-    return {'script': bytes(script), 'pages': pages_blk, 'sheet': bytes(sheet_out), 'changed': changed,
-            'tiles': total_tiles}
+    return {'script': bytes(script), 'pages': pages_blk, 'sheet': bytes(sheet_out) if changed else None,
+            'changed': changed, 'tiles': total_tiles}
 
 
 # ---------------------------------------------------------------- custom looks in a project
@@ -710,21 +797,28 @@ def apply_custom(rom, reader, far):
         aid, bid = int(lk['anim']), int(lk['body'])
         if not (ANIM_N <= aid <= 0xFE and BODY_N <= bid <= 0xFE):
             raise SystemExit(f'battle/looks.json: look {i} has ids outside the new range')
-        png = reader(lk['png'])
-        if png is None:
+        png = reader(lk['png']) if lk.get('png') else None
+        if lk.get('png') and png is None:
             raise SystemExit(f'battle animations: {lk["png"]} is missing')
         try:
-            got = import_drawing(clean, tuple(int(x) for x in lk['from']), png)
+            got = import_drawing(clean, tuple(int(x) for x in lk['from']), png, lk.get('motions'), lk.get('extra'))
         except ValueError as e:
-            raise SystemExit(f'battle animations: {lk["png"]}: {e}')
-        packed = fe4lz.compress(got['sheet'])
-        sheet_at = far.alloc(len(packed))
+            raise SystemExit(f'battle animations: look {lk.get("name") or i} ({lk.get("png") or "motions"}): {e}')
+        if got['sheet'] is not None:
+            packed = fe4lz.compress(got['sheet'])
+            sheet_at = far.alloc(len(packed))
+            f = snes_to_file(sheet_at)
+            rom[f:f + len(packed)] = packed
+            sheet_rec = sheet_at.to_bytes(3, 'little') + (0xFFFF).to_bytes(2, 'little')
+        else:            # same drawings as the base: reuse its sheet (and overlay)
+            g = gfx_rec(clean, int(lk['from'][1]))
+            sheet_rec = g['sheet'].to_bytes(3, 'little') + g['overlay'].to_bytes(2, 'little')
         # the frame code sets the data bank to the script's bank and also reaches its RAM buffers through
         # it, so scripts and page tables must sit where $0000-$1FFF is RAM: the $30-$3D mirrors of the
         # upper halves of $70-$7D
         script_at = far.alloc(len(got['script']), upper_half=True) - 0x400000
         pages_at = far.alloc(len(got['pages']), upper_half=True) - 0x400000
-        for at, data in ((sheet_at, packed), (script_at, got['script']), (pages_at, got['pages'])):
+        for at, data in ((script_at, got['script']), (pages_at, got['pages'])):
             f = snes_to_file(at)
             rom[f:f + len(data)] = data
         # new records and ids
@@ -736,7 +830,7 @@ def apply_custom(rom, reader, far):
         rom[snes_to_file(cue + 1 + aid)] = rom[snes_to_file(cue + 1 + int(lk['from'][0]))]
         br = b_recs + i
         f = snes_to_file(bbase + NEW_ADD + 5 * br)
-        rom[f:f + 5] = sheet_at.to_bytes(3, 'little') + (0xFFFF).to_bytes(2, 'little')
+        rom[f:f + 5] = sheet_rec
         rom[snes_to_file(bbase + 1 + bid)] = br
     print(f'battle animations: {len(looks)} redrawn look(s)')
     return len(looks)

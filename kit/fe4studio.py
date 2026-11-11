@@ -43,7 +43,7 @@ import fe4battle                  # noqa: E402
 from fe4project import Project, load_settings, save_settings   # noqa: E402
 
 APP = 'Builder of the Holy War'
-VERSION = '33'
+VERSION = '34'
 STATIC = os.path.join(KIT, 'studio')
 
 # ---------------------------------------------------------------- state
@@ -795,7 +795,7 @@ _battle_cache = {}
 
 def _project_reader(rel):
     p = project()
-    if p is None:
+    if p is None or not rel:
         return None
     return p.blob(rel).data
 
@@ -815,7 +815,7 @@ def battle_rom():
     import hashlib
     h = hashlib.sha1(json.dumps(looks, sort_keys=True).encode())
     for lk in looks:
-        h.update(_project_reader(lk['png']) or b'')
+        h.update((_project_reader(lk['png']) if lk.get('png') else None) or b'')
     key = h.hexdigest()
     if _battle_rom['key'] != key:
         r = bytearray(rom)
@@ -897,62 +897,125 @@ def _custom_for(r):
 
 
 def battle_drawing(row):
-    """The PNG to draw on for a row: the stored drawing of a redrawn look, else the game's frames."""
+    """The PNG to draw on for a row: its look's stored drawing, else the frames as they are."""
     p = need_project()
     t = p.table('battle_anims')
     r = t.rows[row]
     c = _custom_for(r)
-    if c:
-        return _project_reader(c[1]['png'])
     rom = rom_data()
+    if c:
+        lk = c[1]
+        if lk.get('png') and _project_reader(lk['png']):
+            return _project_reader(lk['png'])
+        look = fe4battle.extended_look(rom, tuple(int(x) for x in lk['from']), lk.get('extra'))
+        return fe4battle.Drawing(look).png()
     a, bd, up, pl = _row_look(r)
     return fe4battle.Drawing(fe4battle.Look(rom, a, bd, up, pl)).png()
 
 
-def api_battleimport(b, q):
-    """Import a drawing for a row: {row, png (base64), every (bool: all rows with this look)}.
-    Makes (or updates) a redrawn look and points the row(s) at it, as one undo step."""
+def _edit_look(row, every, change):
+    """Make (or update) the redrawn look a row uses and point the row(s) at it, as one undo step.
+    change(look dict, base) edits 'png' bytes (key '_png'), 'motions' or 'extra' in place."""
     import json as _json
     p = need_project()
     t = p.table('battle_anims')
-    row = int(b['row'])
     r = t.rows[row]
-    try:
-        data = base64.b64decode(b.get('png', ''), validate=True)
-    except ValueError:
-        raise ValueError('That file could not be read.')
-    looks = fe4battle.read_looks(_project_reader)
+    looks = [dict(x) for x in fe4battle.read_looks(_project_reader)]
     c = _custom_for(r)
     if c:
-        i, lk = c
-        base = tuple(int(x) for x in lk['from'])
+        i = c[0]
     else:
         base = _row_look(r)
-        i = None
-    try:
-        got = fe4battle.import_drawing(rom_data(), base, data)
-    except ValueError as e:
-        raise ValueError(str(e))
-    looks = [dict(x) for x in looks]
-    if i is None:
         aid = max([fe4battle.ANIM_N - 1] + [int(x['anim']) for x in looks]) + 1
         bid = max([fe4battle.BODY_N - 1] + [int(x['body']) for x in looks]) + 1
         if aid > 0xFE or bid > 0xFE:
             raise ValueError('There is no room for more redrawn looks.')
-        rel = f'battle/look_{aid:02X}.png'
-        looks.append({'anim': aid, 'body': bid, 'from': list(base), 'png': rel, 'name': r.get('_class', '')})
-    else:
-        aid, bid, rel = int(looks[i]['anim']), int(looks[i]['body']), looks[i]['png']
-    ops = [('blob', fe4battle.LOOKS, p.blob(fe4battle.LOOKS).data, _json.dumps(looks, indent=1).encode()),
-           ('blob', rel, p.blob(rel).data, data)]
+        looks.append({'anim': aid, 'body': bid, 'from': list(base), 'png': None, 'motions': {}, 'extra': [],
+                      'name': r.get('_class', '')})
+        i = len(looks) - 1
+    lk = looks[i]
+    lk.setdefault('motions', {})
+    lk.setdefault('extra', [])
+    base = tuple(int(x) for x in lk['from'])
+    old_png = _project_reader(lk['png']) if lk.get('png') else None
+    lk['_png'] = old_png
+    change(lk, base)
+    new_png = lk.pop('_png')
+    if new_png is not None and not lk.get('png'):
+        lk['png'] = f'battle/look_{int(lk["anim"]):02X}.png'
+    try:
+        got = fe4battle.import_drawing(rom_data(), base, new_png, lk['motions'], lk['extra'])
+    except ValueError as e:
+        raise ValueError(str(e))
+    ops = [('blob', fe4battle.LOOKS, p.blob(fe4battle.LOOKS).data, _json.dumps(looks, indent=1).encode())]
+    if new_png is not None and new_png != old_png:
+        ops.append(('blob', lk['png'], p.blob(lk['png']).data, new_png))
     look_now = _row_look(r)
-    rows = [k for k, x in enumerate(t.rows) if (_row_look(x) == look_now if b.get('every') else k == row)]
+    rows = [k for k, x in enumerate(t.rows) if (_row_look(x) == look_now if every else k == row)]
     for k in rows:
-        for f, v in (('anim', aid), ('body', bid)):
+        for f, v in (('anim', lk['anim']), ('body', lk['body'])):
             if t.rows[k][f] != str(v):
                 ops.append(('cell', 'battle_anims', k, f, t.rows[k][f], str(v)))
     p.edit(ops)
-    return {'ok': True, 'changed': got['changed'], 'tiles': got['tiles'], 'anim': aid, 'body': bid, 'rows': len(rows)}
+    return {'ok': True, 'changed': got['changed'], 'tiles': got['tiles'], 'anim': lk['anim'], 'body': lk['body'],
+            'rows': len(rows)}
+
+
+def api_battleimport(b, q):
+    """Import a drawing for a row: {row, png (base64), every (bool: all rows with this look)}."""
+    try:
+        data = base64.b64decode(b.get('png', ''), validate=True)
+    except ValueError:
+        raise ValueError('That file could not be read.')
+
+    def change(lk, base):
+        lk['_png'] = data
+    return _edit_look(int(b['row']), bool(b.get('every')), change)
+
+
+def api_battlemotion(b, q):
+    """Change one motion of a row's look: {row, motion, steps: [[byte, value]] or null to restore, every}."""
+    m = str(int(b['motion']))
+    steps = b.get('steps')
+
+    def change(lk, base):
+        if steps is None:
+            lk['motions'].pop(m, None)
+        else:
+            lk['motions'][m] = [[int(c), int(v)] for c, v in steps]
+    return _edit_look(int(b['row']), bool(b.get('every')), change)
+
+
+def api_battleframe(b, q):
+    """Add a frame to a row's look as a copy of frame {copy}: {row, copy, every}."""
+    src = int(b['copy'])
+
+    def change(lk, base):
+        look = fe4battle.extended_look(rom_data(), base, lk['extra'])
+        if not 0 <= src < len(look.layouts):
+            raise ValueError(f'Frame {src} doesn\'t exist.')
+        if len(look.layouts) >= 0xE6:
+            raise ValueError('An animation can have at most 230 frames.')
+        if lk['_png'] is not None:
+            lk['_png'] = fe4battle.grow_drawing(lk['_png'], fe4battle.Drawing(look).cell, src)
+        lk['extra'].append(src)
+    return _edit_look(int(b['row']), bool(b.get('every')), change)
+
+
+def api_battlemotions(b, q):
+    """A row's motions as the game will play them, plus which ones you changed."""
+    p = need_project()
+    row = int(q.get('row', ['0'])[0])
+    r = p.table('battle_anims').rows[row]
+    c = _custom_for(r)
+    rom = battle_rom()
+    a = int(r['anim'])
+    mot = fe4battle.motions(rom, a)
+    n = len(fe4battle.layouts(rom, a))
+    base_n = len(fe4battle.layouts(rom_data(), int(c[1]['from'][0]) if c else a))
+    return {'motions': [[list(x) for x in m] for m in mot], 'frames': n, 'baseFrames': base_n,
+            'edited': sorted(int(k) for k in (c[1].get('motions') or {})) if c else [],
+            'commands': {str(k): list(v) for k, v in fe4battle.COMMANDS.items()}}
 
 
 def api_battlereset(b, q):
@@ -2833,7 +2896,8 @@ API = {('GET', 'session'): api_session, ('POST', 'ping'): api_ping, ('GET', 'tab
        ('POST', 'redo'): api_redo, ('POST', 'save'): api_save, ('POST', 'open'): api_open,
        ('POST', 'rom'): api_set_rom, ('POST', 'new'): api_new_project, ('GET', 'job'): api_job,
        ('POST', 'build'): api_build, ('GET', 'battleanims'): api_battleanims, ('GET', 'battleinfo'): api_battleinfo,
-       ('POST', 'battleimport'): api_battleimport, ('POST', 'battlereset'): api_battlereset,
+       ('POST', 'battleimport'): api_battleimport, ('POST', 'battlemotion'): api_battlemotion,
+       ('POST', 'battleframe'): api_battleframe, ('GET', 'battlemotions'): api_battlemotions, ('POST', 'battlereset'): api_battlereset,
        ('POST', 'ipspatch'): api_ipspatch, ('POST', 'reveal'): api_reveal,
        ('GET', 'patchinfo'): api_patchinfo, ('POST', 'testplay'): api_testplay, ('POST', 'settings'): api_settings,
        ('POST', 'dialog'): api_dialog, ('POST', 'quit'): api_quit, ('POST', 'classic'): api_classic,

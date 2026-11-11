@@ -653,3 +653,12 @@ textarea.fe4box.bad { border-color: #E1606F; }
 .baredraw { margin: 6px 24px 8px; padding: 14px 16px; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--vellum-2); }
 .baredraw h3 { margin: 0 0 6px; }
 .basteps { margin: 8px 0; padding-left: 22px; display: grid; gap: 8px; line-height: 1.45; }
+.basteplist { list-style: decimal; margin: 10px 0; padding-left: 30px; display: grid; gap: 4px; max-height: 420px; overflow: auto; }
+.bastep { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 3px 6px; border-radius: 4px; background: var(--vellum); }
+.bastep.cmd { background: transparent; border: 1px dashed var(--line); }
+.bastep .in.num { width: 64px; }
+.baslabel { font-weight: 600; min-width: 64px; }
+.bastepbtns { margin-left: auto; display: flex; gap: 2px; }
+.bamhead { display: flex; gap: 14px; align-items: end; flex-wrap: wrap; }
+.baaddframe { margin-top: 10px; }
+.baaddframe .in.num { width: 70px; }

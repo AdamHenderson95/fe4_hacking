@@ -448,9 +448,17 @@ Found by watching a Prologue battle (Gandolf vs Midir) in the emulator: DMA log,
     x low, x high (bit 0 = sign, bit 1 = 16x16), y (signed), tile, OAM attribute (palette in bits 1-3:
     0 body, 1 second body palette, 2 weapon, 3 shadow; bits 6/7 flips). The right-hand fighter is drawn
     as stored; the left one mirrored. Second fighter's palettes are +4.
-  - Motion: 2-byte steps `frame, ticks` (1/60 s); `$EF n` .. `$EE` repeat n times; `$FE`/`$FF` end;
-    `$F7`, `$FA n` (sound/effect cue), `$F4`, `$F3`, `$FD` and others are cues (`$95:C022` scans
-    for `$FD`/`$F3`).
+  - Motion (interpreter `$95:BB4D`): 2-byte steps. Below `$E7`: `frame, ticks` (ticks scaled by the
+    object's speed, `$95:BFC6`; 0 = no wait). Commands (low byte, argument high byte):
+    `$FE` end (stops the interpreter), `$FD` hold, `$FC` start the motion over (`+$1F`), `$FB n` go back
+    n steps, `$FA n` wait n ticks, `$F9 n` sound n (`$98:ACC0`, unused), `$F8` nothing, `$F7` set the
+    signal `$0C42` (the hit lands; almost every motion ends `F7, FE`), `$F6`/`$F5` clear/set flag bit 2,
+    `$F4` wait until `$0C42` is set, then clear it, `$F3 n` set flag bit 6 and go back n, `$F2` count
+    (`$95:C077`), `$F1` finish (`$95:AAFF`), `$F0` `$95:AEA2`, `$EF n` effect (`$96:DC7C`, `$96:BCEC`;
+    thrown weapons), `$EE n` weapon effect from the item (`$95:DBDE`), `$ED` `$96:F9BF`, `$EC n` layer
+    bits, `$EB n` show/hide (0-3), `$EA`, `$E9`, `$E8` (`$95:C697`), `$E7` count hit. Motion 0 is the
+    standing pose: shown but not run (its timers don't count down). Motion numbers per action come
+    from the battle code (Gandolf's hand-axe attack is motion 4).
   - Tile pages (`$95:C2A9`): word offsets per page; page = count, then count x (word sheet offset,
     word bytes); row r goes to OBJ tile 16 r. Sent each time the frame's page changes
     (`$95:C46F` queues DMAs at `$0CC4`). Fighter objects: `$0B00 + $43 n` (+`$19` script ptr24,
@@ -476,6 +484,10 @@ Found by watching a Prologue battle (Gandolf vs Midir) in the emulator: DMA log,
   RAM buffers through it, so a script (and its page table) must sit in a bank whose `$0000-$1FFF` is
   RAM: `$80-$9F`/`$00-$3F` style banks. The kit puts new ones in the upper halves of `$70-$7D`, used
   through their `$30-$3D` mirrors.
+- **Kit v34**: a look can also change motions and add frames (copies of existing ones). Script blocks
+  are rebuilt: `4`, layout-table offset, motion offsets, layout offsets, motions, layouts (all
+  relative). Verified: Gandolf's motion 4 with its first frame at 48 ticks makes the battle 60 frames
+  longer (two attacks); motion 4 with every time tripled, about 120.
 - **Kit v33 (redrawn looks)**: the animation, body and cue tables are copied to free space with 256
   id bytes each (records after `+$100`); the reads above are repointed (`$95:8ABF`/`8AD2`/`8AD9`/
   `8AE0`/`8AE7`, `ADC` at `$95:8ACD`; `$95:84E2`/`84F5`/`84FB`/`8527`/`8538`, `ADC` at `$95:84F0`;

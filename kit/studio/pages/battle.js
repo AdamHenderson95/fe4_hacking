@@ -2,7 +2,7 @@
 // weapon kind, gender and a few characters), with a player for every motion the animation has.
 import { api, h, toast, refreshSession } from '../app.js';
 
-const st = { cls: null, row: null, motion: 1, speed: 1, mirror: false, item: null, playing: true };
+const st = { cls: null, row: null, motion: 1, speed: 1, mirror: false, item: null, playing: true, override: null };
 try { Object.assign(st, JSON.parse(sessionStorage.getItem('fe4studio-battle') || '{}')); } catch (e) { /* none */ }
 const remember = () => { try { sessionStorage.setItem('fe4studio-battle', JSON.stringify({ cls: st.cls, row: st.row, motion: st.motion, speed: st.speed, mirror: st.mirror })); } catch (e) { /* none */ } };
 const FIELDS = [['anim', 'Animation', 'Moves and frames'], ['body', 'Body graphics', 'The frames\' drawings'],
@@ -62,17 +62,21 @@ export async function battlePage(root) {
     let info = null, seq = [], pos = 0, left = 0, cur = 0;
     const ctx = canvas.getContext('2d');
 
+    // play the motion the way the game reads it: frames with times, waits, jumps; ends pause and repeat
     function build() {
-      const m = info.motions[st.motion] || [];
-      seq = []; const stack = [];
-      for (let i = 0; i < m.length && seq.length < 400; i++) {
+      const m = (st.override && st.override.motion === st.motion ? st.override.steps : info.motions[st.motion]) || [];
+      seq = []; let i = 0, total = 0, guard = 0, last = 0;
+      while (i < m.length && total < 1500 && guard++ < 3000) {
         const [c, v] = m[i];
-        if (c === 0xEF) stack.push({ at: seq.length, n: v });
-        else if (c === 0xEE) { const s = stack.pop(); if (s) { const part = seq.slice(s.at); for (let k = 1; k < Math.max(1, s.n); k++) seq.push(...part); } }
-        else if (c === 0xFE || c === 0xFF) break;
-        else if (c < info.frames) seq.push([c, Math.max(1, v)]);
+        if (c < 0xE7) { last = c; if (c < info.frames) { if (v) { seq.push([c, v]); total += v; } } i++; }
+        else if (c === 0xFA) { seq.push([last, Math.max(1, v)]); total += v; i++; }
+        else if (c === 0xFB || c === 0xF3) { i = Math.max(0, i - Math.max(1, v)); }
+        else if (c === 0xFC) { i = 0; if (!seq.length) break; }
+        else if (c === 0xFE || c === 0xFD || c === 0xF1 || c === 0xFF) break;
+        else i++;
       }
-      if (!seq.length) seq = [[0, 30]];
+      if (!seq.length) seq = [[last, 30]];
+      seq.push([seq[seq.length - 1][0], 40]);      // hold the last frame a moment before repeating
       pos = 0; left = seq[0][1]; cur = seq[0][0];
     }
     function draw() {
@@ -103,7 +107,7 @@ export async function battlePage(root) {
     speed.onchange = () => { st.speed = Number(speed.value); remember(); };
     mirror.querySelector('input').onchange = e => { st.mirror = e.target.checked; remember(); draw(); };
     itemSel.onchange = () => { st.item = Number(itemSel.value); drawDetail(); };
-    motionSel.onchange = () => { st.motion = Number(motionSel.value); remember(); build(); draw(); };
+    motionSel.onchange = () => { const was = st.motion; st.motion = Number(motionSel.value); remember(); build(); draw(); if (was !== st.motion) detail.querySelector('.bamotion')?._reload?.(); };
     (async () => {
       try {
         info = await api('battleinfo?' + q);
@@ -127,6 +131,9 @@ export async function battlePage(root) {
       };
       img.src = `/gfx/battle/?${q}`;
     })();
+    wrap._replay = () => { if (info) { build(); draw(); } };
+    wrap._frames = () => info ? info.frames : 0;
+    wrap._thumb = k => { const c = h('canvas', { width: info.cell[0], height: info.cell[1], class: 'bathumb' }); if (img.complete) c.getContext('2d').drawImage(img, k * info.cell[0], 0, info.cell[0], info.cell[1], 0, 0, info.cell[0], info.cell[1]); return c; };
     return wrap;
   }
 
@@ -176,7 +183,7 @@ export async function battlePage(root) {
     const resetBtn = r._redrawn ? h('button', { class: 'btn btn-line', type: 'button', onclick: async () => {
       try { await api('battlereset', { row: Number(r.row) }); D = await api('battleanims'); await refreshSession(); drawDetail(); toast('Back to the game\'s drawings (Undo brings yours back)'); }
       catch (e) { toast(e.message, true); }
-    } }, 'Use the original drawings') : null;
+    } }, 'Use the game\'s animation') : null;
     const redraw = h('div', { class: 'baredraw' },
       h('h3', {}, 'Redraw frames'),
       h('p', { class: 'hint' }, r._redrawn ? 'This row uses your drawings. Download them, change more, and import again.' :
@@ -187,12 +194,81 @@ export async function battlePage(root) {
         h('li', {}, 'Paint with the swatch colours only and keep the picture\'s size. Transparent stays empty. Each 8×8 square of a frame may use both palettes; frames you don\'t touch stay exactly as they were.'),
         h('li', {}, importBtn, ' ', h('label', { class: 'bacheck' }, every, ` Every row that looks like this (${D.rows.filter(x => ['anim', 'body', 'upper', 'palette'].every(k => x[k] === r[k])).length})`), fileIn, ' ', resetBtn)),
       h('p', { class: 'hint' }, 'Imported drawings become a new animation and body graphics just for the rows you choose, so other classes that shared the old ones don\'t change. A frame can use up to 64 tiles of 8×8.'));
+    let pl = null;
     detail.replaceChildren(h('div', { class: 'sheet basheet' },
       h('div', { class: 'sheet-head' }, h('h2', {}, c.name), h('p', { class: 'sub' }, `Row ${r.row} of the game's table · class ${c.id}`)),
-      tabs, player(r), redraw,
+      tabs, (pl = player(r)), motionEditor(r), redraw,
       h('h3', {}, 'What it uses'), fields,
       h('div', { class: 'bacopy' }, h('span', {}, `Look like another class (with ${weaponName(r)}):`), from, copyBtn),
       h('p', { class: 'hint' }, 'The game picks a row by class, weapon kind, gender and (for a few) the character. A class with no row for a weapon uses its first row. Named characters such as bosses can have their own colours on top of the palette shown here. Editing here changes which animation, drawings and colours are used; new drawings and new animations come in a later version.')));
+  }
+
+  // ------------------------------------------------------------ motion editor
+  function motionEditor(r) {
+    const box = h('div', { class: 'baredraw bamotion' });
+    let M = null, steps = null, dirty = false;
+    const every = h('input', { type: 'checkbox' });
+    const hex = n => `$${n.toString(16).toUpperCase().padStart(2, '0')}`;
+    async function load() {
+      M = await api(`battlemotions?row=${r.row}`);
+      if (st.motion >= M.motions.length) st.motion = 0;
+      steps = M.motions[st.motion].map(x => [...x]); dirty = false; st.override = null;
+      draw();
+    }
+    function preview() { st.override = { motion: st.motion, steps }; detail.querySelector('.baplayer')?._replay?.(); }
+    function draw() {
+      const cmds = M.commands;
+      const name = c => (cmds[c] || [hex(c)])[0];
+      const sel = h('select', { class: 'in', 'aria-label': 'Motion to edit' }, M.motions.map((m, i) =>
+        h('option', { value: i, selected: i === st.motion }, `Motion ${i}${M.edited.includes(i) ? ' (changed)' : ''}`)));
+      sel.onchange = () => {
+        if (dirty && !confirm('Drop the unsaved changes to this motion?')) { sel.value = st.motion; return; }
+        const ms = detail.querySelector('select[aria-label="Motion"]');
+        if (ms && ms.options.length > Number(sel.value)) { ms.value = sel.value; ms.dispatchEvent(new Event('change')); }
+        else { st.motion = Number(sel.value); load(); }
+      };
+      const list = h('ol', { class: 'basteplist' }, steps.map(([c, v], i) => {
+        const isFrame = c < 0xE7;
+        const move = d => () => { const j = i + d; if (j < 0 || j >= steps.length) return; [steps[i], steps[j]] = [steps[j], steps[i]]; dirty = true; draw(); preview(); };
+        const num = (val, lo, hi, label, set) => { const inp = h('input', { class: 'in num', value: val, inputmode: 'numeric', 'aria-label': label }); inp.onchange = () => { const n = Number(inp.value); if (!Number.isInteger(n) || n < lo || n > hi) { inp.classList.add('bad'); toast(`${label}: ${lo} to ${hi}.`, true); return; } set(n); dirty = true; draw(); preview(); }; return inp; };
+        const body = isFrame
+          ? [h('span', { class: 'baslabel' }, 'Frame'), num(c, 0, M.frames - 1, 'Frame', n => { steps[i][0] = n; }), h('span', {}, 'for'), num(v, 0, 255, 'Time (1/60 s)', n => { steps[i][1] = n; }), h('span', { class: 'hint' }, '/60 s')]
+          : [h('span', { class: 'baslabel', title: (cmds[c] || [])[2] || '' }, name(c)), (cmds[c] || [])[1] ? num(v, 0, 255, name(c), n => { steps[i][1] = n; }) : null, h('span', { class: 'hint' }, (cmds[c] || [])[2] || '')];
+        return h('li', { class: 'bastep' + (isFrame ? '' : ' cmd') }, ...body.filter(Boolean),
+          h('span', { class: 'bastepbtns' }, h('button', { class: 'icon-btn', type: 'button', 'aria-label': `Move step ${i + 1} up`, onclick: move(-1) }, '↑'),
+            h('button', { class: 'icon-btn', type: 'button', 'aria-label': `Move step ${i + 1} down`, onclick: move(1) }, '↓'),
+            h('button', { class: 'icon-btn', type: 'button', 'aria-label': `Remove step ${i + 1}`, onclick: () => { steps.splice(i, 1); dirty = true; draw(); preview(); } }, '✕')));
+      }));
+      const add = (label, c, v) => h('button', { class: 'btn btn-line', type: 'button', onclick: () => {
+        const at = steps.findIndex(x => [0xFE, 0xFD, 0xFC, 0xF1].includes(x[0]));
+        steps.splice(at < 0 ? steps.length : at, 0, [c, v]); dirty = true; draw(); preview();
+      } }, label);
+      const save = h('button', { class: 'btn btn-gilt', type: 'button', disabled: !dirty }, 'Save motion');
+      save.onclick = async () => {
+        try { await api('battlemotion', { row: Number(r.row), motion: st.motion, steps, every: every.checked }); await afterEdit(`Motion ${st.motion} saved`); }
+        catch (e) { toast(e.message, true); }
+      };
+      const revert = h('button', { class: 'btn btn-line', type: 'button', disabled: !dirty, onclick: () => load() }, 'Undo these changes');
+      const restore = M.edited.includes(st.motion) ? h('button', { class: 'btn btn-line', type: 'button', onclick: async () => {
+        try { await api('battlemotion', { row: Number(r.row), motion: st.motion, steps: null }); await afterEdit(`Motion ${st.motion} is the game's again`); } catch (e) { toast(e.message, true); }
+      } }, 'Use the game\'s motion') : null;
+      const src = h('input', { class: 'in num', value: '0', inputmode: 'numeric', 'aria-label': 'Frame to copy' });
+      const addFrame = h('button', { class: 'btn btn-line', type: 'button', onclick: async () => {
+        try { const res = await api('battleframe', { row: Number(r.row), copy: Number(src.value), every: every.checked }); await afterEdit(`Added frame ${M.frames} (a copy of frame ${src.value}); redraw it with Redraw frames below`); }
+        catch (e) { toast(e.message, true); }
+      } }, 'Add frame');
+      box.replaceChildren(h('h3', {}, 'Edit motions'),
+        h('p', { class: 'hint' }, 'A motion is a list of steps the game plays: frames with how long they show, and commands. The player above shows your changes before you save. The fighter standing still is motion 0, which the game doesn\'t time, so a standing loop won\'t move in battle.'),
+        h('div', { class: 'bamhead' }, h('label', { class: 'lbl' }, h('span', {}, 'Motion'), sel), h('span', { class: 'hint' }, `${M.frames} frames (${M.baseFrames} from the game)`)),
+        list,
+        h('div', { class: 'bacbtns' }, add('+ Frame', 0, 8), add('+ Wait', 0xFA, 8), add('+ Signal', 0xF7, 0), add('+ Wait for signal', 0xF4, 0), add('+ Go back', 0xFB, 1)),
+        h('div', { class: 'bacbtns' }, save, revert, restore, h('label', { class: 'bacheck' }, every, ' Every row that looks like this')),
+        h('div', { class: 'bacbtns baaddframe' }, h('span', {}, 'New frame: a copy of frame'), src, addFrame));
+    }
+    async function afterEdit(msg) { D = await api('battleanims'); await refreshSession(); st.override = null; drawDetail(); toast(msg); }
+    box._reload = () => load();
+    load().catch(e => box.replaceChildren(h('p', { class: 'hint' }, e.message)));
+    return box;
   }
 
   async function setCells(changes, r, inp, msg) {

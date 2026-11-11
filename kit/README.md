@@ -239,8 +239,16 @@ default browser). The editor runs on your PC only: nothing is sent anywhere.
    frames changed. Your drawings become a new animation and body graphics for
    that row only (or **every row that looks like this**), so classes that
    shared the old ones don't change. Rows using your drawings show ✎;
-   **Use the original drawings** goes back. Brand-new animations (new moves
-   and timing) come in a later version.
+   **Use the game's animation** goes back.
+   **Edit motions**: each motion is the list of steps the game plays: frames
+   with how long each shows (in 1/60 s) and commands (Wait, Go back, Start
+   over, Signal / Wait for signal between the two fighters, effects, End).
+   Change frames and times, reorder, remove or add steps; the player shows
+   the change before you **Save motion**. **New frame: a copy of frame N**
+   adds a frame you can then redraw and use in any motion (up to 230 frames).
+   Like redrawing, this makes a new animation for that row (or every row that
+   looks like this). The standing pose is motion 0, which the game shows
+   but doesn't time, so a standing loop won't move in battle.
 15. On the Project page, **Add unit stats to the map box** puts the PC port's
    MT / HIT / AS / AVO box into the ROMs and patches you build, so players
    on emulators get it too (the port can still switch it off).
