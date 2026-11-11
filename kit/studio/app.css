@@ -573,3 +573,46 @@ textarea.fe4box.bad { border-color: #E1606F; }
 .skbrow .in.num { width: 80px; }
 .skdesc { width: 100%; max-width: 420px; font: inherit; }
 .lbl-text { font-size: 13px; color: var(--muted); }
+
+/* love & children */
+.lvpage { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+.lvtop { display: flex; align-items: stretch; flex-wrap: wrap; border-bottom: 1px solid var(--line); background: var(--paper, #EFEBE1); }
+.lvtop .tabs { border: 0; margin: 0; }
+.lvtop .skstatus { border: 0; flex: 1; min-width: 260px; }
+.lvbody { overflow: auto; padding: 18px 24px 40px; flex: 1; min-height: 0; }
+.lvintro { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; max-width: 900px; }
+.lvintro .hint { margin: 0; }
+.lvscroll { overflow: auto; max-width: 100%; }
+.lvgrid { border-collapse: separate; border-spacing: 3px; }
+.lvgrid th { font-weight: 600; font-size: 13px; }
+.lvgrid thead th { vertical-align: bottom; height: 96px; }
+.lvgrid thead th .lvhead { writing-mode: vertical-rl; transform: rotate(180deg); white-space: nowrap; }
+.lvgrid tbody th { text-align: right; white-space: nowrap; padding-right: 6px; }
+.lvgrid .corner span { font-size: 11px; color: var(--muted); font-weight: 500; }
+.lvhead { border: 0; background: none; font: inherit; cursor: pointer; color: var(--ink); padding: 2px; }
+.lvhead:hover { color: var(--crimson, #A52A36); text-decoration: underline; }
+.lvcell { display: inline-flex; flex-direction: column; align-items: center; justify-content: center; width: 44px; height: 40px; border: 1px solid rgba(0,0,0,.08); border-radius: 4px; cursor: pointer; font: inherit; line-height: 1.05; padding: 0; background: #F4F1EA; color: var(--ink); }
+.lvcell b { font-size: 14px; }
+.lvcell small { font-size: 10px; color: rgba(0,0,0,.55); }
+.lvcell.h1 { background: #F6DCD8; } .lvcell.h2 { background: #EDB3AC; } .lvcell.h3 { background: #DE837A; color: #fff; } .lvcell.h4 { background: #C0434B; color: #fff; }
+.lvcell.h3 small, .lvcell.h4 small { color: rgba(255,255,255,.8); }
+.lvcell.zero { background: #ECE9E2; color: var(--muted); }
+.lvcell.neg { background: #D9E3EE; }
+.lvcell.none { background: repeating-linear-gradient(45deg, #E4E0D6, #E4E0D6 4px, #EFECE5 4px, #EFECE5 8px); color: var(--muted); }
+.lvcell:hover, .lvcell:focus-visible { outline: 2px solid var(--gilt, #B98B2F); outline-offset: 1px; }
+.lvnone { background: transparent; }
+.lvlegend { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+.lvlegend .lvcell { width: auto; height: auto; padding: 4px 8px; cursor: default; font-size: 12px; }
+.lvpop { position: fixed; z-index: 70; width: 280px; background: #fff; border-radius: 6px; box-shadow: 0 8px 30px rgba(0,0,0,.25); padding: 14px; display: flex; flex-direction: column; gap: 10px; }
+.lvpop .hint { margin: 0; }
+.lvfams { display: grid; grid-template-columns: repeat(auto-fill, minmax(380px, 1fr)); gap: 14px; }
+.lvfam { background: #F7F4EC; border: 1px solid var(--line); border-radius: 6px; padding: 12px 14px; }
+.lvparent { display: flex; gap: 12px; align-items: center; padding-bottom: 10px; border-bottom: 1px solid var(--line); }
+.lvparent img, .lvkid img { image-rendering: pixelated; border-radius: 3px; background: #2B3150; flex: none; }
+.lvkids { display: flex; flex-direction: column; gap: 10px; padding-top: 10px; }
+.lvkid { display: flex; gap: 12px; align-items: flex-start; }
+.lvkid .sub, .lvparent .sub { color: var(--muted); font-size: 13px; }
+.lvparentsel { margin-top: 6px; max-width: 220px; }
+.linkbtn { border: 0; background: none; padding: 0; font: inherit; font-weight: 700; color: var(--ink); cursor: pointer; text-decoration: underline; text-decoration-color: rgba(0,0,0,.25); }
+.linkbtn:hover { color: var(--crimson, #A52A36); }
+.lvrules { max-width: 720px; }

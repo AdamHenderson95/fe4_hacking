@@ -40,7 +40,7 @@ import fe4maptiles                 # noqa: E402
 from fe4project import Project, load_settings, save_settings   # noqa: E402
 
 APP = 'Builder of the Holy War'
-VERSION = '27'
+VERSION = '28'
 STATIC = os.path.join(KIT, 'studio')
 
 # ---------------------------------------------------------------- state
@@ -334,6 +334,21 @@ def check_value(table, field, value):
         if len(set(parts)) != len(parts):
             raise ValueError('Each item copy exists once, so a shop can\'t sell the same copy twice.')
         return ';'.join(parts), None
+    if table == 'lovers' and field == 'start':
+        lv = v.lower()
+        if lv in ('no', 'never'):
+            return 'no', None
+        if not v.isdigit() or not (int(v) == 499 or (0 <= int(v) <= 2530 and int(v) % 10 == 0)):
+            raise ValueError('Starting love is 0 to 2530 in steps of 10 (500 = lovers), 499, or "no".')
+        return str(int(v)), None
+    if table == 'lovers' and field == 'growth':
+        if not re.fullmatch(r'-?\d+', v) or not -127 <= int(v) <= 127:
+            raise ValueError('Love per turn is -127 to 127.')
+        return str(int(v)), None
+    if table == 'gen2_rules' and field == 'value':
+        if not v.isdigit():
+            raise ValueError('Enter a whole number.')
+        return str(int(v)), None
     if table == 'map_terrain' and field == 'terrain':
         if not v.isdigit() or not 0 <= int(v) <= 255:
             raise ValueError('Terrain is a number from 0 to 255.')
@@ -2326,6 +2341,41 @@ def _holder_ops(p, old, new):
     return ops
 
 
+# ---------------------------------------------------------------- love and children
+def api_gen2check(b, q):
+    """Build the project's children, love and inheritance rules into a copy of the ROM: {ok, note} or {error}."""
+    import contextlib
+    import io as _io
+    import tempfile
+    import fe4gen2
+    p = need_project()
+    rom = rom_data()
+    if rom is None:
+        return {'ok': False, 'error': 'Choose your FE4 ROM on the Project page to check this.'}
+    with tempfile.TemporaryDirectory() as d:
+        for name in ('units_children', 'lovers', 'gen2_rules', 'skills'):
+            t = p.table(name)
+            if t is None:
+                continue
+            with open(os.path.join(d, name + '.csv'), 'w', newline='') as f:
+                w = csv.DictWriter(f, fieldnames=t.fields)
+                w.writeheader()
+                w.writerows(t.rows)
+        out = _io.StringIO()
+        try:
+            r2 = bytearray(rom)
+            import fe4skills
+            with contextlib.redirect_stdout(out):
+                if os.path.exists(os.path.join(d, 'skills.csv')):     # skill names, as the build sets them
+                    fe4skills.set_maps(fe4skills.read_rows(os.path.join(d, 'skills.csv')))
+                fe4gen2.apply(r2, d, L.BankSpace(r2))
+        except SystemExit as e:
+            return {'ok': False, 'error': str(e).replace(d + os.sep, '')}
+        except Exception as e:          # noqa: BLE001
+            return {'ok': False, 'error': f'{type(e).__name__}: {e}'}
+    return {'ok': True, 'note': out.getvalue().strip()}
+
+
 API = {('GET', 'session'): api_session, ('POST', 'ping'): api_ping, ('GET', 'table'): api_table,
        ('POST', 'tables'): api_tables, ('POST', 'set'): api_set, ('POST', 'undo'): api_undo,
        ('POST', 'redo'): api_redo, ('POST', 'save'): api_save, ('POST', 'open'): api_open,
@@ -2336,7 +2386,7 @@ API = {('GET', 'session'): api_session, ('POST', 'ping'): api_ping, ('GET', 'tab
        ('GET', 'chapters'): api_chapters, ('GET', 'scene'): api_scene, ('POST', 'messages'): api_messages,
        ('POST', 'msg'): api_msg, ('POST', 'evtcmd'): api_evtcmd, ('GET', 'dsearch'): api_dsearch, ('GET', 'villages'): api_villages, ('GET', 'itemuse'): api_itemuse, ('POST', 'newevent'): api_newevent, ('POST', 'talkmenu'): api_talkmenu, ('POST', 'delstep'): api_delstep,
        ('POST', 'addstep'): api_addstep, ('GET', 'eventinfo'): api_eventinfo, ('GET', 'maps'): api_maps, ('GET', 'map'): api_map, ('POST', 'paint'): api_paint,
-       ('GET', 'armies'): api_armies, ('GET', 'portraits'): api_portraits, ('GET', 'mapsprites'): api_mapsprites, ('GET', 'skills'): api_skills, ('POST', 'skillcheck'): api_skillcheck, ('POST', 'skilledit'): api_skilledit, ('POST', 'spriteentry'): api_spriteentry, ('GET', 'tileinfo'): api_tileinfo, ('POST', 'tiledraw'): api_tiledraw, ('POST', 'mapsprite'): api_mapsprite, ('POST', 'portrait'): api_portrait, ('POST', 'aicmd'): api_aicmd, ('POST', 'airecipe'): api_airecipe}
+       ('GET', 'armies'): api_armies, ('GET', 'portraits'): api_portraits, ('GET', 'mapsprites'): api_mapsprites, ('GET', 'skills'): api_skills, ('POST', 'gen2check'): api_gen2check, ('POST', 'skillcheck'): api_skillcheck, ('POST', 'skilledit'): api_skilledit, ('POST', 'spriteentry'): api_spriteentry, ('GET', 'tileinfo'): api_tileinfo, ('POST', 'tiledraw'): api_tiledraw, ('POST', 'mapsprite'): api_mapsprite, ('POST', 'portrait'): api_portrait, ('POST', 'aicmd'): api_aicmd, ('POST', 'airecipe'): api_airecipe}
 
 
 # ---------------------------------------------------------------- window

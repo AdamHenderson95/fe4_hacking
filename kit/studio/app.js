@@ -9,6 +9,7 @@ import { armiesPage } from './pages/armies.js';
 import { portraitsPage } from './pages/portraits.js';
 import { spritesPage } from './pages/sprites.js';
 import { skillsPage } from './pages/skills.js';
+import { lovePage } from './pages/love.js';
 import { soonPage } from './pages/soon.js';
 
 const TOKEN = location.hash.slice(1).split('/')[0] || sessionStorage.getItem('fe4studio-token') || '';
@@ -144,6 +145,7 @@ const PAGES = {
   home: { title: 'Project', make: homePage },
   characters: { title: 'Characters', make: charactersPage, needsProject: true },
   skills: { title: 'Skills', make: skillsPage, needsProject: true },
+  love: { title: 'Love & children', make: lovePage, needsProject: true },
   classes: { title: 'Classes', make: classesPage, needsProject: true },
   maps: { title: 'Maps', make: mapsPage, needsProject: true },
   events: { title: 'Events & dialogue', make: eventsPage, needsProject: true },

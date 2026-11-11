@@ -16,6 +16,9 @@ let state = { group: 'units_playable', row: null, query: '' };
 try { Object.assign(state, JSON.parse(sessionStorage.getItem('fe4studio-chars') || '{}')); } catch (e) { /* none */ }
 const remember = () => { try { sessionStorage.setItem('fe4studio-chars', JSON.stringify(state)); } catch (e) { /* none */ } };
 
+/** Open the Characters page on one unit (from another page). */
+export function openCharacter(group, row) { state.group = group; state.row = row; state.query = ''; remember(); go('characters'); }
+
 const portraitUrl = (n, s) => `/gfx/portrait/${n}.png?s=${s}`;
 
 function unitName(t, r) {
