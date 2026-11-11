@@ -111,6 +111,15 @@ static void dma_log(Dma* d, int ch) {
   printf("DMA %d ch%d %02X:%04X n=%04X b=21%02X mode=%d%s vram=%04X cg=%02X\n", dmaFrame, ch, d->channel[ch].aBank, d->channel[ch].aAdr,
          d->channel[ch].size, d->channel[ch].bAdr, d->channel[ch].mode, d->channel[ch].fromB ? " fromB" : "", p->vramPointer, p->cgramPointer);
 }
+static uint32_t frzAdr[16]; static uint8_t frzVal[16]; static int nFrz, frzOn;
+static uint8_t freeze_map(Snes* s, uint32_t adr, uint8_t val) {
+  if(!frzOn) return val;
+  uint8_t bank = adr >> 16; uint32_t a = adr & 0xffff, w;
+  if(bank == 0x7e || bank == 0x7f) w = ((bank & 1) << 16) | a;
+  else if(((bank & 0x7f) < 0x40) && a < 0x2000) w = a; else return val;
+  for(int i = 0; i < nFrz; i++) if(frzAdr[i] == w) return frzVal[i];
+  return val;
+}
 static FILE* lineLog;
 static int line60Battle; static int battleEvery;
 static void battle_hook(Ppu* p, int line) { if(line == 60) line60Battle = p->mode == 1 && p->bgLayer[1].tilemapAdr == 0x6000 && p->bgLayer[1].tilemapWider && p->layer[1].mainScreenEnabled && p->brightness == 15; }
@@ -152,6 +161,7 @@ int main(int argc, char** argv) {
     else if(!strcmp(argv[i], "--rets")) { char* s = argv[++i]; while(*s) { retWatch[nRetWatch++] = strtol(s, &s, 10); if(*s == ',') s++; } cpu_execHook = exec_hook; }
     else if(!strcmp(argv[i], "--battles")) { battleEvery = atoi(argv[++i]); ppu_lineHook = battle_hook; }
     else if(!strcmp(argv[i], "--widetest")) { wideOn = 1; fe4wide_selftest = 1; }
+    else if(!strcmp(argv[i], "--freeze")) { frzAdr[nFrz] = strtol(argv[++i], NULL, 16); frzVal[nFrz++] = strtol(argv[++i], NULL, 16); snes_writeMap = freeze_map; }
     else if(!strcmp(argv[i], "--dma")) { dmaLo = atoi(argv[++i]); dmaHi = atoi(argv[++i]); dma_logHook = dma_log; }
     else if(!strcmp(argv[i], "--watch")) { watchLo = strtol(argv[++i], NULL, 16); watchHi = strtol(argv[++i], NULL, 16); snes_writeHook = write_hook; }
     else { char* s = argv[i]; while(*s) { shots[nshots++] = strtol(s, &s, 10); if(*s == ',') s++; } }
@@ -163,6 +173,7 @@ int main(int argc, char** argv) {
     execOn = fr >= (getenv("EXECFROM") ? atoi(getenv("EXECFROM")) : 0);
     watching = fr >= (getenv("WATCHFROM") ? atoi(getenv("WATCHFROM")) : frames - 10);
     dmaFrame = fr; dmaOn = fr >= dmaLo && fr <= dmaHi;
+    frzOn = fr >= (getenv("FREEZEFROM") ? atoi(getenv("FREEZEFROM")) : 0);
     if(dumpPrefix && fr == frames - 1) { char p[512]; snprintf(p, sizeof p, "%s.lines", dumpPrefix); lineLog = fopen(p, "w"); ppu_lineHook = line_hook; }
     snes_runFrame(snes);
     if(wideOn && getenv("OAMSTAT")) {

@@ -521,8 +521,10 @@ static uint8_t snes_rread(Snes* snes, uint32_t adr) {
 }
 
 void (*snes_writeHook)(Snes* snes, uint32_t adr, uint8_t val) = NULL; // debug
+uint8_t (*snes_writeMap)(Snes* snes, uint32_t adr, uint8_t val) = NULL; // debug: change a value being written
 
 void snes_write(Snes* snes, uint32_t adr, uint8_t val) {
+  if(snes_writeMap) val = snes_writeMap(snes, adr, val);
   if(snes_writeHook) snes_writeHook(snes, adr, val);
   snes->openBus = val;
   uint8_t bank = adr >> 16;

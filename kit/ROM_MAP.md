@@ -499,6 +499,27 @@ Found by watching a Prologue battle (Gandolf vs Midir) in the emulator: DMA log,
   Knight, bow) to the Paladin row's four numbers made Midir fight as a Paladin; a redrawn Bow Knight
   look (frames 1-5 recoloured) plays frame for frame like the original with the new drawings.
 
+## Spell effects (v35)
+
+Found by running the Prologue battle with Gandolf frozen as a Fire Mage holding Fire (`lsrun --freeze`
+on `$0D5C`, `$0D60`, `$0D69`).
+
+- **Item -> spell** `$99:832D`: 3-byte rows `item, spell, spell at range`, ending `$FFFF` (46 rows:
+  the magic swords, tomes and staves). `$96:DC7C` looks the attacker's item (`$0D52`/`$0D60`) up when
+  a motion's `$EF` step runs (`$95:BE26` -> `$96:BCEC`); not found = spell 0. The second spell is used
+  when `$7E:4EAB` >= 3 (Physic 69/28, Restore 34/70, Silence 71/36, Sleep 37/72, Berserk 38/73).
+  Read at `$96:DC91`, `$96:DCB6`, `$96:DCBC` (long addressing; the kit moves a longer table to free space).
+- **Spell scripts** `$97:8F7D`: word offset per spell (105), relative to the table. `$96:A4B2` starts
+  one (A = spell; pointer `$7F:E4B9`/`E4BC`, bank `$97`). Script words: command = bits 9-13
+  (`$96:A3F3`, under `$19`), the rest an argument; commands run effects, palette changes, waits.
+  Other effects started the same way: `$2D` and `$4A` at battle start (`$96:883B`, `$96:888B`), `$31`,
+  `$34` (`$96:F33C`, `$96:F326`).
+- **Effect graphics** `$97:B081`: 10-byte records (compressed source ptr24, destination ptr24, ...),
+  queued by `$96:B945` (Y = record) through the decompression queue at `$04:49` (`$80:A637`, run by
+  `$80:A5F8`); a spell's background tiles are then copied to BG VRAM (`$2000+`, `$3800+`).
+- Verified: Fire -> spell 4 plays Bolganone's red blast; the table moved to `$70:0000` with an extra row
+  still drives the effect.
+
 ## Maps (V)
 
 ### Chapter map headers

@@ -662,3 +662,9 @@ textarea.fe4box.bad { border-color: #E1606F; }
 .bamhead { display: flex; gap: 14px; align-items: end; flex-wrap: wrap; }
 .baaddframe { margin-top: 10px; }
 .baaddframe .in.num { width: 70px; }
+.baspells { margin: 0 24px; overflow: auto; max-height: 60vh; }
+.batable { border-collapse: collapse; width: 100%; }
+.batable th, .batable td { text-align: left; padding: 5px 8px; border-bottom: 1px solid var(--line); }
+.batable thead th { position: sticky; top: 0; background: var(--vellum); font-size: 14px; color: var(--muted); }
+.batable .in { min-width: 180px; }
+.baspellhint { padding: 0 16px; }

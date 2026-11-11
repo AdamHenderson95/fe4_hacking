@@ -4,7 +4,7 @@ import { api, h, toast, refreshSession } from '../app.js';
 
 const st = { cls: null, row: null, motion: 1, speed: 1, mirror: false, item: null, playing: true, override: null };
 try { Object.assign(st, JSON.parse(sessionStorage.getItem('fe4studio-battle') || '{}')); } catch (e) { /* none */ }
-const remember = () => { try { sessionStorage.setItem('fe4studio-battle', JSON.stringify({ cls: st.cls, row: st.row, motion: st.motion, speed: st.speed, mirror: st.mirror })); } catch (e) { /* none */ } };
+const remember = () => { try { sessionStorage.setItem('fe4studio-battle', JSON.stringify({ cls: st.cls, row: st.row, motion: st.motion, speed: st.speed, mirror: st.mirror, view: st.view })); } catch (e) { /* none */ } };
 const FIELDS = [['anim', 'Animation', 'Moves and frames'], ['body', 'Body graphics', 'The frames\' drawings'],
   ['upper', 'Upper body', 'Rider, torso and head tiles'], ['palette', 'Palette', 'Colours']];
 const SCALE = 3;
@@ -14,8 +14,12 @@ export async function battlePage(root) {
   const list = h('div', { class: 'list' });
   const detail = h('div', { class: 'sheet-wrap' });
   const find = h('input', { class: 'in', type: 'search', placeholder: 'Find a class', 'aria-label': 'Find a class' });
+  const viewBar = h('div', { class: 'chips', role: 'tablist', 'aria-label': 'Show' });
+  const drawViewBar = () => viewBar.replaceChildren(...[['classes', 'Classes'], ['spells', 'Spells']].map(([k, t]) =>
+    h('button', { class: 'chip', role: 'tab', 'aria-selected': String((st.view || 'classes') === k), onclick: () => { st.view = k; remember(); drawViewBar(); drawList(); drawDetail(); } }, t)));
+  drawViewBar();
   root.append(h('div', { class: 'split' },
-    h('div', { class: 'roster' }, h('div', { class: 'roster-tools' }, find,
+    h('div', { class: 'roster' }, h('div', { class: 'roster-tools' }, viewBar, find,
       h('p', { class: 'hint' }, 'What each class looks like in battle, for each weapon it can use.')), list),
     detail));
 
@@ -30,6 +34,8 @@ export async function battlePage(root) {
 
   function drawList() {
     const q = find.value.trim().toLowerCase();
+    find.hidden = st.view === 'spells';
+    if (st.view === 'spells') { list.replaceChildren(h('p', { class: 'hint baspellhint' }, 'Tomes, staves and magic swords play a spell effect when they attack or heal. Pick which effect each one plays, or give one to another item.')); return; }
     list.replaceChildren(...classes().filter(c => !q || c.name.toLowerCase().includes(q)).map(c =>
       h('button', { 'aria-pressed': String(c.id === st.cls), onclick: () => { st.cls = c.id; st.row = null; remember(); drawList(); drawDetail(); } },
         h('span', {}, c.name), h('span', { class: 'sub' }, `${c.rows.length} weapon${c.rows.length === 1 ? '' : 's'}`))));
@@ -138,7 +144,42 @@ export async function battlePage(root) {
   }
 
   // ------------------------------------------------------------ detail
+  async function drawSpells() {
+    let S;
+    try { S = await api('battlespells'); } catch (e) { detail.replaceChildren(h('div', { class: 'empty' }, e.message)); return; }
+    const spellOpts = v => S.spells.map(([k, n]) => h('option', { value: k, selected: String(k) === String(v) }, `${k}${n ? ` · ${n}` : ''}`));
+    const set = async (i, field, value) => {
+      try { await api('setmany', { changes: [{ table: 'spells', row: i, field, value: String(value) }] }); await refreshSession(); drawSpells(); }
+      catch (e) { toast(e.message, true); }
+    };
+    const rows = S.rows.map((r, i) => {
+      const a = h('select', { class: 'in', 'aria-label': `Effect for ${r._item}` }, spellOpts(r.spell));
+      const f = h('select', { class: 'in', 'aria-label': `Effect at range for ${r._item}` }, spellOpts(r.spell_far));
+      a.onchange = () => set(i, 'spell', a.value);
+      f.onchange = () => set(i, 'spell_far', f.value);
+      return h('tr', {}, h('th', { scope: 'row' }, r._item || `Item ${r.item}`), h('td', {}, a), h('td', {}, f),
+        h('td', {}, h('button', { class: 'icon-btn', type: 'button', 'aria-label': `Remove ${r._item}`, onclick: async () => {
+          try { await api('spellrow', { delete: i }); await refreshSession(); drawSpells(); toast(`${r._item} has no effect now (Undo brings it back)`); } catch (e) { toast(e.message, true); } } }, '✕')));
+    });
+    const have = new Set(S.rows.map(r => Number(r.item)));
+    const addItem = h('select', { class: 'in', 'aria-label': 'Item to add' }, h('option', { value: '' }, 'Choose an item…'),
+      S.items.filter(([k]) => !have.has(k)).map(([k, n]) => h('option', { value: k }, n)));
+    const addSpell = h('select', { class: 'in', 'aria-label': 'Its effect' }, spellOpts(2));
+    const addBtn = h('button', { class: 'btn btn-line', type: 'button', onclick: async () => {
+      if (!addItem.value) { toast('Choose an item.', true); return; }
+      try { await api('spellrow', { add: Number(addItem.value), spell: Number(addSpell.value) }); await refreshSession(); drawSpells(); } catch (e) { toast(e.message, true); }
+    } }, 'Add');
+    detail.replaceChildren(h('div', { class: 'sheet basheet' },
+      h('div', { class: 'sheet-head' }, h('h2', {}, 'Spell effects'), h('p', { class: 'sub' }, `${S.rows.length} items · ${S.spells.length} effects in the game`)),
+      h('div', { class: 'baspells' }, h('table', { class: 'batable' },
+        h('thead', {}, h('tr', {}, h('th', {}, 'Item'), h('th', {}, 'Effect'), h('th', {}, 'Effect at range'), h('th', {}, ''))),
+        h('tbody', {}, rows))),
+      h('div', { class: 'bacopy' }, h('span', {}, 'Give an item an effect:'), addItem, addSpell, addBtn),
+      h('p', { class: 'hint' }, 'Effects are named after the first item that uses them in the game; the unnamed ones are used by other battle events. "At range" is what the game plays in some situations instead: Physic and the status staves use it when cast from far away. An effect only plays if the attacker\'s battle animation casts (tomes, staves, magic swords); a plain sword swing or thrown axe ignores it.')));
+  }
+
   function drawDetail() {
+    if (st.view === 'spells') { drawSpells(); return; }
     const c = classes().find(x => x.id === st.cls) || classes()[0];
     if (!c) { detail.replaceChildren(h('div', { class: 'empty' }, 'No battle animation table in this project.')); return; }
     st.cls = c.id;
@@ -283,7 +324,7 @@ export async function battlePage(root) {
   list.querySelector('[aria-pressed="true"]')?.scrollIntoView({ block: 'center' });
   return {
     async refresh(change) {
-      if (!change || change.tables?.includes('battle_anims')) { D = await api('battleanims'); drawList(); drawDetail(); }
+      if (!change || change.tables?.includes('battle_anims') || change.tables?.includes('spells') || change.files?.length) { D = await api('battleanims'); drawList(); drawDetail(); }
     },
   };
 }

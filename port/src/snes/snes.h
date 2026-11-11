@@ -81,6 +81,7 @@ void snes_writeBBus(Snes* snes, uint8_t adr, uint8_t val);
 uint8_t snes_read(Snes* snes, uint32_t adr);
 void snes_write(Snes* snes, uint32_t adr, uint8_t val);
 extern void (*snes_writeHook)(Snes* snes, uint32_t adr, uint8_t val);
+extern uint8_t (*snes_writeMap)(Snes* snes, uint32_t adr, uint8_t val);
 void snes_cpuIdle(void* mem, bool waiting);
 uint8_t snes_cpuRead(void* mem, uint32_t adr);
 void snes_cpuWrite(void* mem, uint32_t adr, uint8_t val);

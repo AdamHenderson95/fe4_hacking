@@ -43,7 +43,7 @@ import fe4battle                  # noqa: E402
 from fe4project import Project, load_settings, save_settings   # noqa: E402
 
 APP = 'Builder of the Holy War'
-VERSION = '34'
+VERSION = '35'
 STATIC = os.path.join(KIT, 'studio')
 
 # ---------------------------------------------------------------- state
@@ -98,6 +98,8 @@ def open_project(d):
             fe4locations.export_talks(rom, os.path.join(d, 'talks.csv'))
         if not os.path.exists(os.path.join(d, 'map_terrain.csv')):   # kits before v24
             fe4maptiles.export_terrain(rom, os.path.join(d, 'map_terrain.csv'))
+        if not os.path.exists(os.path.join(d, 'spells.csv')):   # kits before v35
+            fe4battle.export_spells(rom, os.path.join(d, 'spells.csv'), dict(enumerate(L.item_names(rom))))
         if not os.path.exists(os.path.join(d, 'battle_anims.csv')):   # kits before v32
             names = [r.get('_name', '') for r in csv.DictReader(open(os.path.join(d, 'classes.csv'), newline=''))] \
                 if os.path.exists(os.path.join(d, 'classes.csv')) else []
@@ -169,7 +171,7 @@ def port_exe():
 
 # ---------------------------------------------------------------- data for the pages
 TABLES = {'units_playable', 'units_children', 'units_npc', 'units_generic', 'classes', 'items', 'rings',
-          'item_instances', 'skills', 'names', 'lovers', 'gen2_rules', 'deploy', 'locations', 'arena', 'armies', 'talks', 'map_sprites', 'map_terrain', 'battle_anims'}
+          'item_instances', 'skills', 'names', 'lovers', 'gen2_rules', 'deploy', 'locations', 'arena', 'armies', 'talks', 'map_sprites', 'map_terrain', 'battle_anims', 'spells'}
 
 
 def unit_portrait(table, row):
@@ -355,6 +357,16 @@ def check_value(table, field, value):
     if table == 'gen2_rules' and field == 'value':
         if not v.isdigit():
             raise ValueError('Enter a whole number.')
+        return str(int(v)), None
+    if table == 'spells' and field in ('spell', 'spell_far'):
+        n = fe4battle.spell_count(rom_data())
+        if not v.isdigit() or not 0 <= int(v) < n:
+            raise ValueError(f'Spells are 0 to {n - 1}.')
+        return str(int(v)), None
+    if table == 'spells' and field == 'item':
+        t = project().table('spells')
+        if not v.isdigit() or not 0 <= int(v) <= 254:
+            raise ValueError('Pick an item.')
         return str(int(v)), None
     if table == 'battle_anims' and field in ('anim', 'body', 'upper', 'palette'):
         hi = fe4battle.id_limits(rom_data())[field]
@@ -1000,6 +1012,40 @@ def api_battleframe(b, q):
             lk['_png'] = fe4battle.grow_drawing(lk['_png'], fe4battle.Drawing(look).cell, src)
         lk['extra'].append(src)
     return _edit_look(int(b['row']), bool(b.get('every')), change)
+
+
+def api_battlespells(b, q):
+    """The item -> spell effect table, with names."""
+    p = need_project()
+    t = p.table('spells')
+    if t is None:
+        raise KeyError('This project has no spells.csv; reopen it with this version to add one.')
+    rom = rom_data()
+    it = p.table('items')
+    items = {int(r['index']): r.get('_name', '') for r in it.rows} if it else {}
+    names = fe4battle.spell_names(rom, items)
+    n = fe4battle.spell_count(rom)
+    return {'rows': [{**r, '_item': items.get(int(r['item']), r.get('_item', ''))} for r in t.rows],
+            'spells': [[k, names.get(k, '')] for k in range(n)], 'items': [[k, v] for k, v in sorted(items.items()) if v]}
+
+
+def api_spellrow(b, q):
+    """Add an item to the spell table ({add: item, spell}) or remove a row ({delete: row}); one undo step."""
+    p = need_project()
+    t = p.table('spells')
+    if 'delete' in b:
+        k = int(b['delete'])
+        p.edit([('rows', 'spells', k, [dict(t.rows[k])], [])])
+        return {'ok': True}
+    item = int(b['add'])
+    if any(int(r['item']) == item for r in t.rows):
+        raise ValueError('That item already has an effect; change it in its row.')
+    sp = int(b.get('spell', 2))
+    it = p.table('items')
+    name = next((r.get('_name', '') for r in it.rows if int(r['index']) == item), '') if it else ''
+    row = {'item': str(item), '_item': name, 'spell': str(sp), 'spell_far': str(sp)}
+    p.edit([('rows', 'spells', len(t.rows), [], [row])])
+    return {'ok': True}
 
 
 def api_battlemotions(b, q):
@@ -2897,7 +2943,8 @@ API = {('GET', 'session'): api_session, ('POST', 'ping'): api_ping, ('GET', 'tab
        ('POST', 'rom'): api_set_rom, ('POST', 'new'): api_new_project, ('GET', 'job'): api_job,
        ('POST', 'build'): api_build, ('GET', 'battleanims'): api_battleanims, ('GET', 'battleinfo'): api_battleinfo,
        ('POST', 'battleimport'): api_battleimport, ('POST', 'battlemotion'): api_battlemotion,
-       ('POST', 'battleframe'): api_battleframe, ('GET', 'battlemotions'): api_battlemotions, ('POST', 'battlereset'): api_battlereset,
+       ('POST', 'battleframe'): api_battleframe, ('GET', 'battlemotions'): api_battlemotions,
+       ('GET', 'battlespells'): api_battlespells, ('POST', 'spellrow'): api_spellrow, ('POST', 'battlereset'): api_battlereset,
        ('POST', 'ipspatch'): api_ipspatch, ('POST', 'reveal'): api_reveal,
        ('GET', 'patchinfo'): api_patchinfo, ('POST', 'testplay'): api_testplay, ('POST', 'settings'): api_settings,
        ('POST', 'dialog'): api_dialog, ('POST', 'quit'): api_quit, ('POST', 'classic'): api_classic,

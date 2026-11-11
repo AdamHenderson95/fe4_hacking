@@ -834,3 +834,81 @@ def apply_custom(rom, reader, far):
         rom[snes_to_file(bbase + 1 + bid)] = br
     print(f'battle animations: {len(looks)} redrawn look(s)')
     return len(looks)
+
+
+# ---------------------------------------------------------------- spells: which effect an item plays
+# $99:832D: 3-byte rows (item, spell, alternate spell) ending $FFFF, read by $96:DC7C when a motion's
+# $EE/$EF step starts the item's effect. The alternate is used when $7E:4EAB >= 3 (Physic, Restore and
+# the status staves at range). Spell scripts: $97:8F7D + word offset per spell (105 of them).
+SPELL_TABLE = 0x99832D
+SPELL_REFS = [(0x96DC92, SPELL_TABLE), (0x96DCB7, SPELL_TABLE + 1), (0x96DCBD, SPELL_TABLE + 2)]
+SPELL_SCRIPTS = 0x978F7D
+SPELL_FIELDS = ['item', '_item', 'spell', 'spell_far']
+
+
+def spell_rows(rom):
+    f = snes_to_file(SPELL_TABLE)
+    out = []
+    while rom[f] | rom[f + 1] << 8 != 0xFFFF:
+        out.append((rom[f], rom[f + 1], rom[f + 2]))
+        f += 3
+    return out
+
+
+def spell_count(rom):
+    return _w(rom, SPELL_SCRIPTS) // 2
+
+
+def spell_names(rom, item_names):
+    """{spell: 'Fire'} from the first item that uses each spell in the game's table."""
+    out = {}
+    for it, a, b in spell_rows(rom):
+        for s in (a, b):
+            out.setdefault(s, item_names.get(it, f'item {it}'))
+    return out
+
+
+def export_spells(rom, path, item_names):
+    import csv
+    with open(path, 'w', newline='', encoding='utf-8') as f:
+        w = csv.writer(f)
+        w.writerow(SPELL_FIELDS)
+        for it, a, b in spell_rows(rom):
+            w.writerow([it, item_names.get(it, ''), a, b])
+    print('wrote', path)
+
+
+def apply_spells(rom, proj, far):
+    """spells.csv -> the item/spell table; moved to free space when it gets longer."""
+    import csv
+    import os
+    path = os.path.join(proj, 'spells.csv')
+    if not os.path.exists(path):
+        return 0
+    n_sp = spell_count(rom)
+    rows, seen = [], set()
+    for line, r in enumerate(csv.DictReader(open(path, newline='', encoding='utf-8')), 2):
+        try:
+            it, a, b = int(r['item']), int(r['spell']), int(r.get('spell_far') or r['spell'])
+        except (KeyError, ValueError):
+            raise SystemExit(f'spells.csv line {line}: item, spell and spell_far are numbers')
+        if not 0 <= it <= 0xFE or it in seen:
+            raise SystemExit(f'spells.csv line {line}: item {it} is out of range or listed twice')
+        if not (0 <= a < n_sp and 0 <= b < n_sp):
+            raise SystemExit(f'spells.csv line {line}: spells are 0-{n_sp - 1}')
+        seen.add(it)
+        rows.append((it, a, b))
+    old = spell_rows(rom)
+    if rows == old:
+        return 0
+    data = b''.join(bytes(x) for x in rows) + b'\xff\xff\xff'
+    f = snes_to_file(SPELL_TABLE)
+    if len(rows) <= len(old):
+        rom[f:f + len(data)] = data
+    else:
+        at = far.alloc(len(data))
+        rom[snes_to_file(at):snes_to_file(at) + len(data)] = data
+        for op, expect in SPELL_REFS:
+            _patch_operand(rom, op, expect, at + (expect - SPELL_TABLE))
+    print(f'spells: {len(rows)} item(s) with effects')
+    return 1

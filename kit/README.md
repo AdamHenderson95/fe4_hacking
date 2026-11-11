@@ -249,6 +249,14 @@ default browser). The editor runs on your PC only: nothing is sent anywhere.
    Like redrawing, this makes a new animation for that row (or every row that
    looks like this). The standing pose is motion 0, which the game shows
    but doesn't time, so a standing loop won't move in battle.
+   **Spells** (the switch above the class list) is the list of items that
+   play a spell effect in battle: tomes, staves and the magic swords. Pick
+   which effect each one plays (the effects are named after the item that
+   uses them in the game), and the one it plays "at range" (Physic and the
+   status staves cast from far away). **Give an item an effect** adds any
+   item; it only shows if that attacker's animation casts (a plain sword
+   swing or thrown axe ignores it). Saved in `spells.csv`. New spell
+   graphics come in a later version.
 15. On the Project page, **Add unit stats to the map box** puts the PC port's
    MT / HIT / AS / AVO box into the ROMs and patches you build, so players
    on emulators get it too (the port can still switch it off).
