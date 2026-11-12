@@ -548,6 +548,32 @@ on `$0D5C`, `$0D60`, `$0D69`).
 - Verified: Fire's record 36 redrawn (colours swapped, pillars blanked) shows in battle with the new
   colours; Bolganone's 2-bpp record 14 mirrored shows mirrored flame strands in the pit.
 
+## Spell colours and new effects (v37)
+
+- The script table at `$97:8F7D` has **77** entries (the first offset is 210 because spell 0's script
+  isn't first; the smallest offset, 154, ends the table). Kits up to v36 counted 105.
+- Palette buffer `$7E:0100-$02FF`, sent to CGRAM every frame (DMA from `$00:0100`).
+- **Command `$0E`** (`$96:BB70`): record from the word-offset table `$97:AFE5` (23 records):
+  `start colour, count, ptr24`; copies `count` little-endian colours (bank `$E0`, e.g. Elfire's
+  `$E0:20A0`) to the buffer at `start`.
+- **Command `$0B`** (`$96:DB58` -> `$96:DB94`): record from `$97:A9A8` (191 records):
+  `slot, type, start, count` + data; sets up a 10-byte slot at `$7F:FD9A + 10*slot` run every frame by
+  `$96:D695` (type table `$96:D6DD`). Types: 0 frames of `count` colours, 1 and 12 push one new colour in
+  at the end (12 transformed by `$96:DACB`), 2 at the start (Fire's fireball: `$9B:D9F2`, colours 9-15
+  of palette 1), 3-6 rotate (one delay byte), 7 fade towards `count` colours at ptr24 (after a delay byte;
+  bank `$E0` or the RAM copies `$7F:F636`/`$7F:FE62`), 8/9 clear/fill, 10 copy `count` colours from
+  ptr24, 11 stop. Data types 0/1/2/12 point at streams in bank `$9B`: `$FF` end, `$FE` start over,
+  `$80+n` delay n frames for this step, otherwise a colour high byte first.
+- Spell colours live only in banks `$9B` and `$E0`; the kit edits a colour set by copying it to free
+  space and repointing the spell records that used it.
+- **Table pointers** (all in bank `$96`; LDA #bank00 / LDA-ADC #address):
+  scripts `$A4D4` / `$A4DD`, `$A4EC`; pictures `$B950` / `$B961`; colour effects (`$0B`) `$DB6D` /
+  `$DB78`, `$DB83`; palette loads (`$0E`) `$BB72` / `$BB88`, `$BB7D`. All reads go through `[$24]` long,
+  so the tables (and scripts) can sit in any bank: a project with new effects moves all four to
+  `$70+` free space with the copies appended. Script words carry 9-bit record numbers (511 max).
+- Verified: a copy of Fire with blue colours and a redrawn fireball plays for the Fire tome while
+  Elfire keeps its colours; a copy of Bolganone given to Thunder plays Bolganone; battles finish.
+
 ## Maps (V)
 
 ### Chapter map headers

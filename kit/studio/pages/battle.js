@@ -8,6 +8,21 @@ const remember = () => { try { sessionStorage.setItem('fe4studio-battle', JSON.s
 const FIELDS = [['anim', 'Animation', 'Moves and frames'], ['body', 'Body graphics', 'The frames\' drawings'],
   ['upper', 'Upper body', 'Rider, torso and head tiles'], ['palette', 'Palette', 'Colours']];
 const SCALE = 3;
+// SNES colours (BGR555) <-> CSS
+const toRgb = c => [(c & 31) * 255 / 31, (c >> 5 & 31) * 255 / 31, (c >> 10 & 31) * 255 / 31].map(Math.round);
+const toHex = c => '#' + toRgb(c).map(v => v.toString(16).padStart(2, '0')).join('');
+const fromHex = x => { const n = parseInt(x.slice(1), 16); const r = n >> 16, g = n >> 8 & 255, b = n & 255;
+  return Math.round(r * 31 / 255) | Math.round(g * 31 / 255) << 5 | Math.round(b * 31 / 255) << 10; };
+function shiftColour(c, hue, sat, light) {
+  let [r, g, b] = toRgb(c).map(v => v / 255);
+  const mx = Math.max(r, g, b), mn = Math.min(r, g, b), l = (mx + mn) / 2, d = mx - mn;
+  let hh = 0, ss = 0;
+  if (d) { ss = d / (1 - Math.abs(2 * l - 1)); hh = mx === r ? ((g - b) / d) % 6 : mx === g ? (b - r) / d + 2 : (r - g) / d + 4; hh *= 60; }
+  hh = (hh + hue + 360) % 360; ss = Math.min(1, Math.max(0, ss * sat)); const L = Math.min(1, Math.max(0, l + light));
+  const C = (1 - Math.abs(2 * L - 1)) * ss, X = C * (1 - Math.abs((hh / 60) % 2 - 1)), m = L - C / 2;
+  const [a, bb, cc] = hh < 60 ? [C, X, 0] : hh < 120 ? [X, C, 0] : hh < 180 ? [0, C, X] : hh < 240 ? [0, X, C] : hh < 300 ? [X, 0, C] : [C, 0, X];
+  return fromHex('#' + [a + m, bb + m, cc + m].map(v => Math.round(Math.min(1, Math.max(0, v)) * 255).toString(16).padStart(2, '0')).join(''));
+}
 
 export async function battlePage(root) {
   let D = await api('battleanims');
@@ -192,7 +207,8 @@ export async function battlePage(root) {
     }
     const items = PL.spells.filter(x => !q || (x.name || '').toLowerCase().includes(q) || String(x.spell) === q);
     list.replaceChildren(...items.map(x => h('button', { 'aria-pressed': String(x.spell === st.spell), onclick: () => { st.spell = x.spell; remember(); drawList(); drawDetail(); } },
-      h('span', {}, x.name || `Effect ${x.spell}`), h('span', { class: 'sub' }, `${x.pictures} picture${x.pictures === 1 ? '' : 's'}${x.edited ? ` · ${x.edited} redrawn ✎` : ''}`))));
+      h('span', {}, x.name || `Effect ${x.spell}`, x.new ? h('span', { class: 'sfxnew' }, 'new') : null),
+      h('span', { class: 'sub' }, `${x.pictures} picture${x.pictures === 1 ? '' : 's'}${x.edited ? ` · ${x.edited} redrawn ✎` : ''}`))));
     if (st.spell == null && PL.spells.length) { st.spell = PL.spells.find(x => x.spell === 2)?.spell ?? PL.spells[0].spell; drawDetail(); }
   }
 
@@ -203,6 +219,74 @@ export async function battlePage(root) {
     const v = Date.now();
     const name = P.name || `Effect ${P.spell}`;
     const after = async msg => { PL = null; await refreshSession(); drawList(); drawPictures(); if (msg) toast(msg); };
+    const hasColours = P.colours.length > 0;
+    const real = hasColours && st.colourView !== 'standin';
+    const cq = real ? `&c=${P.spell}` : '';
+    const viewChips = hasColours ? h('div', { class: 'chips', role: 'tablist', 'aria-label': 'Show pictures in' },
+      [['battle', 'Battle colours'], ['standin', 'Stand-in colours']].map(([k, t]) => h('button', { class: 'chip', role: 'tab',
+        'aria-selected': String((real ? 'battle' : 'standin') === k), onclick: () => { st.colourView = k; drawPictures(); } }, t))) : null;
+    const setColours = async (sets, msg) => {
+      try { await api('spellcolours', { sets }); await after(msg); } catch (e) { toast(e.message, true); }
+    };
+    // colour sets
+    let shifted = null;          // live hue shift preview: {addr: colours}
+    const shiftBox = h('div', { class: 'sfxshift' });
+    const setRows = h('div', { class: 'sfxsets' });
+    const drawSets = () => setRows.replaceChildren(...P.colours.map(cs => {
+      const cols = shifted ? shifted[cs.addr] : cs.colours;
+      const cells = [...Array(cs.lead).fill(null), ...cols.map((c, k) => [c, k])];
+      const rows = [];
+      for (let i = 0; i < cells.length; i += cs.per) rows.push(cells.slice(i, i + cs.per).map(cell => {
+        if (!cell) return h('span', { class: 'sfxsw empty', 'aria-hidden': 'true' });
+        const [c, k] = cell;
+        const pick = h('input', { type: 'color', value: toHex(c), 'aria-label': `${cs.label}, colour ${k + 1}`, title: `${toHex(c)}${c !== cs.game[k] ? ` (the game's: ${toHex(cs.game[k])})` : ''}` });
+        pick.onchange = () => { const next = cs.colours.slice(); next[k] = fromHex(pick.value); setColours({ [cs.addr]: next }, 'Colour changed'); };
+        return h('label', { class: 'sfxsw' + (c !== cs.game[k] ? ' changed' : ''), style: `--c:${toHex(c)}` }, pick);
+      }));
+      return h('div', { class: 'sfxset' },
+        h('div', { class: 'sfxsethead' }, h('strong', {}, cs.label), cs.edited ? h('span', { class: 'sub' }, ' ✎') : null,
+          cs.edited ? h('button', { class: 'btn btn-line btn-sm', type: 'button', onclick: () => setColours({ [cs.addr]: null }, 'Back to the game\'s colours (Undo brings yours back)') }, 'Use the game\'s') : null),
+        cs.shared.length ? h('p', { class: 'hint' }, `Also used by ${cs.shared.slice(0, 3).join(', ')}${cs.shared.length > 3 ? ` and ${cs.shared.length - 3} more` : ''}: they change too.`) : null,
+        h('div', { class: 'sfxrows' }, rows.map(r => h('div', { class: 'sfxrow' }, r))));
+    }));
+    if (hasColours) {
+      const hue = h('input', { type: 'range', min: -180, max: 180, value: 0, 'aria-label': 'Hue' });
+      const sat = h('input', { type: 'range', min: 0, max: 200, value: 100, 'aria-label': 'Saturation' });
+      const lit = h('input', { type: 'range', min: -50, max: 50, value: 0, 'aria-label': 'Brightness' });
+      const live = () => {
+        const H = Number(hue.value), S = Number(sat.value) / 100, L = Number(lit.value) / 100;
+        shifted = H || S !== 1 || L ? Object.fromEntries(P.colours.map(cs => [cs.addr, cs.colours.map(c => shiftColour(c, H, S, L))])) : null;
+        drawSets(); apply.disabled = !shifted;
+      };
+      hue.oninput = sat.oninput = lit.oninput = live;
+      const apply = h('button', { class: 'btn btn-gilt', type: 'button', disabled: true, onclick: () => setColours(shifted, `Recoloured ${name}`) }, 'Apply to this spell');
+      const anyEdited = P.colours.some(cs => cs.edited);
+      shiftBox.replaceChildren(h('div', { class: 'sfxsliders' },
+        h('label', { class: 'lbl' }, h('span', {}, 'Hue'), hue), h('label', { class: 'lbl' }, h('span', {}, 'Saturation'), sat),
+        h('label', { class: 'lbl' }, h('span', {}, 'Brightness'), lit)),
+        h('div', { class: 'sfxbtns' }, apply, anyEdited ? h('button', { class: 'btn btn-line', type: 'button',
+          onclick: () => setColours(Object.fromEntries(P.colours.map(cs => [cs.addr, null])), 'Back to the game\'s colours (Undo brings yours back)') }, 'Use the game\'s colours') : null));
+    }
+    drawSets();
+    // new effects: make one from this, rename or delete it
+    const nameIn = h('input', { class: 'in', placeholder: 'Name, e.g. Blue Fire', maxlength: 40, 'aria-label': 'New effect name' });
+    const makeBox = h('div', { class: 'sfxmake', hidden: true }, nameIn,
+      h('button', { class: 'btn btn-gilt', type: 'button', onclick: async () => {
+        try { const res = await api('spelleffect', { new: P.spell, name: nameIn.value }); st.spell = res.id; remember();
+          await after(`Made ${nameIn.value.trim() || 'a new effect'}: a copy of ${name}. Give it to an item on the Spells tab.`); }
+        catch (e) { toast(e.message, true); } } }, 'Make it'),
+      h('button', { class: 'btn btn-line', type: 'button', onclick: () => { makeBox.hidden = true; } }, 'Cancel'));
+    const tools = h('div', { class: 'sfxtools' },
+      h('button', { class: 'btn btn-line', type: 'button', onclick: () => { makeBox.hidden = false; nameIn.focus(); } }, 'New effect from this one…'),
+      P.new ? h('button', { class: 'btn btn-line', type: 'button', onclick: async () => {
+        const nm = prompt('New name for this effect', P.own_name || '');
+        if (nm == null) return;
+        try { await api('spelleffect', { rename: P.spell, name: nm }); await after('Renamed'); } catch (e) { toast(e.message, true); } } }, 'Rename…') : null,
+      P.new ? h('button', { class: 'btn btn-line', type: 'button', onclick: async () => {
+        try { await api('spelleffect', { delete: P.spell }); st.spell = P.from; remember(); await after(`Deleted ${name} (Undo brings it back)`); } catch (e) { toast(e.message, true); } } }, 'Delete') : null);
+    const about = P.new ? h('p', { class: 'hint sfxabout' }, `Your effect: a copy of ${P.from_name || `effect ${P.from}`} with its own pictures and colours. `,
+      P.items.length ? `Used by ${P.items.join(', ')}.` : 'No item uses it yet: pick it for one on the Spells tab.') :
+      h('p', { class: 'hint sfxabout' }, 'Changes here show wherever the game uses this effect. To keep the original and make a variant (Fire in another colour, say), make a new effect from this one.');
     const cards = P.pictures.map(pc => {
       const fileIn = h('input', { type: 'file', accept: '.png,image/png', hidden: true });
       const imp = h('button', { class: 'btn btn-gilt', type: 'button', onclick: () => fileIn.click() }, 'Import…');
@@ -217,11 +301,11 @@ export async function battlePage(root) {
           await after(res.same ? 'That picture is the same as the game\'s.' : `Redrew ${res.tiles} tile${res.tiles === 1 ? '' : 's'} of ${name}`);
         } catch (e) { toast(e.message, true); imp.disabled = false; imp.textContent = 'Import…'; }
       };
-      const fname = `${name.split(' / ')[0].replace(/[^A-Za-z0-9]+/g, '_')}_picture_${pc.record}.png`;
+      const fname = `${name.split(' / ')[0].replace(/[^A-Za-z0-9]+/g, '_')}_picture_${pc.number}.png`;
       return h('figure', { class: 'sfxcard' },
-        h('div', { class: 'sfximg' }, h('img', { src: `/gfx/spellsheet/?r=${pc.record}&x=2&v=${v}`, width: pc.w * 2, height: pc.h * 2, alt: `${name}, picture ${pc.record}` })),
+        h('div', { class: 'sfximg' }, h('img', { src: `/gfx/spellsheet/?r=${pc.record}&x=2&v=${v}${pc.kind === 'sprite' ? '' : cq}`, width: pc.w * 2, height: pc.h * 2, alt: `${name}, picture ${pc.number}` })),
         h('figcaption', {},
-          h('strong', {}, `Picture ${pc.record}${pc.edited ? ' ✎' : ''}`), h('span', { class: 'sub' }, ` ${pc.label} · ${pc.tiles} tiles`),
+          h('strong', {}, `Picture ${pc.number}${pc.edited ? ' ✎' : ''}`), h('span', { class: 'sub' }, ` ${pc.label} · ${pc.tiles} tiles`),
           pc.shared.length ? h('p', { class: 'hint' }, `Also used by ${pc.shared.slice(0, 3).join(', ')}${pc.shared.length > 3 ? ` and ${pc.shared.length - 3} more` : ''}: they change too.`) : null,
           h('div', { class: 'sfxbtns' },
             h('a', { class: 'btn btn-line', href: `/gfx/spellsheet/?r=${pc.record}&v=${v}`, download: fname }, 'Download'), imp, fileIn,
@@ -231,11 +315,16 @@ export async function battlePage(root) {
     });
     detail.replaceChildren(h('div', { class: 'sheet basheet' },
       h('div', { class: 'sheet-head' }, h('h2', {}, name), h('p', { class: 'sub' }, `Effect ${P.spell} · ${P.pictures.length} picture${P.pictures.length === 1 ? '' : 's'}`)),
+      h('div', { class: 'sfxhead' }, about, tools, makeBox),
+      viewChips,
       P.preview ? h('div', { class: 'sfxpreview' }, h('h3', {}, 'How the pictures are laid out'),
-        h('div', { class: 'sfxscroll' }, h('img', { src: `/gfx/spellview/?s=${P.spell}&v=${v}`, alt: `${name} laid out on screen` })),
-        h('p', { class: 'hint' }, 'The backgrounds this effect builds from its pictures, one screen after another. In battle they slide, flash and get recoloured; this shows where each piece ends up.')) : null,
+        h('div', { class: 'sfxscroll' }, h('img', { src: `/gfx/spellview/?s=${P.spell}&v=${v}${real ? '&c=1' : ''}`, alt: `${name} laid out on screen` })),
+        h('p', { class: 'hint' }, real ? 'The backgrounds this effect builds from its pictures, one screen after another, in the colours the spell sets. In battle they also slide, flash, blend with the scene and cycle their colours.' : 'The backgrounds this effect builds from its pictures, one screen after another. In battle they slide, flash and get recoloured; this shows where each piece ends up.')) : null,
+      hasColours ? h('div', { class: 'sfxcolours' }, h('h3', {}, 'Colours'),
+        h('p', { class: 'hint' }, 'The colours this spell sets, in the order the game uses them. Click a colour to change it, or shift them all at once with the sliders. Colours that cycle or change every few frames are listed step by step. In the pictures above, colour numbers the spell doesn\'t set show in stand-in colours: in battle they take whatever the scene has there, so draw with the numbers listed here.'),
+        shiftBox, setRows) : null,
       h('h3', {}, 'Pictures'),
-      h('p', { class: 'hint' }, 'Download a picture, paint over it in any paint program, and import it. The colours here are stand-ins: each one is a colour number, and the battle supplies the real colours (they cycle and fade while the spell plays). Paint with the colours already in the picture, since each stands for one colour number; other colours are matched to the nearest one. Transparent pixels show what\'s behind. Keep the size.'),
+      h('p', { class: 'hint' }, 'Download a picture, paint over it in any paint program, and import it. The downloaded file uses stand-in colours, one for each colour number, so the same picture works whatever colours the spell gives it (change those under Colours). Paint with the colours already in the file; other colours are matched to the nearest one. Transparent pixels show what\'s behind. Keep the size.'),
       h('div', { class: 'sfxgrid' }, cards)));
   }
 

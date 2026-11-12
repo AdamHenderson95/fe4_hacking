@@ -44,7 +44,7 @@ import fe4spellfx                  # noqa: E402
 from fe4project import Project, load_settings, save_settings   # noqa: E402
 
 APP = 'Builder of the Holy War'
-VERSION = '36'
+VERSION = '37'
 STATIC = os.path.join(KIT, 'studio')
 
 # ---------------------------------------------------------------- state
@@ -360,7 +360,7 @@ def check_value(table, field, value):
             raise ValueError('Enter a whole number.')
         return str(int(v)), None
     if table == 'spells' and field in ('spell', 'spell_far'):
-        n = fe4battle.spell_count(rom_data())
+        n = fe4battle.spell_count(spell_rom()[0])
         if not v.isdigit() or not 0 <= int(v) < n:
             raise ValueError(f'Spells are 0 to {n - 1}.')
         return str(int(v)), None
@@ -483,7 +483,8 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 n = int(q.get('r', q.get('s', ['-1']))[0])
                 scale = max(1, min(int(q.get('x', ['1'])[0]), 4))
-                data = spell_sheet(n, scale) if 'spellsheet' in path else spell_preview(n, scale)
+                c = int(q['c'][0]) if 'c' in q else None
+                data = spell_sheet(n, scale, c) if 'spellsheet' in path else spell_preview(n, scale, c is not None)
             except (ValueError, KeyError):
                 return self._send(404, 'no')
             return self._send(200, data, 'image/png') if data else self._send(404, 'no')
@@ -887,7 +888,7 @@ def api_battleanims(b, q):
     p = need_project()
     rom0 = rom_data()
     if rom0 is not None:     # read the spell pictures in the background; the Spell pictures view needs them
-        threading.Thread(target=fe4spellfx.survey, args=(rom0,), daemon=True).start()
+        threading.Thread(target=lambda: fe4spellfx.survey(spell_rom()[0]), daemon=True).start()
     t = p.table('battle_anims')
     if t is None:
         raise KeyError('This project has no battle_anims.csv; reopen it with this version to add one.')
@@ -1033,29 +1034,56 @@ def api_battlespells(b, q):
     t = p.table('spells')
     if t is None:
         raise KeyError('This project has no spells.csv; reopen it with this version to add one.')
-    rom = rom_data()
+    rom, _ = spell_rom()
     it = p.table('items')
     items = {int(r['index']): r.get('_name', '') for r in it.rows} if it else {}
-    names = fe4battle.spell_names(rom, items)
+    names = _spell_label(rom)
     n = fe4battle.spell_count(rom)
+    gone = {e['id'] for e in _effects() if e['deleted']}
     return {'rows': [{**r, '_item': items.get(int(r['item']), r.get('_item', ''))} for r in t.rows],
-            'spells': [[k, names.get(k, '')] for k in range(n)], 'items': [[k, v] for k, v in sorted(items.items()) if v]}
+            'spells': [[k, names.get(k, '')] for k in range(n) if k not in gone],
+            'items': [[k, v] for k, v in sorted(items.items()) if v]}
+
+
+_spell_rom = {'key': None}
+
+
+def _effects():
+    try:
+        return fe4spellfx.read_effects(_project_reader(f'{fe4spellfx.FOLDER}/{fe4spellfx.EFFECTS}'))
+    except ValueError:
+        return []
+
+
+def spell_rom():
+    """(ROM with the project's new effects written in, their copy map or None)."""
+    rom = rom_data()
+    eff = _effects() if project() else []
+    if not eff or rom is None:
+        return rom, None
+    key = (id(rom), json.dumps(eff))
+    if _spell_rom['key'] != key:
+        r = bytearray(rom)
+        with contextlib.redirect_stdout(io.StringIO()):
+            fxmap = fe4spellfx.apply_effects(r, eff, L.FreeSpace())
+        _spell_rom.update(key=key, rom=bytes(r), fxmap=fxmap)
+    return _spell_rom['rom'], _spell_rom['fxmap']
 
 
 def _spell_pictures():
-    """The survey of spell pictures (clean ROM) and the project's redrawn tile bytes per record."""
-    rom = rom_data()
+    """(ROM with new effects, survey records, records per spell, redrawn tile bytes per record, copy map)."""
+    rom, fxmap = spell_rom()
     recs, by_spell = fe4spellfx.survey(rom)
     over = {}
     if project():
         for r, d in recs.items():
-            png = _project_reader(f'{fe4spellfx.FOLDER}/r{r:03d}.png')
+            png = _project_reader(fe4spellfx.picture_file(r, fxmap))
             if png and d['kind'] != 'map':
                 try:
                     over[r] = fe4spellfx.sheet_from_png(png, len(d['data']), fe4spellfx.bpp_of(d['kind']))
                 except ValueError:
                     pass
-    return rom, recs, by_spell, over
+    return rom, recs, by_spell, over, fxmap
 
 
 SPELL_KINDS = {'tiles4': 'Background tiles · 16 colours', 'tiles2': 'Overlay tiles · 4 colours',
@@ -1063,23 +1091,28 @@ SPELL_KINDS = {'tiles4': 'Background tiles · 16 colours', 'tiles2': 'Overlay ti
 
 
 def _spell_label(rom, items=None):
+    """{effect: name}: the game's named after the items using them, new ones by their own names."""
     p = project()
     it = p.table('items') if p else None
-    items = {int(r['index']): r.get('_name', '') for r in it.rows} if it else dict(enumerate(L.item_names(rom)))
-    return fe4battle.spell_names(rom, items)
+    items = {int(r['index']): r.get('_name', '') for r in it.rows} if it else dict(enumerate(L.item_names(rom_data())))
+    names = fe4battle.spell_names(rom_data(), items)
+    for e in _effects() if p else []:
+        names[e['id']] = (e['name'] or f'New effect {e["id"]}') + (' (deleted)' if e['deleted'] else '')
+    return names
 
 
 def api_spellgfx(b, q):
     """Spells with pictures ({list: true}), or one spell's pictures ({spell})."""
-    rom, recs, by_spell, over = _spell_pictures()
+    rom, recs, by_spell, over, fxmap = _spell_pictures()
     names = _spell_label(rom)
+    eff = {e['id']: e for e in _effects()}
     if 'spell' not in q:
         out = []
         for s, rs in by_spell.items():
             pics = [r for r in rs if recs[r]['kind'] != 'map']
-            if pics:
+            if (pics or s in eff) and not (s in eff and eff[s]['deleted']):
                 out.append({'spell': s, 'name': names.get(s, ''), 'pictures': len(pics),
-                            'edited': sum(r in over for r in pics)})
+                            'edited': sum(r in over for r in pics), 'new': s in eff})
         return {'spells': out}
     s = int(q['spell'][0])
     pics = []
@@ -1089,21 +1122,50 @@ def api_spellgfx(b, q):
             continue
         bpp = fe4spellfx.bpp_of(d['kind'])
         w, hh = fe4spellfx.sheet_size(len(d['data']), bpp)
-        pics.append({'record': r, 'kind': d['kind'], 'label': SPELL_KINDS[d['kind']], 'w': w, 'h': hh,
+        pics.append({'record': r, 'number': fxmap['pictures'][r][1] if fxmap and r in fxmap['pictures'] else r,
+                     'kind': d['kind'], 'label': SPELL_KINDS[d['kind']], 'w': w, 'h': hh,
                      'tiles': len(d['data']) // (8 * bpp), 'edited': r in over,
                      'shared': [names.get(x, f'Effect {x}') or f'Effect {x}' for x in d['spells'] if x != s]})
-    return {'spell': s, 'name': names.get(s, ''), 'pictures': pics,
-            'preview': any(recs[r]['kind'] == 'map' for r in by_spell.get(s, []))}
+    over_c = _spell_colours()
+    cols = []
+    for u in fe4spellfx.colour_sets(rom, over_c).get(s, []):
+        per = u['n'] if u['kind'] == 'frames' else 16
+        cols.append({'addr': fe4spellfx.colour_key(u['addr'], fxmap), 'label': _colour_label(u), 'kind': u['kind'],
+                     'colours': [c & 0x7FFF for c in u['colours']], 'game': [c & 0x7FFF for c in u['game']],
+                     'per': max(1, min(per, 16)), 'lead': 0 if u['kind'] in ('frames', 'cycle') else u['start'] % 16,
+                     'edited': u['addr'] in over_c,
+                     'shared': [names.get(x, f'Effect {x}') or f'Effect {x}' for x in u['spells'] if x != s]})
+    e = eff.get(s)
+    return {'spell': s, 'name': names.get(s, ''), 'pictures': pics, 'colours': cols,
+            'preview': any(recs[r]['kind'] == 'map' for r in by_spell.get(s, [])),
+            'new': bool(e), 'from': e['from'] if e else None, 'from_name': names.get(e['from'], '') if e else None,
+            'own_name': e['name'] if e else None,
+            'items': [it for it, a, b2 in _project_spell_rows() if s in (a, b2)]}
+
+
+def _project_spell_rows():
+    """[(item name, spell, spell at range)] from the project's spells.csv."""
+    p = project()
+    t = p.table('spells') if p else None
+    if t is None:
+        return []
+    out = []
+    for r in t.rows:
+        try:
+            out.append((r.get('_item') or f'Item {r["item"]}', int(r['spell']), int(r.get('spell_far') or r['spell'])))
+        except ValueError:
+            pass
+    return out
 
 
 def api_spellgfxset(b, q):
     """Import a picture for a spell record ({record, png base64}) or go back to the game's ({record, png: null})."""
     p = need_project()
-    rom, recs, _, _ = _spell_pictures()
+    rom, recs, _, _, fxmap = _spell_pictures()
     r = int(b['record'])
     if r not in recs or recs[r]['kind'] == 'map':
         raise ValueError('That isn\'t a spell picture.')
-    rel = f'{fe4spellfx.FOLDER}/r{r:03d}.png'
+    rel = fe4spellfx.picture_file(r, fxmap)
     if b.get('png') is None:
         p.set_blob(rel, None)
         return {'ok': True}
@@ -1122,17 +1184,137 @@ def api_spellgfxset(b, q):
     return {'ok': True, 'tiles': changed}
 
 
-def spell_sheet(r, scale):
-    rom, recs, _, over = _spell_pictures()
+def _spell_colours_keyed():
+    try:
+        return fe4spellfx.read_colours(_project_reader(f'{fe4spellfx.FOLDER}/colors.json'))
+    except ValueError:
+        return {}
+
+
+def _spell_colours():
+    """The project's changed spell colours: {address in spell_rom(): [colour words]}."""
+    return fe4spellfx.colours_by_address(_spell_colours_keyed(), spell_rom()[1])
+
+
+def spell_sheet(r, scale, spell=None):
+    """A picture's sheet: in the stand-in ramp (the file to paint on), or with spell's battle colours."""
+    rom, recs, _, over, _ = _spell_pictures()
     if r not in recs or recs[r]['kind'] == 'map':
         return None
     d = recs[r]
-    return fe4spellfx.sheet_png(over.get(r, d['data']), fe4spellfx.bpp_of(d['kind']), scale)
+    data, bpp = over.get(r, d['data']), fe4spellfx.bpp_of(d['kind'])
+    if spell is None or d['kind'] == 'sprite':
+        return fe4spellfx.sheet_png(data, bpp, scale)
+    pal = fe4spellfx.record_palette(rom, r, spell)
+    return fe4spellfx.sheet_colour_png(data, bpp, fe4spellfx.cgram(rom, spell, _spell_colours()), pal or 0, scale)
 
 
-def spell_preview(s, scale):
-    rom, recs, _, over = _spell_pictures()
-    return fe4spellfx.preview_png(rom, s, over, scale)
+def spell_preview(s, scale, colour=False):
+    rom, recs, _, over, _ = _spell_pictures()
+    cg = fe4spellfx.cgram(rom, s, _spell_colours()) if colour else None
+    return fe4spellfx.preview_png(rom, s, over, scale, cg)
+
+
+COLOUR_KINDS = {'set': 'set when the spell starts', 'copy': 'set when the spell starts',
+                'frames': 'changes every few frames', 'cycle': 'cycles', 'fade': 'fades to these'}
+
+
+def _colour_label(u):
+    a, b = u['start'], u['start'] + u['n'] - 1
+    pa, pb = a // 16, b // 16
+    who, off = ('Sprite palette', 8) if a >= 128 else ('Palette', 0)
+    where = (f'{who} {pa - off}, colours {a % 16}-{b % 16}' if pa == pb else f'{who}s {pa - off}-{pb - off}')
+    return f'{where} · {COLOUR_KINDS[u["kind"]]}'
+
+
+def api_spellcolours(b, q):
+    """Change spell colours: {sets: {key: [colour words] or null}} (null = the game's); one undo step."""
+    p = need_project()
+    rom, fxmap = spell_rom()
+    allsets = {fe4spellfx.colour_key(u['addr'], fxmap): u for lst in fe4spellfx.colour_sets(rom).values() for u in lst}
+    cur = _spell_colours_keyed()
+    for k, v in (b.get('sets') or {}).items():
+        if k not in allsets:
+            raise ValueError('Those aren\'t spell colours.')
+        if v is None:
+            cur.pop(k, None)
+            continue
+        cols = [int(c) & 0x7FFF for c in v]
+        game = allsets[k]['game']
+        if len(cols) != len(game):
+            raise ValueError(f'That colour set has {len(game)} colours.')
+        cols = [g if c == (g & 0x7FFF) else c for c, g in zip(cols, game)]   # keep the game's own bits
+        if cols == game:
+            cur.pop(k, None)
+        else:
+            cur[k] = cols
+    rel = f'{fe4spellfx.FOLDER}/colors.json'
+    p.set_blob(rel, fe4spellfx.dump_colours(cur) if cur else None)
+    return {'ok': True, 'changed': len(cur)}
+
+
+def api_spelleffect(b, q):
+    """New effects: {new: effect, name} copies one (with the project's changes to it), {rename: id, name},
+    {delete: id}.  One undo step."""
+    p = need_project()
+    eff = _effects()
+    rel = f'{fe4spellfx.FOLDER}/{fe4spellfx.EFFECTS}'
+    n0 = fe4spellfx.spell_count(rom_data())
+    if 'new' in b:
+        src = int(b['new'])
+        by_id = {e['id']: e for e in eff}
+        base = by_id[src]['from'] if src in by_id else src
+        if not 0 <= base < n0:
+            raise ValueError('That effect can\'t be copied.')
+        new_id = n0 + len(eff)
+        if new_id > 254:
+            raise ValueError('There is no room for more effects.')
+        name = (b.get('name') or '').strip()[:40] or f'New effect {new_id}'
+        eff2 = eff + [{'id': new_id, 'from': base, 'name': name, 'deleted': False}]
+        rom2 = bytearray(rom_data())
+        with contextlib.redirect_stdout(io.StringIO()):
+            fx2 = fe4spellfx.apply_effects(rom2, eff2, L.FreeSpace())
+        _, fx1 = spell_rom()
+        ops = [('blob', rel, p.blob(rel).data, fe4spellfx.dump_effects(eff2))]
+        # carry over the source's own changes: pictures, then colours
+        for r, (eid, orig) in fx2['pictures'].items():
+            if eid != new_id:
+                continue
+            src_file = fe4spellfx.effect_file(src, orig) if src in by_id else f'{fe4spellfx.FOLDER}/r{orig:03d}.png'
+            data = _project_reader(src_file)
+            if data:
+                ops.append(('blob', fe4spellfx.effect_file(new_id, orig), p.blob(fe4spellfx.effect_file(new_id, orig)).data, data))
+        cur = _spell_colours_keyed()
+        add = {}
+        for a, (eid, orig) in fx2['colours'].items():
+            if eid != new_id:
+                continue
+            k = f's{src}:{orig:06X}' if src in by_id else f'{orig:06X}'
+            if k in cur:
+                add[f's{new_id}:{orig:06X}'] = cur[k]
+        if add:
+            crel = f'{fe4spellfx.FOLDER}/colors.json'
+            ops.append(('blob', crel, p.blob(crel).data, fe4spellfx.dump_colours({**cur, **add})))
+        p.edit(ops)
+        return {'ok': True, 'id': new_id}
+    k = int(b.get('rename', b.get('delete', -1)))
+    e = next((x for x in eff if x['id'] == k), None)
+    if e is None:
+        raise ValueError('That isn\'t one of your new effects.')
+    if 'rename' in b:
+        e['name'] = (b.get('name') or '').strip()[:40]
+        p.set_blob(rel, fe4spellfx.dump_effects(eff))
+        return {'ok': True}
+    users = [it for it, a, b2 in _project_spell_rows() if k in (a, b2)]
+    if users:
+        raise ValueError(f'{", ".join(users[:3])} still use{"s" if len(users) == 1 else ""} this effect; give '
+                         f'{"it" if len(users) == 1 else "them"} another one on the Spells tab first.')
+    e['deleted'] = True
+    while eff and eff[-1]['deleted']:         # numbers stay put; only the last ones really go
+        eff.pop()
+    ops = [('blob', rel, p.blob(rel).data, fe4spellfx.dump_effects(eff) if eff else None)]
+    p.edit(ops)
+    return {'ok': True}
 
 
 def api_spellrow(b, q):
@@ -3050,7 +3232,7 @@ API = {('GET', 'session'): api_session, ('POST', 'ping'): api_ping, ('GET', 'tab
        ('POST', 'build'): api_build, ('GET', 'battleanims'): api_battleanims, ('GET', 'battleinfo'): api_battleinfo,
        ('POST', 'battleimport'): api_battleimport, ('POST', 'battlemotion'): api_battlemotion,
        ('POST', 'battleframe'): api_battleframe, ('GET', 'battlemotions'): api_battlemotions,
-       ('GET', 'battlespells'): api_battlespells, ('POST', 'spellrow'): api_spellrow, ('GET', 'spellgfx'): api_spellgfx, ('POST', 'spellgfxset'): api_spellgfxset, ('POST', 'battlereset'): api_battlereset,
+       ('GET', 'battlespells'): api_battlespells, ('POST', 'spellrow'): api_spellrow, ('GET', 'spellgfx'): api_spellgfx, ('POST', 'spellgfxset'): api_spellgfxset, ('POST', 'spellcolours'): api_spellcolours, ('POST', 'spelleffect'): api_spelleffect, ('POST', 'battlereset'): api_battlereset,
        ('POST', 'ipspatch'): api_ipspatch, ('POST', 'reveal'): api_reveal,
        ('GET', 'patchinfo'): api_patchinfo, ('POST', 'testplay'): api_testplay, ('POST', 'settings'): api_settings,
        ('POST', 'dialog'): api_dialog, ('POST', 'quit'): api_quit, ('POST', 'classic'): api_classic,

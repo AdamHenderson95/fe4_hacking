@@ -671,6 +671,29 @@ textarea.fe4box.bad { border-color: #E1606F; }
 .sfxcard figcaption { padding: 10px 12px 12px; display: grid; gap: 4px; }
 .sfxcard figcaption .hint { margin: 0; }
 .sfxbtns { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px; }
+.basheet > .chips + .sfxpreview { margin-top: 4px; }
+.sfxcolours { margin: 0 24px 16px; }
+.sfxhead { margin: 0 24px 12px; display: grid; gap: 8px; }
+.sfxhead .hint { margin: 0; }
+.sfxtools, .sfxmake { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.sfxmake .in { min-width: 220px; }
+.sfxnew { margin-left: 8px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: #1A1406; background: var(--gilt-soft); border-radius: 3px; padding: 1px 5px; vertical-align: 1px; }
+.sfxcolours h3 { margin: 8px 0 4px; }
+.sfxshift { display: grid; gap: 10px; padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--vellum-2); margin: 8px 0 12px; }
+.sfxsliders { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 8px 16px; }
+.sfxsliders input[type=range] { width: 100%; accent-color: var(--gilt); }
+.sfxsets { display: grid; gap: 12px; }
+.sfxset { display: grid; gap: 4px; }
+.sfxset .hint { margin: 0; }
+.sfxsethead { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.btn-sm { padding: 3px 10px; font-size: 13px; }
+.sfxrows { display: grid; gap: 3px; max-height: 260px; overflow: auto; padding: 2px; }
+.sfxrow { display: flex; flex-wrap: wrap; gap: 3px; }
+.sfxsw { width: 22px; height: 22px; border-radius: 4px; background: var(--c); box-shadow: inset 0 0 0 1px rgba(0,0,0,.35); cursor: pointer; position: relative; }
+.sfxsw.changed::after { content: ''; position: absolute; right: -2px; top: -2px; width: 7px; height: 7px; border-radius: 50%; background: var(--gilt); box-shadow: 0 0 0 1px var(--vellum); }
+.sfxsw.empty { background: none; box-shadow: inset 0 0 0 1px var(--line); opacity: .4; cursor: default; }
+.sfxsw input { position: absolute; inset: 0; opacity: 0; width: 100%; height: 100%; cursor: pointer; border: 0; padding: 0; }
+.sfxsw:focus-within { outline: 2px solid var(--gilt); outline-offset: 1px; }
 .baaddframe { margin-top: 10px; }
 .baaddframe .in.num { width: 70px; }
 .baspells { margin: 0 24px; overflow: auto; max-height: 60vh; }

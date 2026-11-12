@@ -268,6 +268,22 @@ default browser). The editor runs on your PC only: nothing is sent anywhere.
    transparent, overlay sheets 3. A picture several spells share (Fire and
    Elfire's fireball) says so, and changes for all of them. Saved as
    `spell_gfx/rNNN.png`; the build packs each into free space.
+   **Battle colours / Stand-in colours** switches the pictures between the
+   colours the spell sets and the stand-ins. Under **Colours** are the
+   spell's own colour sets (set at the start, cycling, changing every few
+   frames, or fading): click a colour to change it, or use **Hue**,
+   **Saturation** and **Brightness** with **Apply to this spell** to
+   recolour the whole effect (blue fire, green thunder). Colour numbers the
+   spell doesn't set take whatever the battle scene has there. Saved in
+   `spell_gfx/colors.json`.
+   **New effect from this one…** makes your own effect: a copy with its own
+   pictures and colours, so you can make Blue Fire and keep Fire. It starts
+   with any changes you made to the original, shows in the list as NEW, and
+   is picked for items on the **Spells** tab like any other effect.
+   **Rename…** and **Delete** (once no item uses it) are on its page. Saved
+   in `spell_gfx/effects.json` (plus `sNN_rNNN.png` pictures and `sNN:`
+   colours); the build moves the game's spell tables to free space to make
+   room.
 15. On the Project page, **Add unit stats to the map box** puts the PC port's
    MT / HIT / AS / AVO box into the ROMs and patches you build, so players
    on emulators get it too (the port can still switch it off).

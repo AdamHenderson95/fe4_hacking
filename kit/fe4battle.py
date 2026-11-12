@@ -856,7 +856,8 @@ def spell_rows(rom):
 
 
 def spell_count(rom):
-    return _w(rom, SPELL_SCRIPTS) // 2
+    import fe4spellfx
+    return fe4spellfx.spell_count(rom)
 
 
 def spell_names(rom, item_names):
