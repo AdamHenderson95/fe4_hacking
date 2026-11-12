@@ -32,7 +32,13 @@ RECORD_N = 136           # picture records in the game's table
 MAX_RECORDS = 512        # script arguments are 9 bits
 # where the code keeps each table's bank (LDA #$xx00) and address (LDA/ADC #$xxxx), all in bank $96
 OPS = {'scripts': (0x96A4D4, (0x96A4DD, 0x96A4EC)), 'pictures': (0x96B950, (0x96B961,)),
-       'fx': (0x96DB6D, (0x96DB78, 0x96DB83)), 'sets': (0x96BB72, (0x96BB7D, 0x96BB88))}
+       'fx': (0x96DB6D, (0x96DB78, 0x96DB83)), 'sets': (0x96BB72, (0x96BB7D, 0x96BB88)),
+       'motions': (0x96DECA, (0x96DED4,))}
+MOTION_LONG = 0x96DECF     # LDA $97BEAC,X: the motion table's address as a long operand too
+# background motion records ($0D): layer, type, data; lengths of the types the kit edits
+MOTION_LEN = {0x17: 6, 0x1A: 6, 0x1B: 3, 0x18: 3, 0x16: 5, 0x01: 2, 0x05: 2}
+MOTION_NAMES = {0x01: 'Place at the attacker', 0x05: 'Place at the target', 0x17: 'Move', 0x1A: 'Move',
+                0x1B: 'Fly to the target', 0x18: 'Fly to the target', 0x16: 'Follow a motion path'}
 BUFFER = 0x7E8B88
 FOLDER = 'spell_gfx'
 
@@ -529,7 +535,7 @@ def _colour_data_len(rom, kind, addr, n):
     return 2 * n
 
 
-def apply_effects(rom, effects, far, steps=None):
+def apply_effects(rom, effects, far, steps=None, motions=None):
     """Write the new effects (and changed steps, {spell: words}) into rom; the tables move to free space.
     Returns the map of what was copied: {'pictures': {new record: (effect id, original record)},
     'colours': {new address: (effect id, original address)}, 'fx'/'sets': {new record: (effect id,
@@ -537,7 +543,7 @@ def apply_effects(rom, effects, far, steps=None):
     the original's records."""
     effects = [e for e in effects]
     steps = steps or {}
-    if not effects and not steps:
+    if not effects and not steps and not motions:
         return None
     n0 = spell_count(rom)
     ids = [e['id'] for e in effects]
@@ -552,13 +558,19 @@ def apply_effects(rom, effects, far, steps=None):
         f = snes_to_file(a)
         return bytes(rom[f:f + n])
     fx = [rec_bytes(t_fx + _w(rom, t_fx + 2 * i), _fx_len(rom, t_fx + _w(rom, t_fx + 2 * i))) for i in range(n_fx)]
+    t_mo = table(rom, 'motions')
+    n_mo = _offset_count(rom, t_mo)
+    mot = [motion_bytes(rom, i) for i in range(n_mo)]
+    for k, v in (motions or {}).items():
+        if isinstance(k, int) and k < n_mo:
+            mot[k] = bytes(v)
     sets = [rec_bytes(t_set + _w(rom, t_set + 2 * i), 5) for i in range(n_set)]
     scripts = [script_words(rom, k) for k in range(n0)]
     game_scripts = list(scripts)
     for k, ws in steps.items():
         if k < n0:
             scripts[k] = list(ws)
-    out = {'pictures': {}, 'colours': {}, 'fx': {}, 'sets': {}}
+    out = {'pictures': {}, 'colours': {}, 'fx': {}, 'sets': {}, 'motions': {}}
 
     def copy_colours(data, kind, n, eid, at):
         """Copy the colours a record points at (at = pointer offset in data) to free space."""
@@ -578,7 +590,7 @@ def apply_effects(rom, effects, far, steps=None):
             continue
         if not 0 <= e['from'] < n0:
             raise SystemExit(f'{FOLDER}/{EFFECTS}: effect {e["id"]} copies effect {e["from"]}, which isn\'t one of the game\'s')
-        pmap, fmap, smap = {}, {}, {}
+        pmap, fmap, smap, mmap = {}, {}, {}, {}
         words = []
         for x in steps.get(e['id'], game_scripts[e['from']]):
             c, arg = (x >> 9) & 0x1F, x & 0x1FF
@@ -607,6 +619,12 @@ def apply_effects(rom, effects, far, steps=None):
                     out['fx'][len(fx)] = (e['id'], arg)
                     fx.append(d)
                 x = (x & ~0x1FF) | fmap[arg]
+            elif x < 0xFF00 and c == 0x0D and arg < n_mo:
+                if arg not in mmap:
+                    mmap[arg] = len(mot)
+                    out['motions'][len(mot)] = (e['id'], arg)
+                    mot.append(bytes((motions or {}).get((e['id'], arg), mot[arg])))
+                x = (x & ~0x1FF) | mmap[arg]
             elif x < 0xFF00 and c == 0x0E and arg < n_set:
                 if arg not in smap:
                     smap[arg] = len(sets)
@@ -615,7 +633,7 @@ def apply_effects(rom, effects, far, steps=None):
                 x = (x & ~0x1FF) | smap[arg]
             words.append(x)
         scripts.append(words)
-    if max(len(pics), len(fx), len(sets)) > MAX_RECORDS:
+    if max(len(pics), len(fx), len(sets), len(mot)) > MAX_RECORDS:
         raise SystemExit('too many new effects: the pictures or colour sets they copy don\'t fit (512 at most)')
 
     def offset_block(items):
@@ -637,11 +655,15 @@ def apply_effects(rom, effects, far, steps=None):
         for op in base_ops:
             g = snes_to_file(op)
             rom[g + 1:g + 3] = (a & 0xFFFF).to_bytes(2, 'little')
+        if name == 'motions':
+            g = snes_to_file(MOTION_LONG)
+            rom[g + 1:g + 4] = a.to_bytes(3, 'little')
 
     put('scripts', offset_block([b''.join(w.to_bytes(2, 'little') for w in ws) + b'\xff\xff' for ws in scripts]))
     put('pictures', b''.join(pics))
     put('fx', offset_block(fx))
     put('sets', offset_block(sets))
+    put('motions', offset_block(mot))
     _cache.clear()
     _colour_cache.clear()
     return out
@@ -681,6 +703,7 @@ def colours_by_address(keyed, fxmap):
 # ---- steps ----
 STEPS = 'steps.json'          # {spell: ["083b", ...]}: changed scripts (new effects: the original's records)
 TIMING = 'timing.json'        # {colour key: frames per step}
+MOTIONS = 'motions.json'      # {motion record or 'sID:record': hex bytes}
 COMMANDS = {
     0x00: ('sprite', 'Sprite effect'), 0x01: ('picture', 'Load picture'), 0x02: ('layers', 'Layer set-up'),
     0x03: ('screen', 'Screen colours'), 0x04: ('scene', 'Scene set-up'), 0x06: ('data', 'Load sprite data'),
@@ -744,16 +767,81 @@ def to_source_terms(words, eid, fxmap):
     """A new effect's words (records as built) -> words naming the original's records."""
     inv = {'p': {k: o for k, (e, o) in (fxmap or {}).get('pictures', {}).items() if e == eid},
            'f': {k: o for k, (e, o) in (fxmap or {}).get('fx', {}).items() if e == eid},
-           's': {k: o for k, (e, o) in (fxmap or {}).get('sets', {}).items() if e == eid}}
+           's': {k: o for k, (e, o) in (fxmap or {}).get('sets', {}).items() if e == eid},
+           'm': {k: o for k, (e, o) in (fxmap or {}).get('motions', {}).items() if e == eid}}
     out = []
     for x in words:
         if x < 0xFF00:
             c, arg = (x >> 9) & 0x1F, x & 0x1FF
-            m = inv['p'] if c in (0x01, 0x14) else inv['f'] if c == 0x0B else inv['s'] if c == 0x0E else None
+            m = (inv['p'] if c in (0x01, 0x14) else inv['f'] if c == 0x0B else inv['s'] if c == 0x0E
+                 else inv['m'] if c == 0x0D else None)
             if m is not None and arg in m:
                 x = (x & ~0x1FF) | m[arg]
         out.append(x)
     return out
+
+
+def motion_bytes(rom, i):
+    t = table(rom, 'motions')
+    f = snes_to_file(t + _w(rom, t + 2 * i))
+    return bytes(rom[f:f + MOTION_LEN.get(rom[f + 1] & 0x1F, 8)])
+
+
+def describe_motion(data):
+    """(label, editable params {name: value}) of a motion record."""
+    t = data[1] & 0x1F
+    label = MOTION_NAMES.get(t, f'Motion type {t}')
+    if t in (0x17, 0x1A):
+        sx, sy = data[2] - 256 if data[2] > 127 else data[2], data[3] - 256 if data[3] > 127 else data[3]
+        return label, {'x': sx, 'y': sy, 'frames': data[4] | data[5] << 8}
+    if t in (0x1B, 0x18):
+        return label, {'speed': data[2]}
+    return label, {}
+
+
+def set_motion(data, params):
+    """Motion record bytes with new params (as describe_motion gives them)."""
+    d = bytearray(data)
+    t = d[1] & 0x1F
+    if t in (0x17, 0x1A):
+        x, y, n = int(params['x']), int(params['y']), int(params['frames'])
+        if not (-128 <= x <= 127 and -128 <= y <= 127 and 1 <= n <= 9999):
+            raise ValueError('A move is -128 to 127 pixels a frame, for 1 to 9999 frames.')
+        d[2], d[3], d[4], d[5] = x & 0xFF, y & 0xFF, n & 0xFF, n >> 8
+    elif t in (0x1B, 0x18):
+        n = int(params['speed'])
+        if not 1 <= n <= 255:
+            raise ValueError('Flying speed is 1 to 255.')
+        d[2] = n
+    return bytes(d)
+
+
+def read_motions(blob):
+    """motions.json -> {record or 'sID:record': bytes}."""
+    d = read_json(blob, MOTIONS)
+    try:
+        return {k: bytes.fromhex(v) for k, v in d.items()}
+    except (ValueError, AttributeError, TypeError):
+        raise ValueError(f'{FOLDER}/{MOTIONS} is not readable')
+
+
+def motions_for_build(keyed):
+    """{'12': b, 's77:12': b} -> {12: b, (77, 12): b}"""
+    out = {}
+    for k, v in keyed.items():
+        if ':' in k:
+            e, r = k[1:].split(':')
+            out[(int(e), int(r))] = v
+        else:
+            out[int(k)] = v
+    return out
+
+
+def motion_key(i, fxmap):
+    if fxmap and i in fxmap.get('motions', {}):
+        e, o = fxmap['motions'][i]
+        return f's{e}:{o}'
+    return str(i)
 
 
 def stream_delays(toks):
@@ -780,10 +868,15 @@ def apply_all(rom, proj, far):
             check_steps(ws)
     except ValueError as e:
         raise SystemExit(f'{FOLDER}/{STEPS}: {e}')
-    fxmap = apply_effects(rom, effects, far, steps)
-    n = len(effects) + len(steps) if fxmap else 0
+    try:
+        motions = motions_for_build(read_motions(blob(f'{FOLDER}/{MOTIONS}')))
+    except ValueError as e:
+        raise SystemExit(str(e))
+    fxmap = apply_effects(rom, effects, far, steps, motions)
+    n = len(effects) + len(steps) + len(motions) if fxmap else 0
     if n:
-        print(f'spell effects: {len(effects)} new effect(s), {len(steps)} with changed steps')
+        print(f'spell effects: {len(effects)} new effect(s), {len(steps)} with changed steps, '
+              f'{len(motions)} changed motion(s)')
     n += apply(rom, proj, far, fxmap)
     n += apply_colours(rom, proj, far, fxmap)
     return n

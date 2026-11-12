@@ -44,7 +44,7 @@ import fe4spellfx                  # noqa: E402
 from fe4project import Project, load_settings, save_settings   # noqa: E402
 
 APP = 'Builder of the Holy War'
-VERSION = '38'
+VERSION = '39'
 STATIC = os.path.join(KIT, 'studio')
 
 # ---------------------------------------------------------------- state
@@ -1069,19 +1069,27 @@ def _timing():
         return {}
 
 
+def _motions_keyed():
+    try:
+        return fe4spellfx.read_motions(_project_reader(f'{fe4spellfx.FOLDER}/{fe4spellfx.MOTIONS}'))
+    except ValueError:
+        return {}
+
+
 def spell_rom():
-    """(ROM with the project's new effects and changed steps written in, their copy map or None)."""
+    """(ROM with the project's new effects, changed steps and motions written in, their copy map or None)."""
     rom = rom_data()
     eff = _effects() if project() else []
     steps = _steps() if project() else {}
-    if not (eff or steps) or rom is None:
+    mots = _motions_keyed() if project() else {}
+    if not (eff or steps or mots) or rom is None:
         return rom, None
-    key = (id(rom), json.dumps(eff), json.dumps(sorted(steps.items())))
+    key = (id(rom), json.dumps(eff), json.dumps(sorted(steps.items())), json.dumps({k: v.hex() for k, v in sorted(mots.items())}))
     if _spell_rom['key'] != key:
         r = bytearray(rom)
         with contextlib.redirect_stdout(io.StringIO()):
             try:
-                fxmap = fe4spellfx.apply_effects(r, eff, L.FreeSpace(), steps)
+                fxmap = fe4spellfx.apply_effects(r, eff, L.FreeSpace(), steps, fe4spellfx.motions_for_build(mots))
             except SystemExit:
                 r, fxmap = bytearray(rom), None
         _spell_rom.update(key=key, rom=bytes(r), fxmap=fxmap)
@@ -1166,6 +1174,11 @@ def api_spellgfx(b, q):
         if kind == 'sound':
             f = fe4spellfx.snes_to_file(fe4spellfx.SOUNDS + 2 * (val or 0))
             st['sound'] = rom[f] | rom[f + 1] << 8
+        if kind == 'motion':
+            data = fe4spellfx.motion_bytes(rom, val)
+            label, params = fe4spellfx.describe_motion(data)
+            st.update(motion=label, params=params, key=fe4spellfx.motion_key(val, fxmap),
+                      motion_edited=fe4spellfx.motion_key(val, fxmap) in _motions_keyed())
         steps.append(st)
     return {'spell': s, 'name': names.get(s, ''), 'pictures': pics, 'colours': cols, 'steps': steps,
             'steps_edited': s in _steps(),
@@ -1314,7 +1327,9 @@ def api_spellsteps(b, q):
     if not 0 <= s < fe4spellfx.spell_count(rom):
         raise ValueError('There is no such effect.')
     steps = dict(_steps())
-    if b.get('words') is None:
+    if 'words' not in b:
+        pass
+    elif b.get('words') is None:
         steps.pop(s, None)
     else:
         words = [int(w) & 0xFFFF for w in b['words']]
@@ -1330,8 +1345,33 @@ def api_spellsteps(b, q):
             steps.pop(s, None)
         else:
             steps[s] = words
+    ops = []
     rel = f'{fe4spellfx.FOLDER}/{fe4spellfx.STEPS}'
-    p.set_blob(rel, fe4spellfx.dump_steps(steps) if steps else None)
+    new = fe4spellfx.dump_steps(steps) if steps else None
+    if new != p.blob(rel).data:
+        ops.append(('blob', rel, p.blob(rel).data, new))
+    if b.get('motions'):
+        mots = dict(_motions_keyed())
+        game_rom = rom_data()
+        for k, params in b['motions'].items():
+            r_orig = int(k.split(':')[-1])
+            if not 0 <= r_orig < fe4spellfx._offset_count(game_rom, fe4spellfx.table(game_rom, 'motions')):
+                raise ValueError('There is no such motion.')
+            game = fe4spellfx.motion_bytes(game_rom, r_orig)
+            if params is None:
+                mots.pop(k, None)
+                continue
+            data = fe4spellfx.set_motion(mots.get(k, game), params)
+            if data == game:
+                mots.pop(k, None)
+            else:
+                mots[k] = data
+        mrel = f'{fe4spellfx.FOLDER}/{fe4spellfx.MOTIONS}'
+        mnew = json.dumps({k: v.hex() for k, v in sorted(mots.items())}, indent=1).encode() if mots else None
+        if mnew != p.blob(mrel).data:
+            ops.append(('blob', mrel, p.blob(mrel).data, mnew))
+    if ops:
+        p.edit(ops)
     return {'ok': True}
 
 
@@ -1386,6 +1426,16 @@ def api_spelleffect(b, q):
         if tadd:
             trel = f'{fe4spellfx.FOLDER}/{fe4spellfx.TIMING}'
             ops.append(('blob', trel, p.blob(trel).data, json.dumps({**tm, **tadd}, indent=1, sort_keys=True).encode()))
+        mots = _motions_keyed()
+        madd = {}
+        for k2, (eid, orig) in fx2.get('motions', {}).items():
+            mk = f's{src}:{orig}' if src in by_id else str(orig)
+            if eid == new_id and mk in mots:
+                madd[f's{new_id}:{orig}'] = mots[mk]
+        if madd:
+            mrel = f'{fe4spellfx.FOLDER}/{fe4spellfx.MOTIONS}'
+            ops.append(('blob', mrel, p.blob(mrel).data,
+                        json.dumps({k: v.hex() for k, v in sorted({**mots, **madd}.items())}, indent=1).encode()))
         st = _steps()
         if src in st:      # the source's changed steps (already in the original's terms)
             srel = f'{fe4spellfx.FOLDER}/{fe4spellfx.STEPS}'
@@ -1495,6 +1545,67 @@ def api_testplay(b, q):
         print('started the PC port')
         return out
     return job_json_of(run_job('Building for test play', go))
+
+
+PREVIEW = {'start': 25300, 'end': 26250, 'from': 25200, 'item': 0x3E,
+           'freeze': [('0D5C', '35'), ('0D60', '3E'), ('0D69', '74')]}   # Gandolf: Fire Mage, Fire, magic
+
+
+def api_spellpreview(b, q):
+    """Watch an effect in battle: a copy of the ROM with only the project's battle and spell changes, the
+    Fire tome playing this effect, run in the PC port from power-on with the preview input movie
+    (fast until the Prologue battle where Gandolf attacks Midir, made a Fire Mage)."""
+    p = need_project()
+    rom = rom_path()
+    if not rom:
+        raise ValueError('Choose your FE4 ROM first.')
+    exe = port_exe()
+    if not exe:
+        raise ValueError('The FE4 PC port wasn\'t found. Choose where FE4.exe is (Settings).')
+    try:
+        with open(exe, 'rb') as fh:
+            new_port = b'--turbo-until' in fh.read()
+    except OSError:
+        new_port = False
+    if not new_port:
+        raise ValueError('Watching in battle needs the PC port 0.9 or newer (it comes with this kit in FE4Port.zip).')
+    s = int(b['spell'])
+    movie = os.path.join(KIT, 'dev', 'battle_preview.txt')
+    if not movie or not os.path.exists(movie):
+        raise ValueError('The battle preview input is missing from this kit.')
+    p.save()
+    d = os.path.join(p.path, '_testplay')
+    os.makedirs(d, exist_ok=True)
+    out = os.path.join(d, 'battle_preview.smc')
+    names = _spell_label(spell_rom()[0])
+    title = f'Watch in battle: {names.get(s) or f"effect {s}"}'
+
+    def go():
+        copier, r = L.load_rom(rom)
+        far = L.FreeSpace()
+        fe4battle.apply(r, p.path)
+        fe4spellfx.apply_all(r, p.path, far)
+        fe4battle.apply_custom(r, lambda rel: fe4hack._read_file(p.path, rel), far)
+        if not 0 <= s < fe4spellfx.spell_count(r):
+            raise SystemExit(f'There is no effect {s}.')
+        f = fe4spellfx.snes_to_file(fe4battle.SPELL_TABLE)
+        rows = fe4battle.spell_rows(r)
+        k = next(i for i, row in enumerate(rows) if row[0] == PREVIEW['item'])
+        r[f + 3 * k + 1] = r[f + 3 * k + 2] = s
+        L.save_rom(out, copier, r)
+        pause = sum(x & 0x1FF for x in fe4spellfx.script_words(r, s) if x < 0xFF00 and (x >> 9) & 0x1F in (0x0A, 0x18))
+        import hashlib
+        from fe4project import settings_path
+        sha = hashlib.sha1(bytes(L.load_rom(rom)[1])).hexdigest()[:12]
+        cache = os.path.join(os.path.dirname(settings_path()), f'battle_preview_{sha}.state')
+        args = [exe, '--play', out, '--movie', movie, '--turbo-until', str(PREVIEW['start']), '--state-cache', cache,
+                '--loop-at', str(PREVIEW['end'] + pause), '--title', title]
+        for a, v in PREVIEW['freeze']:
+            args += ['--freeze', a, v, str(PREVIEW['from'])]
+        subprocess.Popen(args, cwd=os.path.dirname(exe))
+        print('started the PC port: it plays the Prologue at full speed up to the battle, then shows it over and over')
+        return out
+    return job_json_of(run_job('Building the battle preview', go))
 
 
 def api_settings(b, q):
@@ -3327,7 +3438,7 @@ API = {('GET', 'session'): api_session, ('POST', 'ping'): api_ping, ('GET', 'tab
        ('POST', 'build'): api_build, ('GET', 'battleanims'): api_battleanims, ('GET', 'battleinfo'): api_battleinfo,
        ('POST', 'battleimport'): api_battleimport, ('POST', 'battlemotion'): api_battlemotion,
        ('POST', 'battleframe'): api_battleframe, ('GET', 'battlemotions'): api_battlemotions,
-       ('GET', 'battlespells'): api_battlespells, ('POST', 'spellrow'): api_spellrow, ('GET', 'spellgfx'): api_spellgfx, ('POST', 'spellgfxset'): api_spellgfxset, ('POST', 'spellcolours'): api_spellcolours, ('POST', 'spelleffect'): api_spelleffect, ('POST', 'spellsteps'): api_spellsteps, ('POST', 'battlereset'): api_battlereset,
+       ('GET', 'battlespells'): api_battlespells, ('POST', 'spellrow'): api_spellrow, ('GET', 'spellgfx'): api_spellgfx, ('POST', 'spellgfxset'): api_spellgfxset, ('POST', 'spellcolours'): api_spellcolours, ('POST', 'spelleffect'): api_spelleffect, ('POST', 'spellsteps'): api_spellsteps, ('POST', 'spellpreview'): api_spellpreview, ('POST', 'battlereset'): api_battlereset,
        ('POST', 'ipspatch'): api_ipspatch, ('POST', 'reveal'): api_reveal,
        ('GET', 'patchinfo'): api_patchinfo, ('POST', 'testplay'): api_testplay, ('POST', 'settings'): api_settings,
        ('POST', 'dialog'): api_dialog, ('POST', 'quit'): api_quit, ('POST', 'classic'): api_classic,

@@ -293,8 +293,19 @@ default browser). The editor runs on your PC only: nothing is sent anywhere.
    or changing colour set also has **Changes every N frames** to speed its
    colours up or slow them down. Saved in `spell_gfx/steps.json` and
    `spell_gfx/timing.json`. Removing the Signal or Hit steps can leave a
-   fighter waiting forever, so try changes in a test battle (Azel's Fire in
-   the Prologue is a quick one).
+   fighter waiting forever, so check changes with Watch in battle.
+   **Background** steps move the effect's pictures: **Move** slides them a
+   number of pixels across and down each frame for a number of frames (the
+   game mirrors it for the other side), **Fly to the target** sends them at
+   the target at a speed (higher is faster: Fire's fireball is 12). Other
+   effects can share a background step; make a new effect to keep them
+   apart. Saved in `spell_gfx/motions.json`.
+   **Watch in battle** shows the effect in a real battle in the PC port
+   (0.9 or newer, set in Settings): it builds a copy of your ROM with your
+   battle and spell changes only, races through the Prologue to the fight
+   where Gandolf attacks Midir, makes Gandolf a Fire Mage casting your
+   effect, and replays that battle until you close the window. The first
+   time takes about a minute; then it starts straight at the battle.
 15. On the Project page, **Add unit stats to the map box** puts the PC port's
    MT / HIT / AS / AVO box into the ROMs and patches you build, so players
    on emulators get it too (the port can still switch it off).

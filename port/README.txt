@@ -1,4 +1,4 @@
-Fire Emblem: Genealogy of the Holy War - PC port (fe4port) 0.8.1
+Fire Emblem: Genealogy of the Holy War - PC port (fe4port) 0.9
 ==============================================================
 
 This is a native Windows build of FE4. It runs from YOUR OWN ROM: the
@@ -156,6 +156,13 @@ things connect it to this port:
     it here at once, without your mods, with its own saves.
   * "Add unit stats to the map box" (Project page) puts the MT/HIT/AS/AVO
     box into the ROMs you build, so players on emulators get it too.
+  * Watch in battle (Battle animations > Spell pictures) opens a spell
+    effect here in a real battle: the port races through the Prologue
+    (the window title shows how far) to the fight where Gandolf attacks
+    Midir, with Gandolf made a Fire Mage casting your effect, then plays
+    the battle over and over until you close the window. The first time
+    takes about a minute; after that it starts at the battle (the editor
+    keeps a save state of that moment in its settings folder).
 When your hack is done, the .ips patch the editor writes can be shared;
 players drop it in their mods folder.
 

@@ -1,6 +1,6 @@
 // Battle animations: which animation, body, upper body and palette each class shows in battle (per
 // weapon kind, gender and a few characters), with a player for every motion the animation has.
-import { api, h, toast, refreshSession } from '../app.js';
+import { api, h, toast, refreshSession, watchJob } from '../app.js';
 
 const st = { cls: null, row: null, motion: 1, speed: 1, mirror: false, item: null, playing: true, override: null };
 try { Object.assign(st, JSON.parse(sessionStorage.getItem('fe4studio-battle') || '{}')); } catch (e) { /* none */ }
@@ -279,9 +279,10 @@ export async function battlePage(root) {
     // steps
     let steps = P.steps.map(x => ({ ...x }));
     let stepsDirty = false;
+    const motionEdits = {};
     const stepList = h('ol', { class: 'basteplist sfxsteps' });
     const saveSteps = h('button', { class: 'btn btn-gilt', type: 'button', disabled: true, onclick: async () => {
-      try { await api('spellsteps', { spell: P.spell, words: steps.map(x => x.word) }); await after('Saved the steps'); } catch (e) { toast(e.message, true); } } }, 'Save steps');
+      try { await api('spellsteps', { spell: P.spell, words: steps.map(x => x.word), motions: motionEdits }); await after('Saved the steps'); } catch (e) { toast(e.message, true); } } }, 'Save steps');
     const dirty = () => { stepsDirty = true; saveSteps.disabled = false; drawSteps(); };
     const mk = (word, kind, label, value) => ({ word, kind, label, value });
     function drawSteps() {
@@ -292,6 +293,19 @@ export async function battlePage(root) {
           inp.onchange = () => { const n = Math.round(Number(inp.value)); if (!(n >= 0 && n <= 511)) { toast('Use 0 to 511.', true); inp.value = x.value; return; }
             x.value = n; x.word = (x.word & ~0x1FF) | n; dirty(); };
           body = x.kind === 'pause' ? [h('span', { class: 'baslabel' }, 'Pause'), inp, ' frames'] : [h('span', { class: 'baslabel' }, x.label), ' number ', inp];
+        } else if (x.kind === 'motion') {
+          const pr = motionEdits[x.key] || x.params || {};
+          const num = (name, lo, hi, lab) => {
+            const inp = h('input', { class: 'in num', type: 'number', min: lo, max: hi, value: pr[name], 'aria-label': `${lab} (step ${i + 1})` });
+            inp.onchange = () => { const n = Math.round(Number(inp.value)); if (!(n >= lo && n <= hi)) { toast(`Use ${lo} to ${hi}.`, true); inp.value = pr[name]; return; }
+              motionEdits[x.key] = { ...pr, [name]: n }; dirty(); };
+            return inp;
+          };
+          const p0 = x.params || {};
+          body = [h('span', { class: 'baslabel' }, 'Background: ' + x.motion + (x.motion_edited || motionEdits[x.key] ? ' ✎' : ''))];
+          if ('x' in p0) body.push(' by ', num('x', -128, 127, 'Pixels a frame across'), ' across, ', num('y', -128, 127, 'Pixels a frame down'), ' down a frame, for ', num('frames', 1, 9999, 'Frames'), ' frames');
+          else if ('speed' in p0) body.push(' at speed ', num('speed', 1, 255, 'Speed'));
+          else body.push(h('span', { class: 'sub' }, ` ${x.value}`));
         } else {
           body = [h('span', { class: 'baslabel' + (x.kind === 'control' ? ' sfxctl' : '') }, x.label), x.value != null ? h('span', { class: 'sub' }, ` ${x.value}`) : null];
         }
@@ -313,9 +327,10 @@ export async function battlePage(root) {
         h('button', { class: 'btn btn-line', type: 'button', onclick: () => { steps.push(mk(0x5400 | 30, 'pause', 'Pause', 30)); dirty(); } }, 'Add a pause'),
         h('button', { class: 'btn btn-line', type: 'button', onclick: () => { steps.push(mk(0x2A00 | 1, 'sound', 'Sound', 1)); dirty(); } }, 'Add a sound'),
         saveSteps,
-        P.steps_edited ? h('button', { class: 'btn btn-line', type: 'button', onclick: async () => {
-          try { await api('spellsteps', { spell: P.spell, words: null }); await after('Back to the game\'s steps (Undo brings yours back)'); } catch (e) { toast(e.message, true); } } }, 'Use the game\'s steps') : null),
-      h('p', { class: 'hint' }, 'New steps go at the end; move them up to where they belong. Removing the Signal or Hit steps can leave a fighter waiting, so try changes in a test battle.'));
+        (P.steps_edited || P.steps.some(x => x.motion_edited)) ? h('button', { class: 'btn btn-line', type: 'button', onclick: async () => {
+          try { await api('spellsteps', { spell: P.spell, words: null, motions: Object.fromEntries(P.steps.filter(x => x.motion_edited).map(x => [x.key, null])) });
+            await after('Back to the game\'s steps (Undo brings yours back)'); } catch (e) { toast(e.message, true); } } }, 'Use the game\'s steps') : null),
+      h('p', { class: 'hint' }, 'New steps go at the end; move them up to where they belong. Background steps move the effect\'s pictures: a Move slides them a few pixels each frame (negative goes left or up; the game mirrors it for the other side), Fly to the target sends them at the target (higher speed is faster). Other effects can share a background step and change with it; make a new effect to keep them apart. Removing the Signal or Hit steps can leave a fighter waiting, so check changes with Watch in battle.'));
     // new effects: make one from this, rename or delete it
     const nameIn = h('input', { class: 'in', placeholder: 'Name, e.g. Blue Fire', maxlength: 40, 'aria-label': 'New effect name' });
     const makeBox = h('div', { class: 'sfxmake', hidden: true }, nameIn,
@@ -324,7 +339,13 @@ export async function battlePage(root) {
           await after(`Made ${nameIn.value.trim() || 'a new effect'}: a copy of ${name}. Give it to an item on the Spells tab.`); }
         catch (e) { toast(e.message, true); } } }, 'Make it'),
       h('button', { class: 'btn btn-line', type: 'button', onclick: () => { makeBox.hidden = true; } }, 'Cancel'));
-    const tools = h('div', { class: 'sfxtools' },
+    const watch = h('button', { class: 'btn btn-gilt', type: 'button', title: 'Opens the PC port on a copy of your ROM: it races through the Prologue to a battle where Gandolf casts this effect, then replays the battle until you close it', onclick: async () => {
+      watch.disabled = true; watch.textContent = 'Building…';
+      try { await watchJob(await api('spellpreview', { spell: P.spell }), () =>
+        toast('The PC port is opening: it plays up to the battle at full speed, then shows the effect again and again until you close it.'));
+      } catch (e) { toast(e.message, true); }
+      watch.disabled = false; watch.textContent = 'Watch in battle'; } }, 'Watch in battle');
+    const tools = h('div', { class: 'sfxtools' }, watch,
       h('button', { class: 'btn btn-line', type: 'button', onclick: () => { makeBox.hidden = false; nameIn.focus(); } }, 'New effect from this one…'),
       P.new ? h('button', { class: 'btn btn-line', type: 'button', onclick: async () => {
         const nm = prompt('New name for this effect', P.own_name || '');

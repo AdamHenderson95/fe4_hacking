@@ -605,6 +605,30 @@ Control words: `$FFFD`/`$FFFC` signal the attacker's / the other fighter's anima
 - Verified: Fire with a 60-frame pause after its first wait shows the fireball 60 frames later and the
   battle ends normally; Bolganone with one colour set at 8 frames per step plays to the end.
 
+## Background motions (v39)
+
+- Command `$0D` records: word-offset table `$97:BEAC` (78 records, packed so that records share bytes).
+  The handler reads it at `$96:DECA` (LDA #$9700), `$96:DECF` (LDA `$97BEAC`,X, long) and `$96:DED4`
+  (ADC #$BEAC); the kit moves it with the other tables and gives each record its own bytes.
+- Record: `layer (& 3), type (& $1F)` + data; slot of `$15` bytes at `$7F:E475` (flags, position
+  `$E476/$E477`, velocity `$E47C/$E47E` 8.8, count `$E480`). Types (`$96:DF60`): `$01` place at the
+  attacker, `$05` at the target (from `$0AF9`/`$95:B5FD`), `$17` move: x, y (signed pixels per frame,
+  negated for one side by `$0B24` bit 15), frames (word); `$1A` the same and also sets `$7F:E4B4`;
+  `$1B` fly to the target at a speed (byte; `$96:E654` works out the velocity: Fire's fireball is
+  `$0C`, `$30` reaches Midir about 12 frames sooner, `$04` crawls); `$18` the same aimed 16 px higher;
+  `$16` follow a motion path (ptr24, bank `$97`).
+- Verified: Fire's record 18 at speed 4 / 48 changes the fireball's flight and the battle finishes.
+
+## Battle preview (PC port 0.9)
+
+- The port takes `--turbo-until N` (no sound, as fast as possible until frame N), `--loop-at N` (then
+  go back to frame N's state when reaching N), `--freeze ADDR VAL FROM` (from frame FROM, writes to RAM
+  ADDR store VAL, through `snes_writeMap`), `--state-cache FILE` and `--title`.
+- `dev/battle_preview.txt` is an input movie from power-on (new game, Prologue up to the enemy phase);
+  the kit freezes `$0D5C=$35`, `$0D60=$3E`, `$0D69=$74` from frame 25200 (Gandolf becomes a Fire Mage
+  with Fire), points Fire at the chosen effect in a copy of the ROM with only battle and spell changes,
+  runs fast to frame 25300 (cached) and loops at 26250 plus the effect's pauses.
+
 ## Maps (V)
 
 ### Chapter map headers

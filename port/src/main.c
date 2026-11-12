@@ -38,7 +38,7 @@
 #include <utime.h>
 #include "kit.h"
 
-#define PORT_VERSION "0.8.1"
+#define PORT_VERSION "0.9"
 #define GAME_TITLE "Fire Emblem: Genealogy of the Holy War"
 #define NAGA_SHA1 "2b6eb74646a527ba293b0e004db3e0134a28dc6c"
 
@@ -450,16 +450,34 @@ static uint16_t pad_poll(void) {
 // ---------------- test movie (for automated checks) ----------------
 #include "../tools/movie.h"
 
+// ---------------- battle previews (the kit's "Watch in battle") ----------------
+// --freeze ADDR VAL FROM: from frame FROM on, every write to ADDR (bank $7E/$7F or a mirror) stores VAL
+static uint32_t frzAdr[16]; static uint8_t frzVal[16]; static int frzFrom[16], nFrz, frzFrame;
+static uint8_t freeze_map(Snes* s, uint32_t adr, uint8_t val) {
+  (void)s;
+  uint8_t bank = adr >> 16; uint32_t a = adr & 0xffff, w;
+  if(bank == 0x7e || bank == 0x7f) w = ((bank & 1) << 16) | a;
+  else if((bank & 0x7f) < 0x40 && a < 0x2000) w = a; else return val;
+  for(int i = 0; i < nFrz; i++) if(frzAdr[i] == w && frzFrame >= frzFrom[i]) return frzVal[i];
+  return val;
+}
+
 // ---------------- main ----------------
 static void usage(void) {
   printf("FE4 PC port %s\n"
     "usage: fe4 [rom.sfc] [--play rom.sfc] [--no-mods] [--interp] [--frames N --movie file --shot out.bmp] [--fast]\n"
-    "  --play rom.sfc  test play: run this ROM without mods and without making it the default ROM\n", PORT_VERSION);
+    "  --play rom.sfc  test play: run this ROM without mods and without making it the default ROM\n"
+    "  --turbo-until N        run as fast as possible (no sound) until frame N\n"
+    "  --loop-at N            after --turbo-until, go back to that frame when frame N is reached\n"
+    "  --freeze ADDR VAL FROM from frame FROM, writes to RAM ADDR (hex) store VAL (hex)\n"
+    "  --title TEXT           text for the window title\n"
+    "  --state-cache FILE     with --turbo-until: start from FILE if it holds that frame, else save it there\n", PORT_VERSION);
 }
 
 int main(int argc, char** argv) {
   const char* romArg = NULL; int forceInterp = 0, maxFrames = 0, fast = 0, forceSpeed = 0;
   const char* movieArg = NULL; const char* shotArg = NULL; const char* wavArg = NULL;
+  int turboUntil = 0, loopAt = 0; const char* titleArg = NULL; const char* stateCache = NULL;
   const char* shotDir = NULL; int shotEvery = 0; const char* stateArg = NULL;
   int noMods = 0, testPlay = 0;
   for(int i = 1; i < argc; i++) {
@@ -474,6 +492,13 @@ int main(int argc, char** argv) {
     else if(!strcmp(argv[i], "--state") && i + 1 < argc) stateArg = argv[++i];
     else if(!strcmp(argv[i], "--shotdir") && i + 2 < argc) { shotDir = argv[++i]; shotEvery = atoi(argv[++i]); }
     else if(!strcmp(argv[i], "--wav") && i + 1 < argc) wavArg = argv[++i];
+    else if(!strcmp(argv[i], "--turbo-until") && i + 1 < argc) turboUntil = atoi(argv[++i]);
+    else if(!strcmp(argv[i], "--loop-at") && i + 1 < argc) loopAt = atoi(argv[++i]);
+    else if(!strcmp(argv[i], "--title") && i + 1 < argc) titleArg = argv[++i];
+    else if(!strcmp(argv[i], "--state-cache") && i + 1 < argc) stateCache = argv[++i];
+    else if(!strcmp(argv[i], "--freeze") && i + 3 < argc && nFrz < 16) {
+      frzAdr[nFrz] = strtol(argv[i + 1], NULL, 16); frzVal[nFrz] = strtol(argv[i + 2], NULL, 16); frzFrom[nFrz++] = atoi(argv[i + 3]); i += 3;
+      snes_writeMap = freeze_map; }
     else if(!strcmp(argv[i], "--help") || !strcmp(argv[i], "-h")) { usage(); return 0; }
     else if(argv[i][0] != '-') romArg = argv[i];
   }
@@ -516,6 +541,7 @@ int main(int argc, char** argv) {
       "or pass it on the command line.", 1); return 1; }
   }
   if(testPlay) snprintf(titleTag, sizeof titleTag, "test play: %s", romBase);
+  if(titleArg) snprintf(titleTag, sizeof titleTag, "%s", titleArg);
   if(!testPlay && strcmp(cfg.rom, romPath)) { snprintf(cfg.rom, sizeof cfg.rom, "%s", romPath); config_save(); }
   printf("ROM: %s (sha1 %s)%s%s\n", romPath, romSha, strcmp(romSha, NAGA_SHA1) ? " [not the Project Naga 1.0 image - running it anyway]" : " [Project Naga 1.0]",
     testPlay ? " (test play)" : "");
@@ -595,6 +621,13 @@ int main(int argc, char** argv) {
   vpad_init(); pad_open_all();
   static uint8_t px[512 * 480 * 4];
   int running = 1, paused = 0, turboHeld = 0, turboToggle = 0, speed = 1, slot = 1, frame = frame0;
+  uint8_t* loopState = NULL; int loopLen = 0;
+  if(turboUntil && stateCache) { // a state saved at turboUntil by an earlier preview (4-byte frame + state)
+    int n; uint8_t* d = read_file(stateCache, &n);
+    if(d && n > 4 && *(int*)d == turboUntil && snes_loadState(snes, d + 4, n - 4)) frame = turboUntil;
+    free(d);
+    if(frame >= turboUntil && loopAt) { loopLen = snes_saveState(snes, NULL); loopState = malloc(loopLen); snes_saveState(snes, loopState); }
+  }
   // automatic speed-ups: what the game is doing, from its RAM (checked after every emulated frame)
   //   text: the dialogue renderer's text pointer ($186A, 24-bit) moved recently
   //   battle: the game's frame-handler pointer ($00D7) is the battle scene's ($C144)
@@ -688,15 +721,38 @@ int main(int argc, char** argv) {
     }
     if(wantSpeed != speed) { speed = wantSpeed; snes_setApuScale(snes, 1.0 / speed); }
     int toRun = 0;
+    int turbo = turboUntil && frame < turboUntil;
     if(fast) toRun = 1;
     else while(acc >= frameTime - 0.002) { acc -= frameTime; toRun++; }
     int due = toRun;
     toRun *= speed;
+    if(turbo) { // as many frames as fit in ~30 ms, then show one; no sound
+      uint64_t t0 = SDL_GetPerformanceCounter(); int n = 0;
+      while(frame + n < turboUntil && (double)(SDL_GetPerformanceCounter() - t0) / freq < 0.03) {
+        snes->ppu->skipRender = (n % 8) != 7;
+        uint16_t m = movieArg ? movie_mask(frame + n) : 0;
+        for(int b = 0; b < 12; b++) snes_setButtonState(snes, 1, b, (m >> b) & 1);
+        frzFrame = frame + n;
+        if(recompiled) rc_runFrame(snes); else snes_runFrame(snes);
+        n++;
+      }
+      frame += n; toRun = 0; due = 1;
+      snes->apu->dsp->sampleCount = 0;
+      { char t[128]; snprintf(t, sizeof t, "%s - getting the battle ready... %d%%", titleArg ? titleArg : "preview", frame * 100 / turboUntil); set_title(win, t); }
+      if(frame >= turboUntil) {
+        set_title(win, NULL); acc = 0;
+        if(loopAt || stateCache) { loopLen = snes_saveState(snes, NULL); loopState = malloc(loopLen); snes_saveState(snes, loopState); }
+        if(stateCache) { uint8_t* d = malloc(loopLen + 4); *(int*)d = turboUntil; memcpy(d + 4, loopState, loopLen); write_file(stateCache, d, loopLen + 4); free(d); }
+        if(!loopAt) { free(loopState); loopState = NULL; }
+      }
+    }
+    if(loopAt && loopState && frame >= loopAt) { snes_loadState(snes, loopState, loopLen); frame = turboUntil; }
     if(paused || (menu_visible() && cfg.pauseInMenu)) toRun = 0;
     for(int f = 0; f < toRun && running; f++) {
       uint16_t m = keyState | padNow;
       if(movieArg) m = movie_mask(frame);
       for(int b = 0; b < 12; b++) snes_setButtonState(snes, 1, b, (m >> b) & 1);
+      frzFrame = frame;
       snes->ppu->skipRender = f != toRun - 1; // only draw the frame that will be shown
       if(recompiled) rc_runFrame(snes); else snes_runFrame(snes);
       frame++;
