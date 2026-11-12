@@ -660,6 +660,17 @@ textarea.fe4box.bad { border-color: #E1606F; }
 .baslabel { font-weight: 600; min-width: 64px; }
 .bastepbtns { margin-left: auto; display: flex; gap: 2px; }
 .bamhead { display: flex; gap: 14px; align-items: end; flex-wrap: wrap; }
+.sfxpreview, .sfxgrid { margin: 0 24px 12px; }
+.sfxpreview h3 { margin: 4px 0 8px; }
+.sfxscroll { background: #12152A; border-radius: var(--r-md); padding: 8px; overflow-x: auto; }
+.sfxscroll img { display: block; image-rendering: pixelated; height: 256px; width: auto; max-width: none; }
+.sfxgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 14px; }
+.sfxcard { margin: 0; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--vellum-2); overflow: hidden; display: flex; flex-direction: column; }
+.sfximg { background: repeating-conic-gradient(#20253F 0 25%, #2A3052 0 50%) 0 0 / 16px 16px; padding: 10px; display: flex; justify-content: center; max-height: 340px; overflow: auto; }
+.sfximg img { image-rendering: pixelated; max-width: 100%; height: auto; }
+.sfxcard figcaption { padding: 10px 12px 12px; display: grid; gap: 4px; }
+.sfxcard figcaption .hint { margin: 0; }
+.sfxbtns { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px; }
 .baaddframe { margin-top: 10px; }
 .baaddframe .in.num { width: 70px; }
 .baspells { margin: 0 24px; overflow: auto; max-height: 60vh; }

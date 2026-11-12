@@ -860,12 +860,15 @@ def spell_count(rom):
 
 
 def spell_names(rom, item_names):
-    """{spell: 'Fire'} from the first item that uses each spell in the game's table."""
-    out = {}
-    for it, a, b in spell_rows(rom):
-        for s in (a, b):
-            out.setdefault(s, item_names.get(it, f'item {it}'))
-    return out
+    """{spell: 'Fire'}: the items that use each spell in the game's table, tomes and staves before
+    the swords that borrow their effect ('Fire / Flame sword')."""
+    got = {}
+    for it, a, b in sorted(spell_rows(rom), key=lambda r: (r[0] < 20, r[0])):
+        for s in dict.fromkeys((a, b)):
+            n = item_names.get(it, f'item {it}')
+            if n not in got.setdefault(s, []):
+                got[s].append(n)
+    return {s: ' / '.join(v[:2]) for s, v in got.items()}
 
 
 def export_spells(rom, path, item_names):

@@ -123,7 +123,9 @@ static uint8_t freeze_map(Snes* s, uint32_t adr, uint8_t val) {
 static FILE* lineLog;
 static int line60Battle; static int battleEvery;
 static void battle_hook(Ppu* p, int line) { if(line == 60) line60Battle = p->mode == 1 && p->bgLayer[1].tilemapAdr == 0x6000 && p->bgLayer[1].tilemapWider && p->layer[1].mainScreenEnabled && p->brightness == 15; }
+static int regLine = -1; static int regFrame;
 static void line_hook(Ppu* p, int line) {
+  if(regLine >= 0) { if(line != regLine) return; lineLog = stdout; fprintf(stdout, "F%d ", regFrame); }
   if(!lineLog) return;
   fprintf(lineLog, "%d mode=%d bg3p=%d main=%d%d%d%d%d sub=%d%d%d%d%d", line, p->mode, p->bg3priority,
     p->layer[0].mainScreenEnabled, p->layer[1].mainScreenEnabled, p->layer[2].mainScreenEnabled, p->layer[3].mainScreenEnabled, p->layer[4].mainScreenEnabled,
@@ -174,6 +176,7 @@ int main(int argc, char** argv) {
     watching = fr >= (getenv("WATCHFROM") ? atoi(getenv("WATCHFROM")) : frames - 10);
     dmaFrame = fr; dmaOn = fr >= dmaLo && fr <= dmaHi;
     frzOn = fr >= (getenv("FREEZEFROM") ? atoi(getenv("FREEZEFROM")) : 0);
+    if(getenv("REGLOG")) { regLine = atoi(getenv("REGLOG")); regFrame = fr; ppu_lineHook = line_hook; }
     if(dumpPrefix && fr == frames - 1) { char p[512]; snprintf(p, sizeof p, "%s.lines", dumpPrefix); lineLog = fopen(p, "w"); ppu_lineHook = line_hook; }
     snes_runFrame(snes);
     if(wideOn && getenv("OAMSTAT")) {

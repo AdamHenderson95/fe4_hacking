@@ -6,7 +6,8 @@ code{background:#f2f2f4;padding:1px 4px;border-radius:3px;font:13px Consolas,mon
 pre{background:#f2f2f4;padding:12px;border-radius:6px;overflow:auto} pre code{background:none;padding:0}
 table{border-collapse:collapse;margin:12px 0} th,td{border:1px solid #ddd;padding:5px 9px;vertical-align:top;text-align:left}
 th{background:#f6f6f8}
-</style></head><body>
+</style></head>
+<body>
 <h1>fe4kit: FE4 hacking toolkit (Project Naga ROM)</h1>
 <p>Make hacks and randomized games of Fire Emblem: Genealogy of the Holy War
 (the Project Naga translation). You need your own copy of the ROM; the tools
@@ -263,8 +264,19 @@ default browser). The editor runs on your PC only: nothing is sent anywhere.
    uses them in the game), and the one it plays "at range" (Physic and the
    status staves cast from far away). <strong>Give an item an effect</strong> adds any
    item; it only shows if that attacker's animation casts (a plain sword
-   swing or thrown axe ignores it). Saved in <code>spells.csv</code>. New spell
-   graphics come in a later version.</li>
+   swing or thrown axe ignores it). Saved in <code>spells.csv</code>.
+   <strong>Spell pictures</strong> (the third switch) lists every effect that draws
+   pictures: fireballs, flame pillars, lightning, Naga's dragon, the staff
+   sparkles. Pick one to see how its pictures are laid out on screen and each
+   picture as a sheet of 8x8 tiles. <strong>Download</strong> a sheet, paint over it and
+   <strong>Import…</strong> it back at the same size; <strong>Use the game's</strong> goes back. The
+   colours in the sheets are stand-ins: each is a colour number, and the
+   battle supplies the real colours (they cycle and fade while the spell
+   plays), so paint with the colours already in the sheet (anything else is
+   matched to the nearest). Background sheets have 15 colours plus
+   transparent, overlay sheets 3. A picture several spells share (Fire and
+   Elfire's fireball) says so, and changes for all of them. Saved as
+   <code>spell_gfx/rNNN.png</code>; the build packs each into free space.</li>
 <li>On the Project page, <strong>Add unit stats to the map box</strong> puts the PC port's
    MT / HIT / AS / AVO box into the ROMs and patches you build, so players
    on emulators get it too (the port can still switch it off).</li>

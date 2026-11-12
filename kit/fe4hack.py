@@ -21,6 +21,7 @@ import fe4locations as LOC
 import fe4gfx as GFX
 import fe4sprites as SPR
 import fe4battle as BA
+import fe4spellfx as SFX
 import fe4maptiles as MT
 import fe4armies as AR
 import fe4names as NM
@@ -378,6 +379,7 @@ def build(rom_path, proj, out_path, ips=None, hover=False):
     n += BA.apply(rom, proj)
     n += BA.apply_spells(rom, proj, far)
     n += BA.apply_custom(rom, lambda rel: _read_file(proj, rel), far)
+    n += SFX.apply(rom, proj, far)
     n += NM.apply(rom, os.path.join(proj, 'names.csv'), far, space)
     n += LOC.apply(rom, os.path.join(proj, 'locations.csv'), space)
     n += LOC.apply_arena(rom, os.path.join(proj, 'arena.csv'), space)

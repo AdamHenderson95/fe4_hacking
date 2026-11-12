@@ -40,10 +40,11 @@ import fe4locations                # noqa: E402
 import fe4sprites                  # noqa: E402
 import fe4maptiles                 # noqa: E402
 import fe4battle                  # noqa: E402
+import fe4spellfx                  # noqa: E402
 from fe4project import Project, load_settings, save_settings   # noqa: E402
 
 APP = 'Builder of the Holy War'
-VERSION = '35'
+VERSION = '36'
 STATIC = os.path.join(KIT, 'studio')
 
 # ---------------------------------------------------------------- state
@@ -477,6 +478,15 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(404, 'no')
             data = sprite_image(sid, army, scale, indexed=path.endswith('.idx.png'))
             return (self._send(200, data, 'image/png', cache='c' in q) if data else self._send(404, 'no'))
+        if path.startswith('/gfx/spellsheet/') or path.startswith('/gfx/spellview/'):
+            q = parse_qs(u.query)
+            try:
+                n = int(q.get('r', q.get('s', ['-1']))[0])
+                scale = max(1, min(int(q.get('x', ['1'])[0]), 4))
+                data = spell_sheet(n, scale) if 'spellsheet' in path else spell_preview(n, scale)
+            except (ValueError, KeyError):
+                return self._send(404, 'no')
+            return self._send(200, data, 'image/png') if data else self._send(404, 'no')
         if path.startswith('/gfx/battledraw/'):
             q = parse_qs(u.query)
             try:
@@ -875,6 +885,9 @@ def battle_strip(a, bd, up, pl, it):
 def api_battleanims(b, q):
     """The class/weapon -> battle animation table, with names, for the Battle animations page."""
     p = need_project()
+    rom0 = rom_data()
+    if rom0 is not None:     # read the spell pictures in the background; the Spell pictures view needs them
+        threading.Thread(target=fe4spellfx.survey, args=(rom0,), daemon=True).start()
     t = p.table('battle_anims')
     if t is None:
         raise KeyError('This project has no battle_anims.csv; reopen it with this version to add one.')
@@ -1027,6 +1040,99 @@ def api_battlespells(b, q):
     n = fe4battle.spell_count(rom)
     return {'rows': [{**r, '_item': items.get(int(r['item']), r.get('_item', ''))} for r in t.rows],
             'spells': [[k, names.get(k, '')] for k in range(n)], 'items': [[k, v] for k, v in sorted(items.items()) if v]}
+
+
+def _spell_pictures():
+    """The survey of spell pictures (clean ROM) and the project's redrawn tile bytes per record."""
+    rom = rom_data()
+    recs, by_spell = fe4spellfx.survey(rom)
+    over = {}
+    if project():
+        for r, d in recs.items():
+            png = _project_reader(f'{fe4spellfx.FOLDER}/r{r:03d}.png')
+            if png and d['kind'] != 'map':
+                try:
+                    over[r] = fe4spellfx.sheet_from_png(png, len(d['data']), fe4spellfx.bpp_of(d['kind']))
+                except ValueError:
+                    pass
+    return rom, recs, by_spell, over
+
+
+SPELL_KINDS = {'tiles4': 'Background tiles · 16 colours', 'tiles2': 'Overlay tiles · 4 colours',
+               'sprite': 'Sprite tiles · 16 colours'}
+
+
+def _spell_label(rom, items=None):
+    p = project()
+    it = p.table('items') if p else None
+    items = {int(r['index']): r.get('_name', '') for r in it.rows} if it else dict(enumerate(L.item_names(rom)))
+    return fe4battle.spell_names(rom, items)
+
+
+def api_spellgfx(b, q):
+    """Spells with pictures ({list: true}), or one spell's pictures ({spell})."""
+    rom, recs, by_spell, over = _spell_pictures()
+    names = _spell_label(rom)
+    if 'spell' not in q:
+        out = []
+        for s, rs in by_spell.items():
+            pics = [r for r in rs if recs[r]['kind'] != 'map']
+            if pics:
+                out.append({'spell': s, 'name': names.get(s, ''), 'pictures': len(pics),
+                            'edited': sum(r in over for r in pics)})
+        return {'spells': out}
+    s = int(q['spell'][0])
+    pics = []
+    for r in by_spell.get(s, []):
+        d = recs[r]
+        if d['kind'] == 'map':
+            continue
+        bpp = fe4spellfx.bpp_of(d['kind'])
+        w, hh = fe4spellfx.sheet_size(len(d['data']), bpp)
+        pics.append({'record': r, 'kind': d['kind'], 'label': SPELL_KINDS[d['kind']], 'w': w, 'h': hh,
+                     'tiles': len(d['data']) // (8 * bpp), 'edited': r in over,
+                     'shared': [names.get(x, f'Effect {x}') or f'Effect {x}' for x in d['spells'] if x != s]})
+    return {'spell': s, 'name': names.get(s, ''), 'pictures': pics,
+            'preview': any(recs[r]['kind'] == 'map' for r in by_spell.get(s, []))}
+
+
+def api_spellgfxset(b, q):
+    """Import a picture for a spell record ({record, png base64}) or go back to the game's ({record, png: null})."""
+    p = need_project()
+    rom, recs, _, _ = _spell_pictures()
+    r = int(b['record'])
+    if r not in recs or recs[r]['kind'] == 'map':
+        raise ValueError('That isn\'t a spell picture.')
+    rel = f'{fe4spellfx.FOLDER}/r{r:03d}.png'
+    if b.get('png') is None:
+        p.set_blob(rel, None)
+        return {'ok': True}
+    try:
+        data = base64.b64decode(b['png'], validate=True)
+    except ValueError:
+        raise ValueError('That file could not be read.')
+    d = recs[r]
+    bpp = fe4spellfx.bpp_of(d['kind'])
+    tiles = fe4spellfx.sheet_from_png(data, len(d['data']), bpp)
+    if tiles == d['data']:
+        p.set_blob(rel, None)
+        return {'ok': True, 'same': True}
+    changed = sum(tiles[k:k + 8 * bpp] != d['data'][k:k + 8 * bpp] for k in range(0, len(tiles), 8 * bpp))
+    p.set_blob(rel, fe4spellfx.sheet_png(tiles, bpp))
+    return {'ok': True, 'tiles': changed}
+
+
+def spell_sheet(r, scale):
+    rom, recs, _, over = _spell_pictures()
+    if r not in recs or recs[r]['kind'] == 'map':
+        return None
+    d = recs[r]
+    return fe4spellfx.sheet_png(over.get(r, d['data']), fe4spellfx.bpp_of(d['kind']), scale)
+
+
+def spell_preview(s, scale):
+    rom, recs, _, over = _spell_pictures()
+    return fe4spellfx.preview_png(rom, s, over, scale)
 
 
 def api_spellrow(b, q):
@@ -2944,7 +3050,7 @@ API = {('GET', 'session'): api_session, ('POST', 'ping'): api_ping, ('GET', 'tab
        ('POST', 'build'): api_build, ('GET', 'battleanims'): api_battleanims, ('GET', 'battleinfo'): api_battleinfo,
        ('POST', 'battleimport'): api_battleimport, ('POST', 'battlemotion'): api_battlemotion,
        ('POST', 'battleframe'): api_battleframe, ('GET', 'battlemotions'): api_battlemotions,
-       ('GET', 'battlespells'): api_battlespells, ('POST', 'spellrow'): api_spellrow, ('POST', 'battlereset'): api_battlereset,
+       ('GET', 'battlespells'): api_battlespells, ('POST', 'spellrow'): api_spellrow, ('GET', 'spellgfx'): api_spellgfx, ('POST', 'spellgfxset'): api_spellgfxset, ('POST', 'battlereset'): api_battlereset,
        ('POST', 'ipspatch'): api_ipspatch, ('POST', 'reveal'): api_reveal,
        ('GET', 'patchinfo'): api_patchinfo, ('POST', 'testplay'): api_testplay, ('POST', 'settings'): api_settings,
        ('POST', 'dialog'): api_dialog, ('POST', 'quit'): api_quit, ('POST', 'classic'): api_classic,

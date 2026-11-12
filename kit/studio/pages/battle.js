@@ -4,7 +4,7 @@ import { api, h, toast, refreshSession } from '../app.js';
 
 const st = { cls: null, row: null, motion: 1, speed: 1, mirror: false, item: null, playing: true, override: null };
 try { Object.assign(st, JSON.parse(sessionStorage.getItem('fe4studio-battle') || '{}')); } catch (e) { /* none */ }
-const remember = () => { try { sessionStorage.setItem('fe4studio-battle', JSON.stringify({ cls: st.cls, row: st.row, motion: st.motion, speed: st.speed, mirror: st.mirror, view: st.view })); } catch (e) { /* none */ } };
+const remember = () => { try { sessionStorage.setItem('fe4studio-battle', JSON.stringify({ cls: st.cls, row: st.row, motion: st.motion, speed: st.speed, mirror: st.mirror, view: st.view, spell: st.spell })); } catch (e) { /* none */ } };
 const FIELDS = [['anim', 'Animation', 'Moves and frames'], ['body', 'Body graphics', 'The frames\' drawings'],
   ['upper', 'Upper body', 'Rider, torso and head tiles'], ['palette', 'Palette', 'Colours']];
 const SCALE = 3;
@@ -15,12 +15,14 @@ export async function battlePage(root) {
   const detail = h('div', { class: 'sheet-wrap' });
   const find = h('input', { class: 'in', type: 'search', placeholder: 'Find a class', 'aria-label': 'Find a class' });
   const viewBar = h('div', { class: 'chips', role: 'tablist', 'aria-label': 'Show' });
-  const drawViewBar = () => viewBar.replaceChildren(...[['classes', 'Classes'], ['spells', 'Spells']].map(([k, t]) =>
+  let rosterHint = null;
+  const HINTS = { classes: 'What each class looks like in battle, for each weapon it can use.', spells: '', spellgfx: 'The pictures each spell effect is drawn from.' };
+  const drawViewBar = () => viewBar.replaceChildren(...[['classes', 'Classes'], ['spells', 'Spells'], ['spellgfx', 'Spell pictures']].map(([k, t]) =>
     h('button', { class: 'chip', role: 'tab', 'aria-selected': String((st.view || 'classes') === k), onclick: () => { st.view = k; remember(); drawViewBar(); drawList(); drawDetail(); } }, t)));
   drawViewBar();
   root.append(h('div', { class: 'split' },
     h('div', { class: 'roster' }, h('div', { class: 'roster-tools' }, viewBar, find,
-      h('p', { class: 'hint' }, 'What each class looks like in battle, for each weapon it can use.')), list),
+      (rosterHint = h('p', { class: 'hint' }))), list),
     detail));
 
   const classes = () => {
@@ -35,6 +37,9 @@ export async function battlePage(root) {
   function drawList() {
     const q = find.value.trim().toLowerCase();
     find.hidden = st.view === 'spells';
+    find.placeholder = st.view === 'spellgfx' ? 'Find a spell' : 'Find a class';
+    rosterHint.textContent = HINTS[st.view || 'classes'] || ''; rosterHint.hidden = !rosterHint.textContent;
+    if (st.view === 'spellgfx') { drawPicList(q); return; }
     if (st.view === 'spells') { list.replaceChildren(h('p', { class: 'hint baspellhint' }, 'Tomes, staves and magic swords play a spell effect when they attack or heal. Pick which effect each one plays, or give one to another item.')); return; }
     list.replaceChildren(...classes().filter(c => !q || c.name.toLowerCase().includes(q)).map(c =>
       h('button', { 'aria-pressed': String(c.id === st.cls), onclick: () => { st.cls = c.id; st.row = null; remember(); drawList(); drawDetail(); } },
@@ -178,7 +183,64 @@ export async function battlePage(root) {
       h('p', { class: 'hint' }, 'Effects are named after the first item that uses them in the game; the unnamed ones are used by other battle events. "At range" is what the game plays in some situations instead: Physic and the status staves use it when cast from far away. An effect only plays if the attacker\'s battle animation casts (tomes, staves, magic swords); a plain sword swing or thrown axe ignores it.')));
   }
 
+  // ------------------------------------------------------------ spell pictures
+  let PL = null;
+  async function drawPicList(q) {
+    if (!PL) {
+      list.replaceChildren(h('p', { class: 'hint' }, 'Reading the spell pictures…'));
+      try { PL = await api('spellgfx'); } catch (e) { list.replaceChildren(h('p', { class: 'hint' }, e.message)); return; }
+    }
+    const items = PL.spells.filter(x => !q || (x.name || '').toLowerCase().includes(q) || String(x.spell) === q);
+    list.replaceChildren(...items.map(x => h('button', { 'aria-pressed': String(x.spell === st.spell), onclick: () => { st.spell = x.spell; remember(); drawList(); drawDetail(); } },
+      h('span', {}, x.name || `Effect ${x.spell}`), h('span', { class: 'sub' }, `${x.pictures} picture${x.pictures === 1 ? '' : 's'}${x.edited ? ` · ${x.edited} redrawn ✎` : ''}`))));
+    if (st.spell == null && PL.spells.length) { st.spell = PL.spells.find(x => x.spell === 2)?.spell ?? PL.spells[0].spell; drawDetail(); }
+  }
+
+  async function drawPictures() {
+    if (st.spell == null) { detail.replaceChildren(h('div', { class: 'empty' }, 'Reading the spell pictures…')); return; }
+    let P;
+    try { P = await api(`spellgfx?spell=${st.spell}`); } catch (e) { detail.replaceChildren(h('div', { class: 'empty' }, e.message)); return; }
+    const v = Date.now();
+    const name = P.name || `Effect ${P.spell}`;
+    const after = async msg => { PL = null; await refreshSession(); drawList(); drawPictures(); if (msg) toast(msg); };
+    const cards = P.pictures.map(pc => {
+      const fileIn = h('input', { type: 'file', accept: '.png,image/png', hidden: true });
+      const imp = h('button', { class: 'btn btn-gilt', type: 'button', onclick: () => fileIn.click() }, 'Import…');
+      fileIn.onchange = async () => {
+        const f = fileIn.files[0]; fileIn.value = '';
+        if (!f) return;
+        const buf = new Uint8Array(await f.arrayBuffer());
+        let bin = ''; for (let i = 0; i < buf.length; i += 0x8000) bin += String.fromCharCode(...buf.subarray(i, i + 0x8000));
+        imp.disabled = true; imp.textContent = 'Importing…';
+        try {
+          const res = await api('spellgfxset', { record: pc.record, png: btoa(bin) });
+          await after(res.same ? 'That picture is the same as the game\'s.' : `Redrew ${res.tiles} tile${res.tiles === 1 ? '' : 's'} of ${name}`);
+        } catch (e) { toast(e.message, true); imp.disabled = false; imp.textContent = 'Import…'; }
+      };
+      const fname = `${name.split(' / ')[0].replace(/[^A-Za-z0-9]+/g, '_')}_picture_${pc.record}.png`;
+      return h('figure', { class: 'sfxcard' },
+        h('div', { class: 'sfximg' }, h('img', { src: `/gfx/spellsheet/?r=${pc.record}&x=2&v=${v}`, width: pc.w * 2, height: pc.h * 2, alt: `${name}, picture ${pc.record}` })),
+        h('figcaption', {},
+          h('strong', {}, `Picture ${pc.record}${pc.edited ? ' ✎' : ''}`), h('span', { class: 'sub' }, ` ${pc.label} · ${pc.tiles} tiles`),
+          pc.shared.length ? h('p', { class: 'hint' }, `Also used by ${pc.shared.slice(0, 3).join(', ')}${pc.shared.length > 3 ? ` and ${pc.shared.length - 3} more` : ''}: they change too.`) : null,
+          h('div', { class: 'sfxbtns' },
+            h('a', { class: 'btn btn-line', href: `/gfx/spellsheet/?r=${pc.record}&v=${v}`, download: fname }, 'Download'), imp, fileIn,
+            pc.edited ? h('button', { class: 'btn btn-line', type: 'button', onclick: async () => {
+              try { await api('spellgfxset', { record: pc.record, png: null }); await after('Back to the game\'s picture (Undo brings yours back)'); } catch (e) { toast(e.message, true); }
+            } }, 'Use the game\'s') : null)));
+    });
+    detail.replaceChildren(h('div', { class: 'sheet basheet' },
+      h('div', { class: 'sheet-head' }, h('h2', {}, name), h('p', { class: 'sub' }, `Effect ${P.spell} · ${P.pictures.length} picture${P.pictures.length === 1 ? '' : 's'}`)),
+      P.preview ? h('div', { class: 'sfxpreview' }, h('h3', {}, 'How the pictures are laid out'),
+        h('div', { class: 'sfxscroll' }, h('img', { src: `/gfx/spellview/?s=${P.spell}&v=${v}`, alt: `${name} laid out on screen` })),
+        h('p', { class: 'hint' }, 'The backgrounds this effect builds from its pictures, one screen after another. In battle they slide, flash and get recoloured; this shows where each piece ends up.')) : null,
+      h('h3', {}, 'Pictures'),
+      h('p', { class: 'hint' }, 'Download a picture, paint over it in any paint program, and import it. The colours here are stand-ins: each one is a colour number, and the battle supplies the real colours (they cycle and fade while the spell plays). Paint with the colours already in the picture, since each stands for one colour number; other colours are matched to the nearest one. Transparent pixels show what\'s behind. Keep the size.'),
+      h('div', { class: 'sfxgrid' }, cards)));
+  }
+
   function drawDetail() {
+    if (st.view === 'spellgfx') { drawPictures(); return; }
     if (st.view === 'spells') { drawSpells(); return; }
     const c = classes().find(x => x.id === st.cls) || classes()[0];
     if (!c) { detail.replaceChildren(h('div', { class: 'empty' }, 'No battle animation table in this project.')); return; }

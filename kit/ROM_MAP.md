@@ -520,6 +520,34 @@ on `$0D5C`, `$0D60`, `$0D69`).
 - Verified: Fire -> spell 4 plays Bolganone's red blast; the table moved to `$70:0000` with an extra row
   still drives the effect.
 
+## Spell graphics (v36)
+
+- **Script stepping** (`$96:A28B`, once a frame): `$FFFF` ends the script, `$FFFE` waits until the
+  spawn counter `$7F:E4B8` is 0, `$FFFD`/`$FFFC`/`$FFFB`/`$FFFA`/`$FFF9`/`$FFF8` run helpers and go on in
+  the same frame; any other word is one command (`$96:A3F3`: bits 9-13 index the 3-byte table at
+  `$96:A42C`, 25 commands; bits 14-15 = `01` count a spawned effect). Commands advance the pointer by 2.
+  Spells 0-76 are real scripts; table entries 77-104 point into other data.
+- Commands that load pictures: `$01` (`$96:B945`, record = arg & `$1FF`) and `$14` (record or record+1,
+  by side). `$02` writes a byte/word program (`$97:B67D` table) into direct page/registers; `$03` n >= 8
+  palette programs; `$04` scene set-up.
+- **Records** `$97:B081`, 10 bytes: src ptr24 (fe4lz, `$80:AA02` format), dst ptr24 (always `$7E:8B88`),
+  VRAM word address, byte count. 136 records; the ones with dst 0 (27-31, 34-35, 115, 117-118) are
+  placeholders the Thief/Charm scripts name but never draw. 128 real ones; 94/95/97/98/108 unused by
+  spells 0-76. The byte count can differ from the decompressed length (the DMA copies the count).
+- **Layers during a spell** (from `lsrun` with `REGLOG`): mode 1, BG1 tiles from VRAM `$0000`
+  (4 bpp; spell tiles go to `$0000-$37FF`), BG1 map usually `$3800` (64x32) or `$3000` (32x64),
+  BG2 map `$6000`, BG3 map `$7000` (or `$2000`/`$2C00`/`$3000`) with 2-bpp tiles at `$3000` or `$7000`;
+  sprites `$4000-$5FFF` (status staves: records 129-133 at `$47B0`/`$57B0`).
+- How the kit tells them apart (fe4spellfx.survey): a record whose words use at most 4 palette numbers
+  is a tilemap (always at `$3800-$3FFF` and `$6000+`), unless another tilemap of the spell points at
+  tiles inside it; tiles are 4 bpp when a tilemap points into them counting from `$0000`, else 2 bpp
+  when one points in counting from `$3000`/`$7000`.
+- **Colours** are not in the records: the battle cycles them (Fire: colours 9-15 of palette 1 rotate
+  every 6 frames) and takes some from the terrain, and no frame's palette is stored as-is in the ROM.
+  The editor shows colour numbers through a fixed ramp.
+- Verified: Fire's record 36 redrawn (colours swapped, pillars blanked) shows in battle with the new
+  colours; Bolganone's 2-bpp record 14 mirrored shows mirrored flame strands in the pit.
+
 ## Maps (V)
 
 ### Chapter map headers

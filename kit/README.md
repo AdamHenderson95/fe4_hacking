@@ -255,8 +255,19 @@ default browser). The editor runs on your PC only: nothing is sent anywhere.
    uses them in the game), and the one it plays "at range" (Physic and the
    status staves cast from far away). **Give an item an effect** adds any
    item; it only shows if that attacker's animation casts (a plain sword
-   swing or thrown axe ignores it). Saved in `spells.csv`. New spell
-   graphics come in a later version.
+   swing or thrown axe ignores it). Saved in `spells.csv`.
+   **Spell pictures** (the third switch) lists every effect that draws
+   pictures: fireballs, flame pillars, lightning, Naga's dragon, the staff
+   sparkles. Pick one to see how its pictures are laid out on screen and each
+   picture as a sheet of 8x8 tiles. **Download** a sheet, paint over it and
+   **Import…** it back at the same size; **Use the game's** goes back. The
+   colours in the sheets are stand-ins: each is a colour number, and the
+   battle supplies the real colours (they cycle and fade while the spell
+   plays), so paint with the colours already in the sheet (anything else is
+   matched to the nearest). Background sheets have 15 colours plus
+   transparent, overlay sheets 3. A picture several spells share (Fire and
+   Elfire's fireball) says so, and changes for all of them. Saved as
+   `spell_gfx/rNNN.png`; the build packs each into free space.
 15. On the Project page, **Add unit stats to the map box** puts the PC port's
    MT / HIT / AS / AVO box into the ROMs and patches you build, so players
    on emulators get it too (the port can still switch it off).
