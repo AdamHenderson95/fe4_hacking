@@ -306,6 +306,18 @@ default browser). The editor runs on your PC only: nothing is sent anywhere.
    where Gandolf attacks Midir, makes Gandolf a Fire Mage casting your
    effect, and replays that battle until you close the window. The first
    time takes about a minute; then it starts straight at the battle.
+   **Skill animations** (the fourth switch) is the sparkle each skill shows
+   when it activates: Astra, Luna, Sol and Pavise, plus every new skill you
+   made on the Skills page from later games (Aether, Lethality, Great Shield
+   and the rest). For each one pick the **Animation** (the game's sparkles,
+   or your own), its five **Sparkle colours** (click one, or use Hue,
+   Saturation and Brightness and **Apply colours**), and for defence skills
+   what happens **When the hit lands** (Pavise's shield, or nothing). A new
+   skill starts with the sparkle of the skill it borrows from (most attack
+   skills borrow Luna's) or none; it can have nothing at all. **Make it its
+   own sparkle** gives the skill a copy of the animation (a new effect), so
+   **Edit its pictures and steps** (Spell pictures) changes only it.
+   **Use the game's** goes back. Saved in `skill_anims.csv`.
 15. On the Project page, **Add unit stats to the map box** puts the PC port's
    MT / HIT / AS / AVO box into the ROMs and patches you build, so players
    on emulators get it too (the port can still switch it off).

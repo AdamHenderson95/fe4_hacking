@@ -22,6 +22,7 @@ import fe4gfx as GFX
 import fe4sprites as SPR
 import fe4battle as BA
 import fe4spellfx as SFX
+import fe4skillanim as SA
 import fe4maptiles as MT
 import fe4armies as AR
 import fe4names as NM
@@ -95,6 +96,7 @@ def extract(rom_path, proj):
     export_map_sprites(rom, proj, cnames)
     BA.export(rom, os.path.join(proj, 'battle_anims.csv'), dict(enumerate(cnames)))
     BA.export_spells(rom, os.path.join(proj, 'spells.csv'), dict(enumerate(inames)))
+    SA.export(rom, os.path.join(proj, SA.FILE), dict(enumerate(SK.NAMES)))
     MT.export_terrain(rom, os.path.join(proj, 'map_terrain.csv'))
     AR.export(rom, proj)
     G2.export(rom, proj)
@@ -378,6 +380,7 @@ def build(rom_path, proj, out_path, ips=None, hover=False):
     n += SPR.apply(rom, proj, space)
     n += BA.apply(rom, proj)
     n += SFX.apply_all(rom, proj, far)        # first: new effects add spell numbers
+    n += SA.apply(rom, proj, SFX.spell_count(rom))
     n += BA.apply_spells(rom, proj, far)
     n += BA.apply_custom(rom, lambda rel: _read_file(proj, rel), far)
     n += NM.apply(rom, os.path.join(proj, 'names.csv'), far, space)

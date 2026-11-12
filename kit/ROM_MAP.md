@@ -619,6 +619,25 @@ Control words: `$FFFD`/`$FFFC` signal the attacker's / the other fighter's anima
   `$16` follow a motion path (ptr24, bank `$97`).
 - Verified: Fire's record 18 at speed 4 / 48 changes the fireball's flight and the battle finishes.
 
+## Skill activation animations (v40)
+
+- When a skill activates the battle code adds `FE xx` (xx = the skill number) to the battle's event
+  list (`$7E:4F81` descriptor, entries from `$7E:4F85`, pushed by `$82:E465`; the kit's new skills push
+  through fe4skillfx `h_push`). `$95:A761` reads the list as the fighters' animations go; `FE` calls
+  `$96:F697` with the byte after it.
+- `$96:F697` (game): `$13` Astra, `$14` Luna, `$15` Sol: 5 colours from `$E0:27C3/27CD/27D7` to sprite
+  palette 3 colours 10-14 (`$7E:0274`), effects `$36/$37/$38`; `$16`, `$17`, `$02` (Pavise): colours
+  `$E0:27E1/27EB/27F5` to sprite palette 7 (`$7E:02F4`), `$7F:FC5F` = the number, effects
+  `$39/$3A/$3F`. `$7F:FC5F` != `$FF` makes the hit (`$96:F9BF`) play the defender's reaction; `$96:FA39`
+  picks its pictures by the number (`$17`, `$02` the shield, else the `$16` one).
+- The kit (fe4skillanim) replaces it with `JML` to a table lookup: 16-byte rows `skill, reaction,
+  effect (word), 5 colours, pad`, ending `$FF`; a reaction of 0 sends the colours to palette 3 and sets
+  nothing, else palette 7 and `$FC5F` = the reaction.
+- Verified by putting `FE 1E` (a new skill, 30) and `FE 14` (Luna) at the head of the event list with
+  RAM freezes: the green and recoloured sparkles play over the attacker, and a copied sparkle effect
+  (new effect 77 from `$37`) plays the same way. Engine skills that never add an event (Vantage, Wrath,
+  Adept, Pursuit, Miracle, Nihil) show nothing yet.
+
 ## Battle preview (PC port 0.9)
 
 - The port takes `--turbo-until N` (no sound, as fast as possible until frame N), `--loop-at N` (then

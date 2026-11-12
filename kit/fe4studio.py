@@ -41,10 +41,11 @@ import fe4sprites                  # noqa: E402
 import fe4maptiles                 # noqa: E402
 import fe4battle                  # noqa: E402
 import fe4spellfx                  # noqa: E402
+import fe4skillanim                # noqa: E402
 from fe4project import Project, load_settings, save_settings   # noqa: E402
 
 APP = 'Builder of the Holy War'
-VERSION = '39'
+VERSION = '40'
 STATIC = os.path.join(KIT, 'studio')
 
 # ---------------------------------------------------------------- state
@@ -99,6 +100,9 @@ def open_project(d):
             fe4locations.export_talks(rom, os.path.join(d, 'talks.csv'))
         if not os.path.exists(os.path.join(d, 'map_terrain.csv')):   # kits before v24
             fe4maptiles.export_terrain(rom, os.path.join(d, 'map_terrain.csv'))
+        if not os.path.exists(os.path.join(d, 'skill_anims.csv')):   # kits before v40
+            import fe4skillanim, fe4skills
+            fe4skillanim.export(rom, os.path.join(d, 'skill_anims.csv'), dict(enumerate(fe4skills.NAMES)))
         if not os.path.exists(os.path.join(d, 'spells.csv')):   # kits before v35
             fe4battle.export_spells(rom, os.path.join(d, 'spells.csv'), dict(enumerate(L.item_names(rom))))
         if not os.path.exists(os.path.join(d, 'battle_anims.csv')):   # kits before v32
@@ -172,7 +176,7 @@ def port_exe():
 
 # ---------------------------------------------------------------- data for the pages
 TABLES = {'units_playable', 'units_children', 'units_npc', 'units_generic', 'classes', 'items', 'rings',
-          'item_instances', 'skills', 'names', 'lovers', 'gen2_rules', 'deploy', 'locations', 'arena', 'armies', 'talks', 'map_sprites', 'map_terrain', 'battle_anims', 'spells'}
+          'item_instances', 'skills', 'names', 'lovers', 'gen2_rules', 'deploy', 'locations', 'arena', 'armies', 'talks', 'map_sprites', 'map_terrain', 'battle_anims', 'spells', 'skill_anims'}
 
 
 def unit_portrait(table, row):
@@ -1459,6 +1463,113 @@ def api_spelleffect(b, q):
         eff.pop()
     ops = [('blob', rel, p.blob(rel).data, fe4spellfx.dump_effects(eff) if eff else None)]
     p.edit(ops)
+    return {'ok': True}
+
+
+def _skill_names():
+    import fe4skills
+    p = project()
+    t = p.table('skills') if p else None
+    names = dict(enumerate(fe4skills.NAMES))
+    if t:
+        for r in t.rows:
+            try:
+                names[int(r['id'])] = r.get('name') or names.get(int(r['id']), '')
+            except ValueError:
+                pass
+    return names
+
+
+def api_skillanims(b, q):
+    """Skills that play an animation when they activate, with what they play; and the effects that can play."""
+    import fe4skillfx
+    p = need_project()
+    t = p.table('skill_anims')
+    if t is None:
+        raise KeyError('This project has no skill_anims.csv; reopen it with this version to add one.')
+    rom, fxmap = spell_rom()
+    names = _skill_names()
+    game = fe4skillanim.game_rows(rom_data())
+    rows = {}
+    for i, r in enumerate(t.rows):
+        try:
+            got = fe4skillanim.parse_rows([r])
+        except SystemExit as e:
+            continue
+        sid = int(r['skill'])
+        eff, rea, cols = got[sid]
+        rows[sid] = {'row': i, 'effect': eff, 'reaction': rea, 'colours': cols}
+    out = []
+    order = [0x13, 0x14, 0x15, 0x02]
+    for sid in order:
+        g = game[sid]
+        cur = rows.get(sid, {'effect': g[0], 'reaction': g[1], 'colours': g[2]})
+        out.append({'skill': sid, 'name': names.get(sid, ''), 'kind': 'game', 'defend': sid == 0x02,
+                    **{k: cur[k] for k in ('effect', 'reaction', 'colours')},
+                    'game': {'effect': g[0], 'reaction': g[1], 'colours': g[2]},
+                    'edited': (cur['effect'], cur['reaction'], cur['colours']) != g})
+    sk = p.table('skills')
+    for r in (sk.rows if sk else []):
+        eff_name = (r.get('effect') or '').strip()
+        if not eff_name or eff_name not in fe4skillfx.EFFECTS:
+            continue
+        sid = int(r['id'])
+        kind, _, _, _, _, anim, _, _, desc = fe4skillfx.EFFECTS[eff_name]
+        base = game.get(anim) if anim else None
+        dflt = {'effect': base[0] if base else None, 'reaction': base[1] if base else 0,
+                'colours': base[2] if base else game[0x14][2]}
+        cur = rows.get(sid, dflt)
+        out.append({'skill': sid, 'name': r.get('name') or f'Skill {sid}', 'kind': 'new', 'effect_kind': eff_name,
+                    'defend': kind == fe4skillfx.K_DEFEND, 'about': desc,
+                    **{k: cur[k] for k in ('effect', 'reaction', 'colours')}, 'game': dflt, 'edited': sid in rows,
+                    'borrows': names.get(anim, '') if anim else None})
+    spell_names = _spell_label(rom)
+    eff = {e['id']: e for e in _effects()}
+    choices = [[e, spell_names.get(e) or f'Effect {e}'] for e in fe4skillanim.SPARKLES]
+    for e in eff.values():
+        if not e['deleted'] and e['from'] in fe4skillanim.SPARKLES:
+            choices.append([e['id'], e['name'] or f'New effect {e["id"]}'])
+    sparkle_names = {0x36: 'Astra sparkle', 0x37: 'Luna sparkle', 0x38: 'Sol sparkle', 0x39: 'Sparkle (unused skill 22)',
+                     0x3A: 'Sparkle (unused skill 23)', 0x3F: 'Pavise sparkle'}
+    choices = [[k, sparkle_names.get(k, n)] for k, n in choices]
+    return {'skills': out, 'effects': choices,
+            'reactions': [[k, v] for k, v in fe4skillanim.REACTION_NAMES.items()]}
+
+
+def api_skillanimset(b, q):
+    """Set what a skill plays: {skill, effect (or null = nothing), reaction, colours} or {skill, reset: true}."""
+    p = need_project()
+    t = p.table('skill_anims')
+    sid = int(b['skill'])
+    names = _skill_names()
+    idx = next((i for i, r in enumerate(t.rows) if r.get('skill', '').strip() == str(sid)), None)
+    game = fe4skillanim.game_rows(rom_data())
+    if b.get('reset'):
+        if sid in game:
+            e, rea, cols = game[sid]
+            new = {'skill': str(sid), '_name': names.get(sid, ''), 'effect': str(e),
+                   'reaction': fe4skillanim.REACTIONS[rea], 'colours': ' '.join(f'{c:04x}' for c in cols)}
+            p.edit([('rows', 'skill_anims', idx, [dict(t.rows[idx])], [new])] if idx is not None else
+                   [('rows', 'skill_anims', len(t.rows), [], [new])])
+        elif idx is not None:
+            p.edit([('rows', 'skill_anims', idx, [dict(t.rows[idx])], [])])
+        return {'ok': True}
+    eff = b.get('effect')
+    n = fe4spellfx.spell_count(spell_rom()[0])
+    if eff is not None and not 0 <= int(eff) < n:
+        raise ValueError('There is no such effect.')
+    rea = int(b.get('reaction') or 0)
+    if rea not in fe4skillanim.REACTIONS:
+        raise ValueError('Pick a reaction.')
+    cols = [int(c) & 0x7FFF for c in b.get('colours') or []]
+    if len(cols) != 5:
+        raise ValueError('A sparkle has five colours.')
+    new = {'skill': str(sid), '_name': names.get(sid, ''), 'effect': '' if eff is None else str(int(eff)),
+           'reaction': fe4skillanim.REACTIONS[rea], 'colours': ' '.join(f'{c:04x}' for c in cols)}
+    if idx is None:
+        p.edit([('rows', 'skill_anims', len(t.rows), [], [new])])
+    else:
+        p.edit([('rows', 'skill_anims', idx, [dict(t.rows[idx])], [new])])
     return {'ok': True}
 
 
@@ -3438,7 +3549,7 @@ API = {('GET', 'session'): api_session, ('POST', 'ping'): api_ping, ('GET', 'tab
        ('POST', 'build'): api_build, ('GET', 'battleanims'): api_battleanims, ('GET', 'battleinfo'): api_battleinfo,
        ('POST', 'battleimport'): api_battleimport, ('POST', 'battlemotion'): api_battlemotion,
        ('POST', 'battleframe'): api_battleframe, ('GET', 'battlemotions'): api_battlemotions,
-       ('GET', 'battlespells'): api_battlespells, ('POST', 'spellrow'): api_spellrow, ('GET', 'spellgfx'): api_spellgfx, ('POST', 'spellgfxset'): api_spellgfxset, ('POST', 'spellcolours'): api_spellcolours, ('POST', 'spelleffect'): api_spelleffect, ('POST', 'spellsteps'): api_spellsteps, ('POST', 'spellpreview'): api_spellpreview, ('POST', 'battlereset'): api_battlereset,
+       ('GET', 'battlespells'): api_battlespells, ('POST', 'spellrow'): api_spellrow, ('GET', 'skillanims'): api_skillanims, ('POST', 'skillanimset'): api_skillanimset, ('GET', 'spellgfx'): api_spellgfx, ('POST', 'spellgfxset'): api_spellgfxset, ('POST', 'spellcolours'): api_spellcolours, ('POST', 'spelleffect'): api_spelleffect, ('POST', 'spellsteps'): api_spellsteps, ('POST', 'spellpreview'): api_spellpreview, ('POST', 'battlereset'): api_battlereset,
        ('POST', 'ipspatch'): api_ipspatch, ('POST', 'reveal'): api_reveal,
        ('GET', 'patchinfo'): api_patchinfo, ('POST', 'testplay'): api_testplay, ('POST', 'settings'): api_settings,
        ('POST', 'dialog'): api_dialog, ('POST', 'quit'): api_quit, ('POST', 'classic'): api_classic,

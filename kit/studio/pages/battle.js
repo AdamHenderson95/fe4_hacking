@@ -4,7 +4,7 @@ import { api, h, toast, refreshSession, watchJob } from '../app.js';
 
 const st = { cls: null, row: null, motion: 1, speed: 1, mirror: false, item: null, playing: true, override: null };
 try { Object.assign(st, JSON.parse(sessionStorage.getItem('fe4studio-battle') || '{}')); } catch (e) { /* none */ }
-const remember = () => { try { sessionStorage.setItem('fe4studio-battle', JSON.stringify({ cls: st.cls, row: st.row, motion: st.motion, speed: st.speed, mirror: st.mirror, view: st.view, spell: st.spell })); } catch (e) { /* none */ } };
+const remember = () => { try { sessionStorage.setItem('fe4studio-battle', JSON.stringify({ cls: st.cls, row: st.row, motion: st.motion, speed: st.speed, mirror: st.mirror, view: st.view, spell: st.spell, skill: st.skill })); } catch (e) { /* none */ } };
 const FIELDS = [['anim', 'Animation', 'Moves and frames'], ['body', 'Body graphics', 'The frames\' drawings'],
   ['upper', 'Upper body', 'Rider, torso and head tiles'], ['palette', 'Palette', 'Colours']];
 const SCALE = 3;
@@ -31,8 +31,9 @@ export async function battlePage(root) {
   const find = h('input', { class: 'in', type: 'search', placeholder: 'Find a class', 'aria-label': 'Find a class' });
   const viewBar = h('div', { class: 'chips', role: 'tablist', 'aria-label': 'Show' });
   let rosterHint = null;
-  const HINTS = { classes: 'What each class looks like in battle, for each weapon it can use.', spells: '', spellgfx: 'The pictures each spell effect is drawn from.' };
-  const drawViewBar = () => viewBar.replaceChildren(...[['classes', 'Classes'], ['spells', 'Spells'], ['spellgfx', 'Spell pictures']].map(([k, t]) =>
+  const HINTS = { classes: 'What each class looks like in battle, for each weapon it can use.', spells: '', spellgfx: 'The pictures each spell effect is drawn from.',
+    skillanims: 'The sparkle each skill shows when it activates in battle.' };
+  const drawViewBar = () => viewBar.replaceChildren(...[['classes', 'Classes'], ['spells', 'Spells'], ['spellgfx', 'Spell pictures'], ['skillanims', 'Skill animations']].map(([k, t]) =>
     h('button', { class: 'chip', role: 'tab', 'aria-selected': String((st.view || 'classes') === k), onclick: () => { st.view = k; remember(); drawViewBar(); drawList(); drawDetail(); } }, t)));
   drawViewBar();
   root.append(h('div', { class: 'split' },
@@ -51,9 +52,10 @@ export async function battlePage(root) {
 
   function drawList() {
     const q = find.value.trim().toLowerCase();
-    find.hidden = st.view === 'spells';
+    find.hidden = st.view === 'spells' || st.view === 'skillanims';
     find.placeholder = st.view === 'spellgfx' ? 'Find a spell' : 'Find a class';
     rosterHint.textContent = HINTS[st.view || 'classes'] || ''; rosterHint.hidden = !rosterHint.textContent;
+    if (st.view === 'skillanims') { drawSkillList(); return; }
     if (st.view === 'spellgfx') { drawPicList(q); return; }
     if (st.view === 'spells') { list.replaceChildren(h('p', { class: 'hint baspellhint' }, 'Tomes, staves and magic swords play a spell effect when they attack or heal. Pick which effect each one plays, or give one to another item.')); return; }
     list.replaceChildren(...classes().filter(c => !q || c.name.toLowerCase().includes(q)).map(c =>
@@ -398,7 +400,65 @@ export async function battlePage(root) {
       h('div', { class: 'sfxgrid' }, cards)));
   }
 
+  // ------------------------------------------------------------ skill animations
+  let SA = null;
+  async function loadSkills() { SA = await api('skillanims'); }
+  async function drawSkillList() {
+    if (!SA) { list.replaceChildren(h('p', { class: 'hint' }, 'Reading…')); try { await loadSkills(); } catch (e) { list.replaceChildren(h('p', { class: 'hint' }, e.message)); return; } }
+    if (st.skill == null || !SA.skills.some(x => x.skill === st.skill)) st.skill = SA.skills[0]?.skill;
+    list.replaceChildren(...SA.skills.map(x => h('button', { 'aria-pressed': String(x.skill === st.skill), onclick: () => { st.skill = x.skill; remember(); drawSkillList(); drawSkillAnim(); } },
+      h('span', {}, x.name, x.kind === 'new' ? h('span', { class: 'sfxnew' }, 'new skill') : null),
+      h('span', { class: 'sub' }, (x.effect == null ? 'no animation' : (SA.effects.find(e => e[0] === x.effect)?.[1] || `effect ${x.effect}`)) + (x.edited ? ' ✎' : '')))));
+  }
+  async function drawSkillAnim() {
+    if (!SA) { try { await loadSkills(); } catch (e) { detail.replaceChildren(h('div', { class: 'empty' }, e.message)); return; } }
+    const x = SA.skills.find(k => k.skill === st.skill) || SA.skills[0];
+    if (!x) { detail.replaceChildren(h('div', { class: 'empty' }, 'No skills.')); return; }
+    let cols = x.colours.slice(), hue = 0, sat = 1, lit = 0;
+    const shown = () => cols.map(c => shiftColour(c, hue, sat, lit));
+    const save = async (patch, msg) => {
+      try { await api('skillanimset', { skill: x.skill, effect: x.effect, reaction: x.reaction, colours: shown(), ...patch });
+        SA = null; await refreshSession(); await loadSkills(); drawSkillList(); drawSkillAnim(); if (msg) toast(msg); } catch (e) { toast(e.message, true); }
+    };
+    const effSel = h('select', { class: 'in', 'aria-label': 'Animation' },
+      x.kind === 'new' ? h('option', { value: '', selected: x.effect == null }, 'Nothing') : null,
+      SA.effects.map(([k, n]) => h('option', { value: k, selected: k === x.effect }, n)));
+    effSel.onchange = () => save({ effect: effSel.value === '' ? null : Number(effSel.value) }, 'Animation changed');
+    const reaSel = h('select', { class: 'in', 'aria-label': 'Reaction when hit' }, SA.reactions.map(([k, n]) => h('option', { value: k, selected: k === x.reaction }, n)));
+    reaSel.onchange = () => save({ reaction: Number(reaSel.value) }, 'Reaction changed');
+    const sw = h('div', { class: 'sfxrow' });
+    const drawSw = () => sw.replaceChildren(...shown().map((c, i) => {
+      const pick = h('input', { type: 'color', value: toHex(c), 'aria-label': `Sparkle colour ${i + 1}` });
+      pick.onchange = () => { cols[i] = fromHex(pick.value); hue = 0; sat = 1; lit = 0; save({}, 'Colour changed'); };
+      return h('label', { class: 'sfxsw' + (c !== x.game.colours[i] ? ' changed' : ''), style: `--c:${toHex(c)}` }, pick);
+    }));
+    drawSw();
+    const sl = (lab, min, max, val, set) => { const r = h('input', { type: 'range', min, max, value: val, 'aria-label': lab }); r.oninput = () => { set(Number(r.value)); drawSw(); apply.disabled = false; }; return h('label', { class: 'lbl' }, h('span', {}, lab), r); };
+    const apply = h('button', { class: 'btn btn-gilt', type: 'button', disabled: true, onclick: () => save({}, 'Colours changed') }, 'Apply colours');
+    const makeNew = h('button', { class: 'btn btn-line', type: 'button', disabled: x.effect == null, onclick: async () => {
+      try { const res = await api('spelleffect', { new: x.effect, name: `${x.name} sparkle` }); await save({ effect: res.id }, `Made "${x.name} sparkle": its pictures, colours and steps are its own. Edit them under Spell pictures.`); }
+      catch (e) { toast(e.message, true); } } }, 'Make it its own sparkle');
+    const editIt = h('button', { class: 'btn btn-line', type: 'button', disabled: x.effect == null, onclick: () => { st.view = 'spellgfx'; st.spell = x.effect; remember(); drawViewBar(); drawList(); drawDetail(); } }, 'Edit its pictures and steps');
+    detail.replaceChildren(h('div', { class: 'sheet basheet' },
+      h('div', { class: 'sheet-head' }, h('h2', {}, x.name), h('p', { class: 'sub' }, x.kind === 'game' ? `Skill ${x.skill} · the game's` : `Skill ${x.skill} · ${x.effect_kind.replace(/_/g, ' ')}`)),
+      h('div', { class: 'sfxhead' },
+        h('p', { class: 'hint' }, x.kind === 'new' ? `${x.about}. ${x.borrows ? `Out of the box it shows ${x.borrows}'s sparkle.` : 'Out of the box it shows no animation.'}` :
+          `What plays when ${x.name} activates. The colours are the sparkle's own (5 colours); the animation decides the shapes, sounds and timing.`)),
+      h('div', { class: 'baredraw' },
+        h('div', { class: 'itgrid wide' },
+          h('label', { class: 'lbl' }, h('span', {}, 'Animation'), effSel),
+          x.defend ? h('label', { class: 'lbl' }, h('span', {}, 'When the hit lands'), reaSel) : null),
+        h('h3', {}, 'Sparkle colours', x.edited ? ' ✎' : ''),
+        sw,
+        h('div', { class: 'sfxsliders' }, sl('Hue', -180, 180, 0, v => { hue = v; }), sl('Saturation', 0, 200, 100, v => { sat = v / 100; }), sl('Brightness', -50, 50, 0, v => { lit = v / 100; })),
+        h('div', { class: 'sfxbtns' }, apply, makeNew, editIt,
+          x.edited ? h('button', { class: 'btn btn-line', type: 'button', onclick: async () => {
+            try { await api('skillanimset', { skill: x.skill, reset: true }); SA = null; await refreshSession(); await loadSkills(); drawSkillList(); drawSkillAnim(); toast('Back to the game\'s (Undo brings yours back)'); } catch (e) { toast(e.message, true); } } }, 'Use the game\'s') : null)),
+      h('p', { class: 'hint' }, 'A sparkle shared by several skills (Luna\'s is borrowed by most new attack skills) changes for all of them; "Make it its own sparkle" gives this skill a copy whose pictures, colours and steps you can change under Spell pictures. The new skills come from the Skills page (later games\' skills such as Aether, Lethality or Great Shield).')));
+  }
+
   function drawDetail() {
+    if (st.view === 'skillanims') { drawSkillAnim(); return; }
     if (st.view === 'spellgfx') { drawPictures(); return; }
     if (st.view === 'spells') { drawSpells(); return; }
     const c = classes().find(x => x.id === st.cls) || classes()[0];
