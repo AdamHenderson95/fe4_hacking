@@ -545,6 +545,10 @@ textarea.fe4box.bad { border-color: #E1606F; }
 .spwalkers figure { margin: 0; display: flex; flex-direction: column; align-items: center; gap: 4px; background: #5E8F4A; border-radius: var(--r-sm); padding: 6px; }
 .spwalkers figcaption { font-size: 12px; color: #fff; }
 .spwalk { image-rendering: pixelated; display: block; }
+.mbsheets { display: flex; flex-wrap: wrap; gap: 14px; margin: 8px 0 16px; }
+.mbsheet { margin: 0; display: flex; flex-direction: column; gap: 6px; }
+.mbsheet img { image-rendering: pixelated; background: #5E8F4A; border-radius: var(--r-sm); }
+.mbsheet figcaption { font-size: 13px; }
 .spmodal { width: min(980px, 100%); max-height: 90vh; overflow: auto; }
 .spmodal h4 { margin: 14px 0 6px; font-size: 14px; }
 .spgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(58px, 1fr)); gap: 6px; }

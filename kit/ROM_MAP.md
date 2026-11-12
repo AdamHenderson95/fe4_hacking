@@ -452,6 +452,41 @@ Found by moving Sigurd (tall sprite 10) and picking up Arden (small sprite 5) in
 - The kit writes a redrawn set compressed into the free banks `$70-$7D` and changes only its pointer.
   Verified: Sigurd's set recoloured walks left and down in the new colours.
 
+## Map battles (v43)
+
+Found by making the Prologue fight a calculated one (`$84:B69E JSL $84:DF87` -> `JSL $84:DCA3`), which the
+game shows as a map battle (Midir attacks Gandolf).
+
+- **Figure:** `$9E:83DE JSL $9E:85A4` with `$00` = class (`$7E:4EBF`), `$02` = `$7E:4EC1` (1 for women),
+  `$04` = weapon (`$7E:4EBD`). The figure is the class number, except class 6 with item `$19` -> `$5D`, and
+  `$9E:85DF` (word per class, 72; `$FFFF` = none): its high byte is the figure when `$02` = 1 (Master
+  Knight `$48`, Mage Knight `$49`, Dracorider-Hero `$4A-$51`, Priest-Wind Mage `$52-$56`, High Priest `$57`,
+  Sage `$58`, Thief `$59`, Rogue `$5A`, Civilians `$5B`/`$5C`). Result `$7F:454E` (attacker), `$7F:4550`
+  (defender).
+- **Direction:** `$7F:455E` / `$7F:4560` from the fighter's position minus its foe's (`$9E:80CB`, 3-byte
+  entries `x, y, direction`): by where the foe is, 0 left, 1 up-left, 2 up, 3 up-right, 4 right,
+  5 down-right, 6 down, 7 down-left.
+- **Records** `$9E:B50D`, `$31` bytes per figure (`$00-$5D`): 8 x [ptr24 script, ptr24 graphics] by
+  direction, then a byte (0 or 1). Up-right shares the right graphics, down-left the left. Script blocks
+  (2 KB, banks `$AD`/`$D5`) are shared by many figures; graphics (8 KB = 256 tiles) belong to one.
+- **Loading** (`$9E:8941`...), queued for `$80:A5F8` (`$0449`: src24, dst24 per entry, `$80:AA02` format):
+  attacker graphics -> `$7E:8B88`, defender -> `$7E:AB88`, the shared weapon sheet `$AC:CC17` ->
+  `$7E:CB88`, attacker script -> `$7E:EB88`, defender -> `$7E:F408`. `$7E:8F88` (graphics + `$400`, 32
+  tiles) goes to OBJ tiles `$40-$5F`.
+- **Scripts** run on the bank `$81` sprite engine: `$81:8216` reads a command byte, `$81:823B` word per
+  command. `00 d ptr` frame (layout pointer) for d ticks; `18` the same relative to the object;
+  `0E d n` frame n of the script's own frame table; `03 n` tile page n (from graphics + `$1000`, via
+  `$9E:B4DF`); `12 d` wait; `13`/`15`/`16` jumps; `01` end; `04-08`, `0B`, `0C`, `10`, `11`, `1A-1C` battle
+  signals (`$7F:4580-4584`, `$7F:5091`, `$7F:4C1B`). A script block starts with 5 word offsets (sections);
+  a section starts with the offset of its frame table, then motion offsets; frames are a word count then
+  5-byte pieces (x, x high / size flags, y, tile, attribute) as in the map sprite records.
+- **Palettes:** OBJ 1 / 4 / 7 are the map palettes `$8C:9520` / `$8C:9580` / `$8C:95E0`; the fighters use
+  `$8C:9540` / `$8C:9560` with colours 2-3 replaced; OBJ 5 is the white hit flash (made in code).
+- The kit replaces `$9E:85A4` with a lookup in its own table (men, women per class; class 6 with item
+  `$19` still gets `$5D`) when `map_battle.csv` differs from the game, and writes redrawn sheets compressed
+  into the free banks (only that figure's pointers change). Verified: Bow Knight given the Knight Lord
+  figure loads figure 6's sheet for Midir; a recoloured sheet loads byte for byte.
+
 ## Battle animations (v32)
 
 Found by watching a Prologue battle (Gandolf vs Midir) in the emulator: DMA log, RAM writes, traces.

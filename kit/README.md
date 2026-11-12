@@ -332,6 +332,20 @@ default browser). The editor runs on your PC only: nothing is sent anywhere.
    the PC port at the start of the same Prologue battle as for spells, so
    you can see it whatever the skill really needs to activate. Saved in
    `skill_anims.csv`.
+
+   **Map battles** (the fifth switch) is what fights on the map when battle
+   animations are off: two little figures. Each class shows a figure (most
+   their own; some classes have another for women, and Sigurd with Tyrfing
+   has his own). Pick any figure for a class under **Figure** and **Women
+   show**. A figure has a sheet for each way it can face its foe (left,
+   up-left, up, right, down-right, down; up-right uses the right sheet and
+   down-left the left one): 256 tiles as the game keeps them, 16 across, the
+   poses in 16 × 16 pieces with weapons and mounts further down.
+   **Download** one, paint over the pieces and **Replace…** it (128 × 128,
+   or 2× to 4× that, in the map palette's colours); every class showing the
+   figure changes. **Watch a map battle** opens the PC port on the Prologue
+   fight as a map battle, with Midir shown as the class's figure. Saved in
+   `map_battle.csv` and `mapbattle/`.
 15. On the Project page, **Add unit stats to the map box** puts the PC port's
    MT / HIT / AS / AVO box into the ROMs and patches you build, so players
    on emulators get it too (the port can still switch it off).
@@ -428,6 +442,8 @@ runs this randomizer from its own menu (Mods → Randomizer).
 | `maps/tiles/<map>/tNNN.png` | – | Your own drawings for a chapter's tile NNN (0–255), 16 × 16 or bigger pixel art; only redrawn ones exist |
 | `map_sprites.csv` | 119 | Which map sprite each class uses (`S0`–`S62` on foot, `T0`–`T30` mounted/flying), with the per-gender and per-character rows; a class's last row is `default`, and a class can have up to 30 rows |
 | `sprites/sNN.png`, `sprites/tNN.png` | – | Your own drawings for map sprites (48 × 16 or 48 × 24, the map palette's colours); only replaced ones exist |
+| `map_battle.csv` | 72 | Which map battle figure each class shows (`figure`, and `women` for women), figure numbers in hex (00-5D) |
+| `mapbattle/figNN_K.png` | – | Your own sheets for map battle figure NN, direction K (128 × 128, 16 tiles across); only replaced ones exist |
 | `sprites/walk_sNN.png`, `sprites/walk_tNN.png` | – | Your own walking pictures for map sprites (96 × 96 or 128 × 128: four steps across; left, right, up, down from the top); only replaced ones exist |
 | `portraits/pNNN.png` | – | Your own pictures for portrait NNN (80 × 64 sheet or 48 × 64 face, 15 colours + transparency); only replaced ones exist |
 | `armies.csv` | 72 | Every army: name, member units, castles it holds |

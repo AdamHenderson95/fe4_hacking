@@ -341,10 +341,23 @@ default browser). The editor runs on your PC only: nothing is sent anywhere.
    the PC port at the start of the same Prologue battle as for spells, so
    you can see it whatever the skill really needs to activate. Saved in
    <code>skill_anims.csv</code>.</li>
-<li>On the Project page, <strong>Add unit stats to the map box</strong> puts the PC port's
-   MT / HIT / AS / AVO box into the ROMs and patches you build, so players
-   on emulators get it too (the port can still switch it off).</li>
 </ol>
+<p><strong>Map battles</strong> (the fifth switch) is what fights on the map when battle
+   animations are off: two little figures. Each class shows a figure (most
+   their own; some classes have another for women, and Sigurd with Tyrfing
+   has his own). Pick any figure for a class under <strong>Figure</strong> and <strong>Women
+   show</strong>. A figure has a sheet for each way it can face its foe (left,
+   up-left, up, right, down-right, down; up-right uses the right sheet and
+   down-left the left one): 256 tiles as the game keeps them, 16 across, the
+   poses in 16 × 16 pieces with weapons and mounts further down.
+   <strong>Download</strong> one, paint over the pieces and <strong>Replace…</strong> it (128 × 128,
+   or 2× to 4× that, in the map palette's colours); every class showing the
+   figure changes. <strong>Watch a map battle</strong> opens the PC port on the Prologue
+   fight as a map battle, with Midir shown as the class's figure. Saved in
+   <code>map_battle.csv</code> and <code>mapbattle/</code>.
+15. On the Project page, <strong>Add unit stats to the map box</strong> puts the PC port's
+   MT / HIT / AS / AVO box into the ROMs and patches you build, so players
+   on emulators get it too (the port can still switch it off).</p>
 <p>The <strong>classic editor</strong> (link on the Project page, or run
 <code>BuilderOfTheHolyWar.exe classic</code>) still has every table as rows, for the
 few things the new editor doesn't show yet (AI orders, armies, love
@@ -569,6 +582,16 @@ runs this randomizer from its own menu (Mods → Randomizer).</p>
 <td><code>sprites/sNN.png</code>, <code>sprites/tNN.png</code></td>
 <td>–</td>
 <td>Your own drawings for map sprites (48 × 16 or 48 × 24, the map palette's colours); only replaced ones exist</td>
+</tr>
+<tr>
+<td><code>map_battle.csv</code></td>
+<td>72</td>
+<td>Which map battle figure each class shows (<code>figure</code>, and <code>women</code> for women), figure numbers in hex (00-5D)</td>
+</tr>
+<tr>
+<td><code>mapbattle/figNN_K.png</code></td>
+<td>–</td>
+<td>Your own sheets for map battle figure NN, direction K (128 × 128, 16 tiles across); only replaced ones exist</td>
 </tr>
 <tr>
 <td><code>sprites/walk_sNN.png</code>, <code>sprites/walk_tNN.png</code></td>

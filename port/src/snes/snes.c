@@ -581,7 +581,10 @@ static void free_accesstime(Snes* snes) {
   free(snes->access_time);
 }
 
+void (*snes_readHook)(Snes* snes, uint32_t adr) = NULL; // debug
+
 uint8_t snes_read(Snes* snes, uint32_t adr) {
+  if(snes_readHook) snes_readHook(snes, adr);
   uint8_t val = snes_rread(snes, adr);
   snes->openBus = val;
   return val;

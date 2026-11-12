@@ -82,6 +82,15 @@ static void write_hook(Snes* s, uint32_t adr, uint8_t val) {
     printf("\n");
   }
 }
+static uint32_t rwLo, rwHi;
+static void read_hook(Snes* s, uint32_t adr) {
+  if(!watching) return;
+  uint8_t bank = adr >> 16; uint32_t a = adr & 0xffff, w;
+  if(bank == 0x7e || bank == 0x7f) w = ((bank & 1) << 16) | a;
+  else if(((bank & 0x7f) < 0x40) && a < 0x2000) w = a; else return;
+  if(w >= rwLo && w <= rwHi)
+    printf("R %05X=%02X pc=%02X:%04X a=%04X x=%04X y=%04X db=%02X\n", w, s->ram[w], s->cpu->k, s->cpu->pc, s->cpu->a, s->cpu->x, s->cpu->y, s->cpu->db);
+}
 static Snes* gSnes; static int retWatch[8], nRetWatch, execOn;
 static uint32_t tracePcs[32]; static int nTracePcs = -1;
 static void exec_hook(Cpu* c) {
@@ -165,6 +174,7 @@ int main(int argc, char** argv) {
     else if(!strcmp(argv[i], "--widetest")) { wideOn = 1; fe4wide_selftest = 1; }
     else if(!strcmp(argv[i], "--freeze")) { frzAdr[nFrz] = strtol(argv[++i], NULL, 16); frzVal[nFrz++] = strtol(argv[++i], NULL, 16); snes_writeMap = freeze_map; }
     else if(!strcmp(argv[i], "--dma")) { dmaLo = atoi(argv[++i]); dmaHi = atoi(argv[++i]); dma_logHook = dma_log; }
+    else if(!strcmp(argv[i], "--rwatch")) { rwLo = strtol(argv[++i], NULL, 16); rwHi = strtol(argv[++i], NULL, 16); snes_readHook = read_hook; }
     else if(!strcmp(argv[i], "--watch")) { watchLo = strtol(argv[++i], NULL, 16); watchHi = strtol(argv[++i], NULL, 16); snes_writeHook = write_hook; }
     else { char* s = argv[i]; while(*s) { shots[nshots++] = strtol(s, &s, 10); if(*s == ',') s++; } }
   }

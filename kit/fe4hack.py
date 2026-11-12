@@ -21,6 +21,7 @@ import fe4locations as LOC
 import fe4gfx as GFX
 import fe4sprites as SPR
 import fe4walk as WK
+import fe4mapbattle as MBT
 import fe4battle as BA
 import fe4spellfx as SFX
 import fe4skillanim as SA
@@ -98,6 +99,7 @@ def extract(rom_path, proj):
     BA.export(rom, os.path.join(proj, 'battle_anims.csv'), dict(enumerate(cnames)))
     BA.export_spells(rom, os.path.join(proj, 'spells.csv'), dict(enumerate(inames)))
     SA.export(rom, os.path.join(proj, SA.FILE), dict(enumerate(SK.NAMES)))
+    MBT.export(rom, os.path.join(proj, MBT.FILE), cnames[:72])
     MT.export_terrain(rom, os.path.join(proj, 'map_terrain.csv'))
     AR.export(rom, proj)
     G2.export(rom, proj)
@@ -380,6 +382,7 @@ def build(rom_path, proj, out_path, ips=None, hover=False):
     n += GFX.apply_portraits(rom, os.path.join(proj, 'portraits'), far)
     n += SPR.apply(rom, proj, space)
     n += WK.apply(rom, proj, far)
+    n += MBT.apply(rom, proj, far, 72)
     n += BA.apply(rom, proj)
     n += SFX.apply_all(rom, proj, far)        # first: new effects add spell numbers
     n += SA.apply(rom, proj, SFX.spell_count(rom))
