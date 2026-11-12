@@ -44,7 +44,7 @@ import fe4spellfx                  # noqa: E402
 from fe4project import Project, load_settings, save_settings   # noqa: E402
 
 APP = 'Builder of the Holy War'
-VERSION = '37'
+VERSION = '38'
 STATIC = os.path.join(KIT, 'studio')
 
 # ---------------------------------------------------------------- state
@@ -1055,17 +1055,35 @@ def _effects():
         return []
 
 
+def _steps():
+    try:
+        return fe4spellfx.read_steps(_project_reader(f'{fe4spellfx.FOLDER}/{fe4spellfx.STEPS}'))
+    except ValueError:
+        return {}
+
+
+def _timing():
+    try:
+        return fe4spellfx.read_json(_project_reader(f'{fe4spellfx.FOLDER}/{fe4spellfx.TIMING}'), fe4spellfx.TIMING)
+    except ValueError:
+        return {}
+
+
 def spell_rom():
-    """(ROM with the project's new effects written in, their copy map or None)."""
+    """(ROM with the project's new effects and changed steps written in, their copy map or None)."""
     rom = rom_data()
     eff = _effects() if project() else []
-    if not eff or rom is None:
+    steps = _steps() if project() else {}
+    if not (eff or steps) or rom is None:
         return rom, None
-    key = (id(rom), json.dumps(eff))
+    key = (id(rom), json.dumps(eff), json.dumps(sorted(steps.items())))
     if _spell_rom['key'] != key:
         r = bytearray(rom)
         with contextlib.redirect_stdout(io.StringIO()):
-            fxmap = fe4spellfx.apply_effects(r, eff, L.FreeSpace())
+            try:
+                fxmap = fe4spellfx.apply_effects(r, eff, L.FreeSpace(), steps)
+            except SystemExit:
+                r, fxmap = bytearray(rom), None
         _spell_rom.update(key=key, rom=bytes(r), fxmap=fxmap)
     return _spell_rom['rom'], _spell_rom['fxmap']
 
@@ -1130,13 +1148,27 @@ def api_spellgfx(b, q):
     cols = []
     for u in fe4spellfx.colour_sets(rom, over_c).get(s, []):
         per = u['n'] if u['kind'] == 'frames' else 16
-        cols.append({'addr': fe4spellfx.colour_key(u['addr'], fxmap), 'label': _colour_label(u), 'kind': u['kind'],
+        key = fe4spellfx.colour_key(u['addr'], fxmap)
+        delays = fe4spellfx.stream_delays(u['tokens'])
+        tm = _timing().get(key)
+        cols.append({'addr': key, 'label': _colour_label(u), 'kind': u['kind'],
+                     'frames': int(tm) if tm else (delays[0] if delays else (1 if u['tokens'] is not None else None)),
+                     'frames_varies': bool(not tm and len(set(delays)) > 1), 'frames_edited': tm is not None,
                      'colours': [c & 0x7FFF for c in u['colours']], 'game': [c & 0x7FFF for c in u['game']],
                      'per': max(1, min(per, 16)), 'lead': 0 if u['kind'] in ('frames', 'cycle') else u['start'] % 16,
                      'edited': u['addr'] in over_c,
                      'shared': [names.get(x, f'Effect {x}') or f'Effect {x}' for x in u['spells'] if x != s]})
     e = eff.get(s)
-    return {'spell': s, 'name': names.get(s, ''), 'pictures': pics, 'colours': cols,
+    steps = []
+    for x in fe4spellfx.script_words(rom, s):
+        kind, label, val = fe4spellfx.describe(x)
+        st = {'word': x, 'kind': kind, 'label': label, 'value': val}
+        if kind == 'sound':
+            f = fe4spellfx.snes_to_file(fe4spellfx.SOUNDS + 2 * (val or 0))
+            st['sound'] = rom[f] | rom[f + 1] << 8
+        steps.append(st)
+    return {'spell': s, 'name': names.get(s, ''), 'pictures': pics, 'colours': cols, 'steps': steps,
+            'steps_edited': s in _steps(),
             'preview': any(recs[r]['kind'] == 'map' for r in by_spell.get(s, [])),
             'new': bool(e), 'from': e['from'] if e else None, 'from_name': names.get(e['from'], '') if e else None,
             'own_name': e['name'] if e else None,
@@ -1248,9 +1280,59 @@ def api_spellcolours(b, q):
             cur.pop(k, None)
         else:
             cur[k] = cols
+    ops = []
     rel = f'{fe4spellfx.FOLDER}/colors.json'
-    p.set_blob(rel, fe4spellfx.dump_colours(cur) if cur else None)
+    new = fe4spellfx.dump_colours(cur) if cur else None
+    if new != p.blob(rel).data:
+        ops.append(('blob', rel, p.blob(rel).data, new))
+    if b.get('frames'):
+        tm = dict(_timing())
+        for k, v in b['frames'].items():
+            if k not in allsets or allsets[k]['tokens'] is None:
+                raise ValueError('Those colours don\'t change by steps.')
+            if v is None:
+                tm.pop(k, None)
+            else:
+                v = int(v)
+                if not 1 <= v <= 128:
+                    raise ValueError('Frames per step are 1 to 128.')
+                tm[k] = v
+        trel = f'{fe4spellfx.FOLDER}/{fe4spellfx.TIMING}'
+        tnew = json.dumps(tm, indent=1, sort_keys=True).encode() if tm else None
+        if tnew != p.blob(trel).data:
+            ops.append(('blob', trel, p.blob(trel).data, tnew))
+    if ops:
+        p.edit(ops)
     return {'ok': True, 'changed': len(cur)}
+
+
+def api_spellsteps(b, q):
+    """Change an effect's steps: {spell, words: [numbers]} or {spell, words: null} for the game's; one undo step."""
+    p = need_project()
+    s = int(b['spell'])
+    rom, fxmap = spell_rom()
+    if not 0 <= s < fe4spellfx.spell_count(rom):
+        raise ValueError('There is no such effect.')
+    steps = dict(_steps())
+    if b.get('words') is None:
+        steps.pop(s, None)
+    else:
+        words = [int(w) & 0xFFFF for w in b['words']]
+        fe4spellfx.check_steps(words)
+        n0 = fe4spellfx.spell_count(rom_data())
+        if s >= n0:
+            words = fe4spellfx.to_source_terms(words, s, fxmap)
+            base = next(e['from'] for e in _effects() if e['id'] == s)
+            game = fe4spellfx.script_words(rom_data(), base)
+        else:
+            game = fe4spellfx.script_words(rom_data(), s)
+        if words == game:
+            steps.pop(s, None)
+        else:
+            steps[s] = words
+    rel = f'{fe4spellfx.FOLDER}/{fe4spellfx.STEPS}'
+    p.set_blob(rel, fe4spellfx.dump_steps(steps) if steps else None)
+    return {'ok': True}
 
 
 def api_spelleffect(b, q):
@@ -1295,6 +1377,19 @@ def api_spelleffect(b, q):
         if add:
             crel = f'{fe4spellfx.FOLDER}/colors.json'
             ops.append(('blob', crel, p.blob(crel).data, fe4spellfx.dump_colours({**cur, **add})))
+        tm = _timing()
+        tadd = {}
+        for a, (eid, orig) in fx2['colours'].items():
+            k = f's{src}:{orig:06X}' if src in by_id else f'{orig:06X}'
+            if eid == new_id and k in tm:
+                tadd[f's{new_id}:{orig:06X}'] = tm[k]
+        if tadd:
+            trel = f'{fe4spellfx.FOLDER}/{fe4spellfx.TIMING}'
+            ops.append(('blob', trel, p.blob(trel).data, json.dumps({**tm, **tadd}, indent=1, sort_keys=True).encode()))
+        st = _steps()
+        if src in st:      # the source's changed steps (already in the original's terms)
+            srel = f'{fe4spellfx.FOLDER}/{fe4spellfx.STEPS}'
+            ops.append(('blob', srel, p.blob(srel).data, fe4spellfx.dump_steps({**st, new_id: st[src]})))
         p.edit(ops)
         return {'ok': True, 'id': new_id}
     k = int(b.get('rename', b.get('delete', -1)))
@@ -3232,7 +3327,7 @@ API = {('GET', 'session'): api_session, ('POST', 'ping'): api_ping, ('GET', 'tab
        ('POST', 'build'): api_build, ('GET', 'battleanims'): api_battleanims, ('GET', 'battleinfo'): api_battleinfo,
        ('POST', 'battleimport'): api_battleimport, ('POST', 'battlemotion'): api_battlemotion,
        ('POST', 'battleframe'): api_battleframe, ('GET', 'battlemotions'): api_battlemotions,
-       ('GET', 'battlespells'): api_battlespells, ('POST', 'spellrow'): api_spellrow, ('GET', 'spellgfx'): api_spellgfx, ('POST', 'spellgfxset'): api_spellgfxset, ('POST', 'spellcolours'): api_spellcolours, ('POST', 'spelleffect'): api_spelleffect, ('POST', 'battlereset'): api_battlereset,
+       ('GET', 'battlespells'): api_battlespells, ('POST', 'spellrow'): api_spellrow, ('GET', 'spellgfx'): api_spellgfx, ('POST', 'spellgfxset'): api_spellgfxset, ('POST', 'spellcolours'): api_spellcolours, ('POST', 'spelleffect'): api_spelleffect, ('POST', 'spellsteps'): api_spellsteps, ('POST', 'battlereset'): api_battlereset,
        ('POST', 'ipspatch'): api_ipspatch, ('POST', 'reveal'): api_reveal,
        ('GET', 'patchinfo'): api_patchinfo, ('POST', 'testplay'): api_testplay, ('POST', 'settings'): api_settings,
        ('POST', 'dialog'): api_dialog, ('POST', 'quit'): api_quit, ('POST', 'classic'): api_classic,

@@ -686,6 +686,11 @@ textarea.fe4box.bad { border-color: #E1606F; }
 .sfxset { display: grid; gap: 4px; }
 .sfxset .hint { margin: 0; }
 .sfxsethead { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.sfxspeed { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 14px; }
+.sfxspeed .in.num { width: 64px; }
+.sfxstepsbox { margin: 6px 24px 14px; }
+.sfxsteps .bastep .in.num { width: 70px; }
+.sfxctl { font-weight: 500; font-style: italic; }
 .btn-sm { padding: 3px 10px; font-size: 13px; }
 .sfxrows { display: grid; gap: 3px; max-height: 260px; overflow: auto; padding: 2px; }
 .sfxrow { display: flex; flex-wrap: wrap; gap: 3px; }

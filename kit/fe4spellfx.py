@@ -442,10 +442,12 @@ def apply_colours(rom, proj, far, fxmap=None):
     """spell_gfx/colors.json -> each changed colour source copied to free space with the new colours;
     every spell record that pointed at the old one points at the copy."""
     p = colours_path(proj)
-    if not os.path.exists(p):
+    tp = os.path.join(proj, FOLDER, TIMING)
+    if not os.path.exists(p) and not os.path.exists(tp):
         return 0
     try:
-        want = colours_by_address(read_colours(open(p, 'rb').read()), fxmap)
+        want = colours_by_address(read_colours(open(p, 'rb').read()), fxmap) if os.path.exists(p) else {}
+        timing = colours_by_address(read_json(open(tp, 'rb').read(), TIMING), fxmap) if os.path.exists(tp) else {}
     except ValueError as e:
         raise SystemExit(str(e))
     uses = {}
@@ -453,16 +455,26 @@ def apply_colours(rom, proj, far, fxmap=None):
         for u in colour_uses(rom, s):
             uses.setdefault(u['addr'], []).append(u)
     n = 0
-    for addr, cols in want.items():
+    for addr in sorted(set(want) | set(timing)):
         if addr not in uses:
-            raise SystemExit(f'{FOLDER}/colors.json: no spell uses colours at {addr:06X}')
+            raise SystemExit(f'{FOLDER}: no spell uses colours at {addr:06X}')
         u = uses[addr][0]
         game, toks = read_source(rom, u)
+        cols = want.get(addr, game)
         if len(cols) != len(game):
             raise SystemExit(f'{FOLDER}/colors.json: {addr:06X} has {len(game)} colours, not {len(cols)}')
-        if cols == game:
+        new_toks = toks
+        if addr in timing and toks is not None:
+            try:
+                frames = int(timing[addr])
+            except (TypeError, ValueError):
+                raise SystemExit(f'{FOLDER}/{TIMING}: {addr:06X} needs a number of frames')
+            if not 1 <= frames <= 128:
+                raise SystemExit(f'{FOLDER}/{TIMING}: frames per step are 1-128')
+            new_toks = with_delay(toks, frames)
+        data = write_source(cols, new_toks)
+        if data == write_source(game, toks):
             continue
-        data = write_source(cols, toks)
         at = far.alloc(len(data), upper_half=True)
         fo = snes_to_file(at)
         rom[fo:fo + len(data)] = data
@@ -517,12 +529,15 @@ def _colour_data_len(rom, kind, addr, n):
     return 2 * n
 
 
-def apply_effects(rom, effects, far):
-    """Write the new effects into rom (tables moved to free space).  Returns the map of what was copied:
-    {'pictures': {new record: (effect id, original record)}, 'colours': {new address: (effect id,
-    original address)}}, or None when there are no effects."""
+def apply_effects(rom, effects, far, steps=None):
+    """Write the new effects (and changed steps, {spell: words}) into rom; the tables move to free space.
+    Returns the map of what was copied: {'pictures': {new record: (effect id, original record)},
+    'colours': {new address: (effect id, original address)}, 'fx'/'sets': {new record: (effect id,
+    original record)}}, or None when there is nothing to do.  A new effect's steps are given in terms of
+    the original's records."""
     effects = [e for e in effects]
-    if not effects:
+    steps = steps or {}
+    if not effects and not steps:
         return None
     n0 = spell_count(rom)
     ids = [e['id'] for e in effects]
@@ -539,7 +554,11 @@ def apply_effects(rom, effects, far):
     fx = [rec_bytes(t_fx + _w(rom, t_fx + 2 * i), _fx_len(rom, t_fx + _w(rom, t_fx + 2 * i))) for i in range(n_fx)]
     sets = [rec_bytes(t_set + _w(rom, t_set + 2 * i), 5) for i in range(n_set)]
     scripts = [script_words(rom, k) for k in range(n0)]
-    out = {'pictures': {}, 'colours': {}}
+    game_scripts = list(scripts)
+    for k, ws in steps.items():
+        if k < n0:
+            scripts[k] = list(ws)
+    out = {'pictures': {}, 'colours': {}, 'fx': {}, 'sets': {}}
 
     def copy_colours(data, kind, n, eid, at):
         """Copy the colours a record points at (at = pointer offset in data) to free space."""
@@ -561,7 +580,7 @@ def apply_effects(rom, effects, far):
             raise SystemExit(f'{FOLDER}/{EFFECTS}: effect {e["id"]} copies effect {e["from"]}, which isn\'t one of the game\'s')
         pmap, fmap, smap = {}, {}, {}
         words = []
-        for x in scripts[e['from']]:
+        for x in steps.get(e['id'], game_scripts[e['from']]):
             c, arg = (x >> 9) & 0x1F, x & 0x1FF
             if x < 0xFF00 and c == 0x01 and arg < RECORD_N:
                 if arg not in pmap:
@@ -585,11 +604,13 @@ def apply_effects(rom, effects, far):
                     if kind:
                         d = copy_colours(d, kind, d[3], e['id'], 5 if t == 7 else 4)
                     fmap[arg] = len(fx)
+                    out['fx'][len(fx)] = (e['id'], arg)
                     fx.append(d)
                 x = (x & ~0x1FF) | fmap[arg]
             elif x < 0xFF00 and c == 0x0E and arg < n_set:
                 if arg not in smap:
                     smap[arg] = len(sets)
+                    out['sets'][len(sets)] = (e['id'], arg)
                     sets.append(copy_colours(sets[arg], 'set', sets[arg][1], e['id'], 2))
                 x = (x & ~0x1FF) | smap[arg]
             words.append(x)
@@ -657,6 +678,95 @@ def colours_by_address(keyed, fxmap):
     return out
 
 
+# ---- steps ----
+STEPS = 'steps.json'          # {spell: ["083b", ...]}: changed scripts (new effects: the original's records)
+TIMING = 'timing.json'        # {colour key: frames per step}
+COMMANDS = {
+    0x00: ('sprite', 'Sprite effect'), 0x01: ('picture', 'Load picture'), 0x02: ('layers', 'Layer set-up'),
+    0x03: ('screen', 'Screen colours'), 0x04: ('scene', 'Scene set-up'), 0x06: ('data', 'Load sprite data'),
+    0x07: ('data', 'Load sprite data'), 0x08: ('screen', 'Screen routine'), 0x0A: ('pause', 'Pause'),
+    0x0B: ('colours', 'Colour effect'), 0x0D: ('motion', 'Background motion'), 0x0E: ('colours', 'Set colours'),
+    0x14: ('picture', 'Load picture for this side'), 0x15: ('sound', 'Sound'),
+    0x16: ('sound', 'Sound at the attacker'), 0x17: ('sound', 'Sound at the target'), 0x18: ('pause', 'Pause'),
+}
+CONTROLS = {0xFFFE: 'Wait for the steps above to finish', 0xFFFD: 'Signal the caster\'s animation',
+            0xFFFC: 'Signal the target\'s animation', 0xFFFB: 'Fighter step A', 0xFFFA: 'Target reacts',
+            0xFFF9: 'Hit: damage or dodge', 0xFFF8: 'Fighter step B'}
+SOUNDS = 0x98AD04            # word per sound step value: the game's sound number
+
+
+def describe(x):
+    """(kind, label, value) of one script word."""
+    if x >= 0xFF00:
+        return 'control', CONTROLS.get(x, f'Control {x:04X}'), None
+    c, arg = (x >> 9) & 0x1F, x & 0x1FF
+    kind, label = COMMANDS.get(c, ('other', f'Game step {c}'))
+    return kind, label, arg
+
+
+def check_steps(words):
+    """Raise ValueError unless every word is a step the game knows."""
+    if len(words) > 2000:
+        raise ValueError('That is too many steps.')
+    for x in words:
+        if x == 0xFFFF:
+            raise ValueError('The end of the steps is added for you.')
+        if x >= 0xFF00 and x not in CONTROLS:
+            raise ValueError(f'{x:04X} is not a step the game knows.')
+        if x < 0xFF00 and (x >> 9) & 0x1F >= 25:
+            raise ValueError(f'{x:04X} is not a step the game knows.')
+
+
+def read_json(blob, what):
+    import json
+    if not blob:
+        return {}
+    try:
+        return json.loads(blob)
+    except ValueError:
+        raise ValueError(f'{FOLDER}/{what} is not readable')
+
+
+def read_steps(blob):
+    d = read_json(blob, STEPS)
+    try:
+        return {int(k): [int(w, 16) for w in v] for k, v in d.items()}
+    except (ValueError, TypeError, AttributeError):
+        raise ValueError(f'{FOLDER}/{STEPS} is not readable')
+
+
+def dump_steps(d):
+    import json
+    return json.dumps({str(k): [f'{w:04x}' for w in v] for k, v in sorted(d.items())}, indent=1).encode()
+
+
+def to_source_terms(words, eid, fxmap):
+    """A new effect's words (records as built) -> words naming the original's records."""
+    inv = {'p': {k: o for k, (e, o) in (fxmap or {}).get('pictures', {}).items() if e == eid},
+           'f': {k: o for k, (e, o) in (fxmap or {}).get('fx', {}).items() if e == eid},
+           's': {k: o for k, (e, o) in (fxmap or {}).get('sets', {}).items() if e == eid}}
+    out = []
+    for x in words:
+        if x < 0xFF00:
+            c, arg = (x >> 9) & 0x1F, x & 0x1FF
+            m = inv['p'] if c in (0x01, 0x14) else inv['f'] if c == 0x0B else inv['s'] if c == 0x0E else None
+            if m is not None and arg in m:
+                x = (x & ~0x1FF) | m[arg]
+        out.append(x)
+    return out
+
+
+def stream_delays(toks):
+    """Frames per step of a colour stream: [each delay token's frames]."""
+    return [(t[1] & 0x7F) + 1 for t in (toks or []) if t[0] == 'd']
+
+
+def with_delay(toks, frames):
+    """Tokens with one delay (frames per step) at the start and no others."""
+    rest = [t for t in toks if t[0] != 'd']
+    return [('d', 0x80 | max(0, min(127, frames - 1)))] + rest
+
+
 def apply_all(rom, proj, far):
     """Everything in spell_gfx/: new effects, then redrawn pictures, then colours."""
     blob = lambda rel: open(os.path.join(proj, *rel.split('/')), 'rb').read() if os.path.exists(os.path.join(proj, *rel.split('/'))) else None
@@ -664,10 +774,16 @@ def apply_all(rom, proj, far):
         effects = read_effects(blob(f'{FOLDER}/{EFFECTS}'))
     except ValueError as e:
         raise SystemExit(str(e))
-    fxmap = apply_effects(rom, effects, far)
-    n = len(effects) if fxmap else 0
+    try:
+        steps = read_steps(blob(f'{FOLDER}/{STEPS}'))
+        for ws in steps.values():
+            check_steps(ws)
+    except ValueError as e:
+        raise SystemExit(f'{FOLDER}/{STEPS}: {e}')
+    fxmap = apply_effects(rom, effects, far, steps)
+    n = len(effects) + len(steps) if fxmap else 0
     if n:
-        print(f'spell effects: {n} new effect(s)')
+        print(f'spell effects: {len(effects)} new effect(s), {len(steps)} with changed steps')
     n += apply(rom, proj, far, fxmap)
     n += apply_colours(rom, proj, far, fxmap)
     return n

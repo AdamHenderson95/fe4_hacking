@@ -243,11 +243,19 @@ export async function battlePage(root) {
         pick.onchange = () => { const next = cs.colours.slice(); next[k] = fromHex(pick.value); setColours({ [cs.addr]: next }, 'Colour changed'); };
         return h('label', { class: 'sfxsw' + (c !== cs.game[k] ? ' changed' : ''), style: `--c:${toHex(c)}` }, pick);
       }));
+      let speed = null;
+      if (cs.frames != null) {
+        const inp = h('input', { class: 'in num', type: 'number', min: 1, max: 128, value: cs.frames, 'aria-label': `${cs.label}: frames per step` });
+        inp.onchange = () => { const n = Math.round(Number(inp.value)); if (!(n >= 1 && n <= 128)) { toast('Frames per step are 1 to 128.', true); inp.value = cs.frames; return; }
+          api('spellcolours', { frames: { [cs.addr]: n } }).then(() => after(`${cs.label.split(' · ')[0]} now changes every ${n} frame${n === 1 ? '' : 's'}`)).catch(e => toast(e.message, true)); };
+        speed = h('label', { class: 'sfxspeed' }, 'Changes every ', inp, ` frame${cs.frames === 1 ? '' : 's'}${cs.frames_varies ? ' (varies: setting it makes every step the same)' : ''}`,
+          cs.frames_edited ? h('button', { class: 'btn btn-line btn-sm', type: 'button', onclick: () => api('spellcolours', { frames: { [cs.addr]: null } }).then(() => after('Back to the game\'s speed')).catch(e => toast(e.message, true)) }, 'Game\'s speed') : null);
+      }
       return h('div', { class: 'sfxset' },
         h('div', { class: 'sfxsethead' }, h('strong', {}, cs.label), cs.edited ? h('span', { class: 'sub' }, ' ✎') : null,
           cs.edited ? h('button', { class: 'btn btn-line btn-sm', type: 'button', onclick: () => setColours({ [cs.addr]: null }, 'Back to the game\'s colours (Undo brings yours back)') }, 'Use the game\'s') : null),
         cs.shared.length ? h('p', { class: 'hint' }, `Also used by ${cs.shared.slice(0, 3).join(', ')}${cs.shared.length > 3 ? ` and ${cs.shared.length - 3} more` : ''}: they change too.`) : null,
-        h('div', { class: 'sfxrows' }, rows.map(r => h('div', { class: 'sfxrow' }, r))));
+        speed, h('div', { class: 'sfxrows' }, rows.map(r => h('div', { class: 'sfxrow' }, r))));
     }));
     if (hasColours) {
       const hue = h('input', { type: 'range', min: -180, max: 180, value: 0, 'aria-label': 'Hue' });
@@ -268,6 +276,46 @@ export async function battlePage(root) {
           onclick: () => setColours(Object.fromEntries(P.colours.map(cs => [cs.addr, null])), 'Back to the game\'s colours (Undo brings yours back)') }, 'Use the game\'s colours') : null));
     }
     drawSets();
+    // steps
+    let steps = P.steps.map(x => ({ ...x }));
+    let stepsDirty = false;
+    const stepList = h('ol', { class: 'basteplist sfxsteps' });
+    const saveSteps = h('button', { class: 'btn btn-gilt', type: 'button', disabled: true, onclick: async () => {
+      try { await api('spellsteps', { spell: P.spell, words: steps.map(x => x.word) }); await after('Saved the steps'); } catch (e) { toast(e.message, true); } } }, 'Save steps');
+    const dirty = () => { stepsDirty = true; saveSteps.disabled = false; drawSteps(); };
+    const mk = (word, kind, label, value) => ({ word, kind, label, value });
+    function drawSteps() {
+      stepList.replaceChildren(...steps.map((x, i) => {
+        let body;
+        if (x.kind === 'pause' || x.kind === 'sound') {
+          const inp = h('input', { class: 'in num', type: 'number', min: 0, max: 511, value: x.value, 'aria-label': `${x.label} (step ${i + 1})` });
+          inp.onchange = () => { const n = Math.round(Number(inp.value)); if (!(n >= 0 && n <= 511)) { toast('Use 0 to 511.', true); inp.value = x.value; return; }
+            x.value = n; x.word = (x.word & ~0x1FF) | n; dirty(); };
+          body = x.kind === 'pause' ? [h('span', { class: 'baslabel' }, 'Pause'), inp, ' frames'] : [h('span', { class: 'baslabel' }, x.label), ' number ', inp];
+        } else {
+          body = [h('span', { class: 'baslabel' + (x.kind === 'control' ? ' sfxctl' : '') }, x.label), x.value != null ? h('span', { class: 'sub' }, ` ${x.value}`) : null];
+        }
+        const mv = (d) => { const j = i + d; if (j < 0 || j >= steps.length) return; [steps[i], steps[j]] = [steps[j], steps[i]]; dirty(); };
+        return h('li', { class: 'bastep' + (x.kind === 'control' ? ' cmd' : '') }, ...body,
+          h('span', { class: 'bastepbtns' },
+            h('button', { class: 'icon-btn', type: 'button', 'aria-label': `Move step ${i + 1} up`, onclick: () => mv(-1) }, '↑'),
+            h('button', { class: 'icon-btn', type: 'button', 'aria-label': `Move step ${i + 1} down`, onclick: () => mv(1) }, '↓'),
+            h('button', { class: 'icon-btn', type: 'button', 'aria-label': `Copy step ${i + 1}`, title: 'Copy', onclick: () => { steps.splice(i + 1, 0, { ...x }); dirty(); } }, '⧉'),
+            h('button', { class: 'icon-btn', type: 'button', 'aria-label': `Remove step ${i + 1}`, onclick: () => { steps.splice(i, 1); dirty(); } }, '✕')));
+      }));
+    }
+    drawSteps();
+    const stepsBox = h('div', { class: 'baredraw sfxstepsbox' },
+      h('h3', {}, 'Steps', P.steps_edited ? ' ✎' : ''),
+      h('p', { class: 'hint' }, 'What the effect does, in order: the game runs a step each frame and stops at a Pause or a Wait until it is over. Make it faster or slower with the Pause lengths (60 frames = 1 second), change the sounds, or move, copy and remove steps. Wait for the steps above to finish holds things until the pictures, motions and colour changes above are done.'),
+      stepList,
+      h('div', { class: 'bacbtns' },
+        h('button', { class: 'btn btn-line', type: 'button', onclick: () => { steps.push(mk(0x5400 | 30, 'pause', 'Pause', 30)); dirty(); } }, 'Add a pause'),
+        h('button', { class: 'btn btn-line', type: 'button', onclick: () => { steps.push(mk(0x2A00 | 1, 'sound', 'Sound', 1)); dirty(); } }, 'Add a sound'),
+        saveSteps,
+        P.steps_edited ? h('button', { class: 'btn btn-line', type: 'button', onclick: async () => {
+          try { await api('spellsteps', { spell: P.spell, words: null }); await after('Back to the game\'s steps (Undo brings yours back)'); } catch (e) { toast(e.message, true); } } }, 'Use the game\'s steps') : null),
+      h('p', { class: 'hint' }, 'New steps go at the end; move them up to where they belong. Removing the Signal or Hit steps can leave a fighter waiting, so try changes in a test battle.'));
     // new effects: make one from this, rename or delete it
     const nameIn = h('input', { class: 'in', placeholder: 'Name, e.g. Blue Fire', maxlength: 40, 'aria-label': 'New effect name' });
     const makeBox = h('div', { class: 'sfxmake', hidden: true }, nameIn,
@@ -323,6 +371,7 @@ export async function battlePage(root) {
       hasColours ? h('div', { class: 'sfxcolours' }, h('h3', {}, 'Colours'),
         h('p', { class: 'hint' }, 'The colours this spell sets, in the order the game uses them. Click a colour to change it, or shift them all at once with the sliders. Colours that cycle or change every few frames are listed step by step. In the pictures above, colour numbers the spell doesn\'t set show in stand-in colours: in battle they take whatever the scene has there, so draw with the numbers listed here.'),
         shiftBox, setRows) : null,
+      stepsBox,
       h('h3', {}, 'Pictures'),
       h('p', { class: 'hint' }, 'Download a picture, paint over it in any paint program, and import it. The downloaded file uses stand-in colours, one for each colour number, so the same picture works whatever colours the spell gives it (change those under Colours). Paint with the colours already in the file; other colours are matched to the nearest one. Transparent pixels show what\'s behind. Keep the size.'),
       h('div', { class: 'sfxgrid' }, cards)));

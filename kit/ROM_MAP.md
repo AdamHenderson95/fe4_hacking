@@ -574,6 +574,37 @@ on `$0D5C`, `$0D60`, `$0D69`).
 - Verified: a copy of Fire with blue colours and a redrawn fireball plays for the Fire tome while
   Elfire keeps its colours; a copy of Bolganone given to Thunder plays Bolganone; battles finish.
 
+## Spell steps (v38)
+
+Script commands by handler (table `$96:A42C`, 3 bytes each); arg = word & `$1FF`:
+
+| Cmd | Handler | What |
+|---|---|---|
+| `$00` | `$96:ABF6` | sprite effect, record from `$97:A411` |
+| `$01` | `$96:B945` | load picture record (`$97:B081`) |
+| `$02` | `$96:BCF1` | byte/word program from `$97:B67D` into direct page / registers (layer set-up) |
+| `$03` | `$96:BD93` | n < 8: palette set n+5 (`$82:C0EF`); n >= 8: screen colour program from `$97:BD3E` |
+| `$04` | `$96:CA1C` | scene set-up |
+| `$06`/`$07` | `$96:B9B7`/`BB0C` | load data records (`$97:B5D1` 6 bytes / `$97:B60D` 7 bytes) |
+| `$08` | `$96:C9D9` | screen routine pointer from `$97:BDD4` to `$7F:ECFF` |
+| `$0A` | `$96:BBC2` | **pause** arg frames (`$7F:E4BE`, counted down before the next step) |
+| `$0B` | `$96:DB58` | colour effect (above) |
+| `$0D` | `$96:DEC0` | background motion, record from `$97:BEAC` (layer, type `$96:DF60`, data) |
+| `$0E` | `$96:BB70` | set colours (above) |
+| `$14` | `$96:B9A4` | load picture record or record + 1 by side |
+| `$15` | `$96:BC4C` | **sound**: word from `$98:AD04` + arg*2 -> `$80:900D` (+`$2000` for one side) |
+| `$16`/`$17` | `$96:BC72`/`BCAF` | sound panned at the attacker / target (`$9E:B4BB`) |
+| `$18` | `$96:BBD2` | pause arg frames (`$7F:E4C0`, cleared when `$E4` = `$80`) |
+
+Bit 14 (`01` in bits 14-15) counts a spawned part in `$7F:E4B8`; `$FFFE` waits for it to reach 0.
+Control words: `$FFFD`/`$FFFC` signal the attacker's / the other fighter's animation (`$95:C057`/`C077`,
+`$7F:E184`, the `F4` wait-for-signal in motions), `$FFF9` hit or dodge (`$96:F9BF`), `$FFFA` `$95:AEA2`,
+`$FFFB`/`$FFF8` `$95:B006`/`B02B`.
+- Colour stream speed: a delay byte (`$80` + n) holds a step for n + 1 frames and stays in force for the
+  steps after it; the kit's "Changes every N frames" writes one delay at the start of the stream.
+- Verified: Fire with a 60-frame pause after its first wait shows the fireball 60 frames later and the
+  battle ends normally; Bolganone with one colour set at 8 frames per step plays to the end.
+
 ## Maps (V)
 
 ### Chapter map headers

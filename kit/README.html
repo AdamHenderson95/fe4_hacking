@@ -292,7 +292,18 @@ default browser). The editor runs on your PC only: nothing is sent anywhere.
    <strong>Rename…</strong> and <strong>Delete</strong> (once no item uses it) are on its page. Saved
    in <code>spell_gfx/effects.json</code> (plus <code>sNN_rNNN.png</code> pictures and <code>sNN:</code>
    colours); the build moves the game's spell tables to free space to make
-   room.</li>
+   room.
+   <strong>Steps</strong> lists what the effect does, in order: load pictures, colour
+   effects, background motions, sounds, pauses, waits ("Wait for the steps
+   above to finish") and the signals that tell the fighters' animations to
+   go on. Change a <strong>Pause</strong> length (60 frames = 1 second) or a <strong>Sound</strong>
+   number, move, copy or remove steps, <strong>Add a pause</strong> or <strong>Add a sound</strong>,
+   then <strong>Save steps</strong> (<strong>Use the game's steps</strong> goes back). Each cycling
+   or changing colour set also has <strong>Changes every N frames</strong> to speed its
+   colours up or slow them down. Saved in <code>spell_gfx/steps.json</code> and
+   <code>spell_gfx/timing.json</code>. Removing the Signal or Hit steps can leave a
+   fighter waiting forever, so try changes in a test battle (Azel's Fire in
+   the Prologue is a quick one).</li>
 <li>On the Project page, <strong>Add unit stats to the map box</strong> puts the PC port's
    MT / HIT / AS / AVO box into the ROMs and patches you build, so players
    on emulators get it too (the port can still switch it off).</li>
