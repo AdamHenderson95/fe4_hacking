@@ -45,7 +45,7 @@ import fe4skillanim                # noqa: E402
 from fe4project import Project, load_settings, save_settings   # noqa: E402
 
 APP = 'Builder of the Holy War'
-VERSION = '40'
+VERSION = '41'
 STATIC = os.path.join(KIT, 'studio')
 
 # ---------------------------------------------------------------- state
@@ -1508,6 +1508,15 @@ def api_skillanims(b, q):
                     **{k: cur[k] for k in ('effect', 'reaction', 'colours')},
                     'game': {'effect': g[0], 'reaction': g[1], 'colours': g[2]},
                     'edited': (cur['effect'], cur['reaction'], cur['colours']) != g})
+    for sid in (5, 17, 3):        # the game's skills that show nothing; the kit adds their event
+        cur = rows.get(sid, {'effect': None, 'reaction': 0, 'colours': game[0x14][2]})
+        about = {5: 'Adept: attacks again (rate: Speed). The sparkle plays before the extra strike',
+                 17: 'Vantage: strikes first when HP is at or below half, even when attacked. The sparkle plays '
+                     'when it makes the defender strike first',
+                 3: 'Wrath: sure critical hits when HP is at or below half. The sparkle plays before each such strike'}[sid]
+        out.append({'skill': sid, 'name': names.get(sid, ''), 'kind': 'engine', 'defend': False, 'about': about,
+                    **{k: cur[k] for k in ('effect', 'reaction', 'colours')},
+                    'game': {'effect': None, 'reaction': 0, 'colours': game[0x14][2]}, 'edited': sid in rows})
     sk = p.table('skills')
     for r in (sk.rows if sk else []):
         eff_name = (r.get('effect') or '').strip()
@@ -1658,14 +1667,15 @@ def api_testplay(b, q):
     return job_json_of(run_job('Building for test play', go))
 
 
-PREVIEW = {'start': 25300, 'end': 26250, 'from': 25200, 'item': 0x3E,
+PREVIEW = {'start': 25300, 'end': 26250, 'from': 25200, 'events_from': 25000, 'item': 0x3E,
            'freeze': [('0D5C', '35'), ('0D60', '3E'), ('0D69', '74')]}   # Gandolf: Fire Mage, Fire, magic
 
 
-def api_spellpreview(b, q):
-    """Watch an effect in battle: a copy of the ROM with only the project's battle and spell changes, the
-    Fire tome playing this effect, run in the PC port from power-on with the preview input movie
-    (fast until the Prologue battle where Gandolf attacks Midir, made a Fire Mage)."""
+def _battle_preview(title, change, extra=(), loop_extra=0):
+    """Build a copy of the ROM with only the project's battle, spell and skill-animation changes (then
+    change(rom) on it) and run it in the PC port: fast from power-on with the preview input movie to the
+    Prologue battle where Gandolf (made a Fire Mage) attacks Midir, then that battle over and over.
+    extra: more (address, value) or (address, value, from frame) RAM freezes."""
     p = need_project()
     rom = rom_path()
     if not rom:
@@ -1680,43 +1690,65 @@ def api_spellpreview(b, q):
         new_port = False
     if not new_port:
         raise ValueError('Watching in battle needs the PC port 0.9 or newer (it comes with this kit in FE4Port.zip).')
-    s = int(b['spell'])
     movie = os.path.join(KIT, 'dev', 'battle_preview.txt')
-    if not movie or not os.path.exists(movie):
+    if not os.path.exists(movie):
         raise ValueError('The battle preview input is missing from this kit.')
     p.save()
     d = os.path.join(p.path, '_testplay')
     os.makedirs(d, exist_ok=True)
     out = os.path.join(d, 'battle_preview.smc')
-    names = _spell_label(spell_rom()[0])
-    title = f'Watch in battle: {names.get(s) or f"effect {s}"}'
 
     def go():
+        import fe4skillanim
         copier, r = L.load_rom(rom)
         far = L.FreeSpace()
         fe4battle.apply(r, p.path)
         fe4spellfx.apply_all(r, p.path, far)
+        fe4skillanim.apply(r, p.path, fe4spellfx.spell_count(r))
         fe4battle.apply_custom(r, lambda rel: fe4hack._read_file(p.path, rel), far)
+        loop = change(r) or 0
+        L.save_rom(out, copier, r)
+        import hashlib
+        from fe4project import settings_path
+        freezes = [tuple(f) + (PREVIEW['from'],) if len(f) == 2 else tuple(f) for f in list(PREVIEW['freeze']) + list(extra)]
+        sha = hashlib.sha1(bytes(L.load_rom(rom)[1]) + repr(freezes).encode()).hexdigest()[:12]
+        cache = os.path.join(os.path.dirname(settings_path()), f'battle_preview_{sha}.state')
+        args = [exe, '--play', out, '--movie', movie, '--turbo-until', str(PREVIEW['start']), '--state-cache', cache,
+                '--loop-at', str(PREVIEW['end'] + loop + loop_extra), '--title', title]
+        for a, v, fr in freezes:
+            args += ['--freeze', a, v, str(fr)]
+        subprocess.Popen(args, cwd=os.path.dirname(exe))
+        print('started the PC port: it plays the Prologue at full speed up to the battle, then shows it over and over')
+        return out
+    return job_json_of(run_job('Building the battle preview', go))
+
+
+def api_spellpreview(b, q):
+    """Watch an effect in battle: the Fire tome plays it (see _battle_preview)."""
+    s = int(b['spell'])
+    names = _spell_label(spell_rom()[0])
+
+    def change(r):
         if not 0 <= s < fe4spellfx.spell_count(r):
             raise SystemExit(f'There is no effect {s}.')
         f = fe4spellfx.snes_to_file(fe4battle.SPELL_TABLE)
         rows = fe4battle.spell_rows(r)
         k = next(i for i, row in enumerate(rows) if row[0] == PREVIEW['item'])
         r[f + 3 * k + 1] = r[f + 3 * k + 2] = s
-        L.save_rom(out, copier, r)
-        pause = sum(x & 0x1FF for x in fe4spellfx.script_words(r, s) if x < 0xFF00 and (x >> 9) & 0x1F in (0x0A, 0x18))
-        import hashlib
-        from fe4project import settings_path
-        sha = hashlib.sha1(bytes(L.load_rom(rom)[1])).hexdigest()[:12]
-        cache = os.path.join(os.path.dirname(settings_path()), f'battle_preview_{sha}.state')
-        args = [exe, '--play', out, '--movie', movie, '--turbo-until', str(PREVIEW['start']), '--state-cache', cache,
-                '--loop-at', str(PREVIEW['end'] + pause), '--title', title]
-        for a, v in PREVIEW['freeze']:
-            args += ['--freeze', a, v, str(PREVIEW['from'])]
-        subprocess.Popen(args, cwd=os.path.dirname(exe))
-        print('started the PC port: it plays the Prologue at full speed up to the battle, then shows it over and over')
-        return out
-    return job_json_of(run_job('Building the battle preview', go))
+        return sum(x & 0x1FF for x in fe4spellfx.script_words(r, s) if x < 0xFF00 and (x >> 9) & 0x1F in (0x0A, 0x18))
+    return _battle_preview(f'Watch in battle: {names.get(s) or f"effect {s}"}', change)
+
+
+def api_skillpreview(b, q):
+    """Watch a skill's animation: the battle's event list starts with the skill's event (FE nn), then the
+    game's own strike (the Prologue battle's list is 35 20 FF FF from $7E:4F85). The game writes that list at
+    frame 25193, so these freezes start earlier than the others."""
+    sid = int(b['skill'])
+    if not 1 <= sid <= 0xFE:
+        raise ValueError('There is no such skill.')
+    ev = [(a, v, PREVIEW['events_from']) for a, v in
+          [('4F85', 'FE'), ('4F86', f'{sid:02X}'), ('4F87', '35'), ('4F88', '20'), ('4F89', 'FF'), ('4F8A', 'FF')]]
+    return _battle_preview(f'Watch in battle: {_skill_names().get(sid) or f"skill {sid}"}', lambda r: 0, ev, 120)
 
 
 def api_settings(b, q):
@@ -3549,7 +3581,7 @@ API = {('GET', 'session'): api_session, ('POST', 'ping'): api_ping, ('GET', 'tab
        ('POST', 'build'): api_build, ('GET', 'battleanims'): api_battleanims, ('GET', 'battleinfo'): api_battleinfo,
        ('POST', 'battleimport'): api_battleimport, ('POST', 'battlemotion'): api_battlemotion,
        ('POST', 'battleframe'): api_battleframe, ('GET', 'battlemotions'): api_battlemotions,
-       ('GET', 'battlespells'): api_battlespells, ('POST', 'spellrow'): api_spellrow, ('GET', 'skillanims'): api_skillanims, ('POST', 'skillanimset'): api_skillanimset, ('GET', 'spellgfx'): api_spellgfx, ('POST', 'spellgfxset'): api_spellgfxset, ('POST', 'spellcolours'): api_spellcolours, ('POST', 'spelleffect'): api_spelleffect, ('POST', 'spellsteps'): api_spellsteps, ('POST', 'spellpreview'): api_spellpreview, ('POST', 'battlereset'): api_battlereset,
+       ('GET', 'battlespells'): api_battlespells, ('POST', 'spellrow'): api_spellrow, ('GET', 'skillanims'): api_skillanims, ('POST', 'skillanimset'): api_skillanimset, ('GET', 'spellgfx'): api_spellgfx, ('POST', 'spellgfxset'): api_spellgfxset, ('POST', 'spellcolours'): api_spellcolours, ('POST', 'spelleffect'): api_spelleffect, ('POST', 'spellsteps'): api_spellsteps, ('POST', 'spellpreview'): api_spellpreview, ('POST', 'skillpreview'): api_skillpreview, ('POST', 'battlereset'): api_battlereset,
        ('POST', 'ipspatch'): api_ipspatch, ('POST', 'reveal'): api_reveal,
        ('GET', 'patchinfo'): api_patchinfo, ('POST', 'testplay'): api_testplay, ('POST', 'settings'): api_settings,
        ('POST', 'dialog'): api_dialog, ('POST', 'quit'): api_quit, ('POST', 'classic'): api_classic,

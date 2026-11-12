@@ -635,8 +635,27 @@ Control words: `$FFFD`/`$FFFC` signal the attacker's / the other fighter's anima
   nothing, else palette 7 and `$FC5F` = the reaction.
 - Verified by putting `FE 1E` (a new skill, 30) and `FE 14` (Luna) at the head of the event list with
   RAM freezes: the green and recoloured sparkles play over the attacker, and a copied sparkle effect
-  (new effect 77 from `$37`) plays the same way. Engine skills that never add an event (Vantage, Wrath,
-  Adept, Pursuit, Miracle, Nihil) show nothing yet.
+  (new effect 77 from `$37`) plays the same way. Pursuit, Miracle and Nihil still add no event.
+
+### Engine skills that add an event (v41)
+
+When Adept, Vantage or Wrath has a row with an animation, the kit hooks where the engine decides it and
+pushes `FE nn` itself (a shared routine sets `$054A = nn<<8 | $FE`, `$055D = $7E00`, `$055C = $4F81` and
+calls `$82:E465`, keeping X, Y and P):
+
+| Skill | Site | Game code there | Hook |
+|---|---|---|---|
+| Adept (5) | `$84:E2E2` | `JSL $84:EF9C` (the Speed% roll; carry clear = a second strike) | `JSL` to the roll, push on success, same carry back |
+| Vantage (17) | `$84:E23F` | `LDA $12,X; LSR; CMP $10,X; BCC; SEC; RTS` (HP at most half = strike first) | `JSL` + `RTS`; same test, push only when X = `$4F15` (the defender) |
+| Wrath (3) | `$84:E67F` | `LDA #100; STA $38,X` (crit 100 when HP at most half, per strike) | `JSL` that stores 100 and pushes |
+
+Verified: Adept's event in a real calculated battle (the Prologue's strikes are scripted by
+`$84:B69E JSL $84:DF87`, so the test made it calculate them), Wrath's with the condition forced.
+Vantage needs a counter at range 1 with low HP and hasn't been seen in a battle yet.
+
+The **Watch in battle** for a skill freezes `$7E:4F85-4F8A` to `FE nn 35 20 FF FF` from frame 25000:
+the game writes the Prologue battle's list (`35 20 FF FF`) at frame 25193, before the other freezes
+(25200) start.
 
 ## Battle preview (PC port 0.9)
 

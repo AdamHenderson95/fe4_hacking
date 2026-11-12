@@ -176,6 +176,93 @@ def build(rom, rows, n_effects):
     return at
 
 
+# ---- skills the game doesn't announce: add the event where they take effect ----
+# (site file offset, original bytes, what to put there: 'jsl' + padding)
+ENGINE = {
+    # Adept: $84:E2E2 JSL $84EF9C (the Speed% roll for a second strike); BCS $E2ED = no
+    5: (0x04E2E2, bytes.fromhex('229cef84'), 'adept'),
+    # Vantage: $84:E23F LDA $12,X; LSR; CMP $10,X; BCC +2; SEC; RTS (HP <= half -> strike first)
+    17: (0x04E23F, bytes.fromhex('bd12004add1000900238 60'.replace(' ', '')), 'vantage'),
+    # Wrath: $84:E67F LDA #100; STA $38,X (crit 100 when HP <= half), once per strike
+    3: (0x04E67F, bytes.fromhex('a964009d3800'), 'wrath'),
+}
+ENGINE_NAMES = {5: 'Adept', 17: 'Vantage', 3: 'Wrath'}
+
+
+def _push(a):
+    # A = skill number -> event FE nn in the battle's list ($82:E465); X, Y and P kept
+    a.label('push')
+    a.op('php')
+    a.op('phx')
+    a.op('phy')
+    a.op('xba')
+    a.op('ora', '#', 0x00FE)
+    a.op('sta', 'abs', 0x054A)
+    a.op('lda', '#', 0x7E00)
+    a.op('sta', 'abs', 0x055D)
+    a.op('lda', '#', 0x4F81)
+    a.op('sta', 'abs', 0x055C)
+    a.op('jsl', 'long', 0x82E465)
+    a.op('ply')
+    a.op('plx')
+    a.op('plp')
+    a.op('rts')
+
+
+def build_engine(rom, skills):
+    """Make Adept, Vantage and Wrath (those in skills) add their event when they take effect."""
+    if not skills:
+        return
+    region = FX.region_for(rom)
+    a = Asm(region.cur)
+    _push(a)
+    if 5 in skills:
+        a.label('adept')
+        a.op('jsl', 'long', 0x84EF9C)              # the roll: carry clear = a second strike
+        a.op('bcs', 'rel', 'adept_no')
+        a.op('lda', '#', 5)
+        a.op('jsr', 'abs', 'push')
+        a.op('clc')
+        a.op('rtl')
+        a.label('adept_no')
+        a.op('sec')
+        a.op('rtl')
+    if 17 in skills:
+        a.label('vantage')
+        a.op('lda', 'abs,x', 0x0012)
+        a.op('lsr')
+        a.op('cmp', 'abs,x', 0x0010)
+        a.op('bcc', 'rel', 'van_no')
+        a.op('cpx', '#', 0x4F15)                   # only when it makes the defender strike first
+        a.op('bne', 'rel', 'van_yes')
+        a.op('lda', '#', 17)
+        a.op('jsr', 'abs', 'push')
+        a.label('van_yes')
+        a.op('sec')
+        a.op('rtl')
+        a.label('van_no')
+        a.op('clc')
+        a.op('rtl')
+    if 3 in skills:
+        a.label('wrath')
+        a.op('lda', '#', 100)
+        a.op('sta', 'abs,x', 0x0038)
+        a.op('lda', '#', 3)
+        a.op('jsr', 'abs', 'push')
+        a.op('rtl')
+    code = a.assemble()
+    region.put(code)
+    for sid in skills:
+        site, orig, label = ENGINE[sid]
+        if bytes(rom[site:site + len(orig)]) != orig:
+            raise SystemExit(f'skill animations: this ROM\'s battle code is different where {ENGINE_NAMES[sid]} works')
+        target = a.labels[label]
+        patch = bytes([0x22]) + target.to_bytes(3, 'little')
+        if sid == 17:
+            patch += b'\x60'                       # RTS: carry from the hook
+        rom[site:site + len(orig)] = patch + b'\xea' * (len(orig) - len(patch))
+
+
 def apply(rom, proj, n_effects):
     """skill_anims.csv -> the table hook (only when it differs from the game) and the kit's new skills'
     animation bytes (a new skill with its own row plays that row)."""
@@ -197,5 +284,6 @@ def apply(rom, proj, n_effects):
     if full == game:
         return news
     build(rom, full, n_effects)
+    build_engine(rom, [k for k in ENGINE if k in rows and rows[k][0] is not None])
     print(f'skill animations: {len(rows)} row(s)')
     return 1 + news

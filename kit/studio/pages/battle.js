@@ -407,7 +407,7 @@ export async function battlePage(root) {
     if (!SA) { list.replaceChildren(h('p', { class: 'hint' }, 'Reading…')); try { await loadSkills(); } catch (e) { list.replaceChildren(h('p', { class: 'hint' }, e.message)); return; } }
     if (st.skill == null || !SA.skills.some(x => x.skill === st.skill)) st.skill = SA.skills[0]?.skill;
     list.replaceChildren(...SA.skills.map(x => h('button', { 'aria-pressed': String(x.skill === st.skill), onclick: () => { st.skill = x.skill; remember(); drawSkillList(); drawSkillAnim(); } },
-      h('span', {}, x.name, x.kind === 'new' ? h('span', { class: 'sfxnew' }, 'new skill') : null),
+      h('span', {}, x.name, x.kind === 'new' ? h('span', { class: 'sfxnew' }, 'new skill') : x.kind === 'engine' && x.effect == null ? h('span', { class: 'sub' }, ' (none yet)') : null),
       h('span', { class: 'sub' }, (x.effect == null ? 'no animation' : (SA.effects.find(e => e[0] === x.effect)?.[1] || `effect ${x.effect}`)) + (x.edited ? ' ✎' : '')))));
   }
   async function drawSkillAnim() {
@@ -421,7 +421,7 @@ export async function battlePage(root) {
         SA = null; await refreshSession(); await loadSkills(); drawSkillList(); drawSkillAnim(); if (msg) toast(msg); } catch (e) { toast(e.message, true); }
     };
     const effSel = h('select', { class: 'in', 'aria-label': 'Animation' },
-      x.kind === 'new' ? h('option', { value: '', selected: x.effect == null }, 'Nothing') : null,
+      x.kind !== 'game' ? h('option', { value: '', selected: x.effect == null }, 'Nothing') : null,
       SA.effects.map(([k, n]) => h('option', { value: k, selected: k === x.effect }, n)));
     effSel.onchange = () => save({ effect: effSel.value === '' ? null : Number(effSel.value) }, 'Animation changed');
     const reaSel = h('select', { class: 'in', 'aria-label': 'Reaction when hit' }, SA.reactions.map(([k, n]) => h('option', { value: k, selected: k === x.reaction }, n)));
@@ -438,11 +438,15 @@ export async function battlePage(root) {
     const makeNew = h('button', { class: 'btn btn-line', type: 'button', disabled: x.effect == null, onclick: async () => {
       try { const res = await api('spelleffect', { new: x.effect, name: `${x.name} sparkle` }); await save({ effect: res.id }, `Made "${x.name} sparkle": its pictures, colours and steps are its own. Edit them under Spell pictures.`); }
       catch (e) { toast(e.message, true); } } }, 'Make it its own sparkle');
+    const watchSk = h('button', { class: 'btn btn-gilt', type: 'button', disabled: x.effect == null, title: 'Opens the PC port on a copy of your ROM: the Prologue battle where Gandolf attacks Midir, with this skill activating at the start', onclick: async () => {
+      try { await watchJob(await api('skillpreview', { skill: x.skill }), () => toast('The PC port is opening: it plays up to the battle at full speed, then shows the skill activating again and again until you close it.')); }
+      catch (e) { toast(e.message, true); } } }, 'Watch in battle');
     const editIt = h('button', { class: 'btn btn-line', type: 'button', disabled: x.effect == null, onclick: () => { st.view = 'spellgfx'; st.spell = x.effect; remember(); drawViewBar(); drawList(); drawDetail(); } }, 'Edit its pictures and steps');
     detail.replaceChildren(h('div', { class: 'sheet basheet' },
-      h('div', { class: 'sheet-head' }, h('h2', {}, x.name), h('p', { class: 'sub' }, x.kind === 'game' ? `Skill ${x.skill} · the game's` : `Skill ${x.skill} · ${x.effect_kind.replace(/_/g, ' ')}`)),
+      h('div', { class: 'sheet-head' }, h('h2', {}, x.name), h('p', { class: 'sub' }, x.kind === 'new' ? `Skill ${x.skill} · ${x.effect_kind.replace(/_/g, ' ')}` : `Skill ${x.skill} · the game's`)),
       h('div', { class: 'sfxhead' },
-        h('p', { class: 'hint' }, x.kind === 'new' ? `${x.about}. ${x.borrows ? `Out of the box it shows ${x.borrows}'s sparkle.` : 'Out of the box it shows no animation.'}` :
+        h('p', { class: 'hint' }, x.kind === 'engine' ? `${x.about}. The game shows nothing for it; pick an animation to give it one.` :
+          x.kind === 'new' ? `${x.about}. ${x.borrows ? `Out of the box it shows ${x.borrows}'s sparkle.` : 'Out of the box it shows no animation.'}` :
           `What plays when ${x.name} activates. The colours are the sparkle's own (5 colours); the animation decides the shapes, sounds and timing.`)),
       h('div', { class: 'baredraw' },
         h('div', { class: 'itgrid wide' },
@@ -451,7 +455,7 @@ export async function battlePage(root) {
         h('h3', {}, 'Sparkle colours', x.edited ? ' ✎' : ''),
         sw,
         h('div', { class: 'sfxsliders' }, sl('Hue', -180, 180, 0, v => { hue = v; }), sl('Saturation', 0, 200, 100, v => { sat = v / 100; }), sl('Brightness', -50, 50, 0, v => { lit = v / 100; })),
-        h('div', { class: 'sfxbtns' }, apply, makeNew, editIt,
+        h('div', { class: 'sfxbtns' }, apply, watchSk, makeNew, editIt,
           x.edited ? h('button', { class: 'btn btn-line', type: 'button', onclick: async () => {
             try { await api('skillanimset', { skill: x.skill, reset: true }); SA = null; await refreshSession(); await loadSkills(); drawSkillList(); drawSkillAnim(); toast('Back to the game\'s (Undo brings yours back)'); } catch (e) { toast(e.message, true); } } }, 'Use the game\'s') : null)),
       h('p', { class: 'hint' }, 'A sparkle shared by several skills (Luna\'s is borrowed by most new attack skills) changes for all of them; "Make it its own sparkle" gives this skill a copy whose pictures, colours and steps you can change under Spell pictures. The new skills come from the Skills page (later games\' skills such as Aether, Lethality or Great Shield).')));
