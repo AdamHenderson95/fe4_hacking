@@ -38,6 +38,7 @@ import fe4maps                     # noqa: E402
 import fe4events                   # noqa: E402
 import fe4locations                # noqa: E402
 import fe4sprites                  # noqa: E402
+import fe4walk                     # noqa: E402
 import fe4maptiles                 # noqa: E402
 import fe4battle                  # noqa: E402
 import fe4spellfx                  # noqa: E402
@@ -45,7 +46,7 @@ import fe4skillanim                # noqa: E402
 from fe4project import Project, load_settings, save_settings   # noqa: E402
 
 APP = 'Builder of the Holy War'
-VERSION = '41'
+VERSION = '42'
 STATIC = os.path.join(KIT, 'studio')
 
 # ---------------------------------------------------------------- state
@@ -471,6 +472,16 @@ class Handler(BaseHTTPRequestHandler):
             # ?c=<version> URLs (the Portraits page) change whenever the picture does, so they can be cached
             return (self._send(200, data, 'image/png', cache='c' in parse_qs(u.query)) if data
                     else self._send(404, 'no'))
+        if path.startswith('/gfx/walk/'):
+            q = parse_qs(u.query)
+            try:
+                sid = fe4sprites.parse_sprite(path.rsplit('/', 1)[1].split('.')[0])
+                army = int(q.get('a', ['0'])[0])
+                scale = max(1, min(int(q.get('s', ['1'])[0]), 8))
+                data = walk_image(sid, army, scale, indexed=path.endswith('.idx.png'))
+            except ValueError:
+                return self._send(404, 'no')
+            return (self._send(200, data, 'image/png', cache='c' in q) if data else self._send(404, 'no'))
         if path.startswith('/gfx/sprite/'):
             q = parse_qs(u.query)
             try:
@@ -3119,6 +3130,60 @@ def sprite_image(sid, army, scale, indexed=False):
     return fe4sprites.rows_png(rows, pal, scale)
 
 
+_walk_cache = {}
+
+
+def walk_rows(sid):
+    """Index rows of a sprite's walking set: the project's drawing if it has one, else the ROM's."""
+    rom = rom_data()
+    if rom is None:
+        return None
+    p = project()
+    data = p.blob(fe4walk.walk_file(sid)).data if p else None
+    if data is not None:
+        return fe4walk.rows_from_png(sid, data, fe4sprites.palette(rom, 0))
+    key = (id(rom), len(rom), sid)
+    if key not in _walk_cache:
+        if len(_walk_cache) > 200:
+            _walk_cache.clear()
+        _walk_cache[key] = fe4walk.set_rows(rom, sid)
+    return _walk_cache[key]
+
+
+def walk_image(sid, army, scale, indexed=False):
+    rom = rom_data()
+    rows = walk_rows(sid)
+    if rows is None:
+        return None
+    if indexed:
+        return fe4sprites.indexed_sheet_png(rows, fe4sprites.palette(rom, 0))
+    offs = dict(fe4sprites.ARMIES)
+    pal = fe4sprites.palette(rom, list(offs.values())[army] if 0 <= army < len(offs) else 0)
+    return fe4sprites.rows_png(rows, pal, scale)
+
+
+def api_mapwalk(b, q):
+    """Replace a sprite's walking pictures with a PNG (base64), or {reset: true}."""
+    import base64
+    p = need_project()
+    rom = rom_data()
+    if rom is None:
+        raise ValueError('Choose your FE4 ROM on the Project page first.')
+    sid = fe4sprites.parse_sprite(str(b['name']))
+    rel = fe4walk.walk_file(sid)
+    if b.get('reset'):
+        p.set_blob(rel, None)
+        return {'ok': True}
+    try:
+        rows = fe4walk.rows_from_png(sid, base64.b64decode(b['png']), fe4sprites.palette(rom, 0))
+    except ValueError as e:
+        raise ValueError(str(e))
+    except Exception:          # noqa: BLE001
+        raise ValueError('That file could not be read as a PNG picture.')
+    p.set_blob(rel, fe4sprites.indexed_sheet_png(rows, fe4sprites.palette(rom, 0)))
+    return {'ok': True}
+
+
 def api_mapsprites(b, q):
     p = need_project()
     t = p.table('map_sprites')
@@ -3136,13 +3201,17 @@ def api_mapsprites(b, q):
         if e['name'] not in users[r['sprite'].upper()]:
             users[r['sprite'].upper()].append(e['name'])
     sprites = []
+    rom = rom_data()
     for sid in fe4sprites.all_ids():
         nm = fe4sprites.sprite_name(sid)
         data = p.blob(fe4sprites.sprite_file(sid)).data
+        walk = p.blob(fe4walk.walk_file(sid)).data
         sprites.append({'name': nm, 'tall': fe4sprites.is_tall(sid), 'users': users.get(nm, []),
-                        'custom': data is not None, 'ver': '%08x' % zlib.crc32(data) if data is not None else 'rom'})
+                        'custom': data is not None, 'ver': '%08x' % zlib.crc32(data) if data is not None else 'rom',
+                        'walkCustom': walk is not None, 'walkVer': '%08x' % zlib.crc32(walk) if walk is not None else 'rom',
+                        'offsets': fe4walk.offsets(rom, sid) if rom is not None else None})
     return {'classes': [classes[k] for k in sorted(classes)], 'sprites': sprites,
-            'armies': [a for a, _ in fe4sprites.ARMIES]}
+            'armies': [a for a, _ in fe4sprites.ARMIES], 'dirs': list(fe4walk.DIRS)}
 
 
 def api_mapsprite(b, q):
@@ -3589,7 +3658,7 @@ API = {('GET', 'session'): api_session, ('POST', 'ping'): api_ping, ('GET', 'tab
        ('GET', 'chapters'): api_chapters, ('GET', 'scene'): api_scene, ('POST', 'messages'): api_messages,
        ('POST', 'msg'): api_msg, ('POST', 'evtcmd'): api_evtcmd, ('GET', 'dsearch'): api_dsearch, ('GET', 'villages'): api_villages, ('GET', 'itemuse'): api_itemuse, ('POST', 'newevent'): api_newevent, ('POST', 'talkmenu'): api_talkmenu, ('POST', 'delstep'): api_delstep,
        ('POST', 'addstep'): api_addstep, ('GET', 'eventinfo'): api_eventinfo, ('GET', 'maps'): api_maps, ('GET', 'map'): api_map, ('POST', 'paint'): api_paint,
-       ('GET', 'armies'): api_armies, ('GET', 'portraits'): api_portraits, ('GET', 'mapsprites'): api_mapsprites, ('GET', 'skills'): api_skills, ('POST', 'gen2check'): api_gen2check, ('POST', 'newchild'): api_newchild, ('POST', 'skillcheck'): api_skillcheck, ('POST', 'skilledit'): api_skilledit, ('POST', 'spriteentry'): api_spriteentry, ('GET', 'tileinfo'): api_tileinfo, ('POST', 'tiledraw'): api_tiledraw, ('POST', 'mapsprite'): api_mapsprite, ('POST', 'portrait'): api_portrait, ('POST', 'aicmd'): api_aicmd, ('POST', 'airecipe'): api_airecipe}
+       ('GET', 'armies'): api_armies, ('GET', 'portraits'): api_portraits, ('GET', 'mapsprites'): api_mapsprites, ('GET', 'skills'): api_skills, ('POST', 'gen2check'): api_gen2check, ('POST', 'newchild'): api_newchild, ('POST', 'skillcheck'): api_skillcheck, ('POST', 'skilledit'): api_skilledit, ('POST', 'spriteentry'): api_spriteentry, ('GET', 'tileinfo'): api_tileinfo, ('POST', 'tiledraw'): api_tiledraw, ('POST', 'mapsprite'): api_mapsprite, ('POST', 'mapwalk'): api_mapwalk, ('POST', 'portrait'): api_portrait, ('POST', 'aicmd'): api_aicmd, ('POST', 'airecipe'): api_airecipe}
 
 
 # ---------------------------------------------------------------- window

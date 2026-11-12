@@ -20,6 +20,7 @@ import fe4maps as MP
 import fe4locations as LOC
 import fe4gfx as GFX
 import fe4sprites as SPR
+import fe4walk as WK
 import fe4battle as BA
 import fe4spellfx as SFX
 import fe4skillanim as SA
@@ -378,6 +379,7 @@ def build(rom_path, proj, out_path, ips=None, hover=False):
     n += MT.apply(rom, proj, far)
     n += GFX.apply_portraits(rom, os.path.join(proj, 'portraits'), far)
     n += SPR.apply(rom, proj, space)
+    n += WK.apply(rom, proj, far)
     n += BA.apply(rom, proj)
     n += SFX.apply_all(rom, proj, far)        # first: new effects add spell numbers
     n += SA.apply(rom, proj, SFX.spell_count(rom))

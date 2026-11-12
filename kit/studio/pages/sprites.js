@@ -14,6 +14,13 @@ setInterval(() => {
   tick++;
   for (const c of sprites) { if (!c.isConnected) { sprites.delete(c); continue; } c._draw(); }
 }, 220);
+// walking steps change faster (the map shows a step about every 8 frames)
+const walkers = new Set();
+let walkTick = 0;
+setInterval(() => {
+  walkTick++;
+  for (const c of walkers) { if (!c.isConnected) { walkers.delete(c); continue; } c._draw(); }
+}, 140);
 
 export async function spritesPage(root) {
   await loadTables(['map_sprites']);
@@ -70,6 +77,76 @@ export async function spritesPage(root) {
     return g[0].toUpperCase() + g.slice(1);
   }
 
+  // walking: one canvas per direction, steps 0 1 2 3, with the game's per-step offset for tall sprites
+  const walkUrl = (name, scale) => `/gfx/walk/${name}.png?a=${st.army}&s=${scale}&c=${info(name)?.walkVer || 'rom'}-${st.k}`;
+  function walker(name, dir, scale) {
+    const s = info(name);
+    const w = s.tall ? 32 : 24, hh = w;
+    const ys = (s.offsets || []).flat().map(o => o[1]);
+    const lo = ys.length ? Math.min(...ys) : 0, pad = ys.length ? Math.max(...ys) - lo : 0;
+    const label = D.dirs?.[dir] || '';
+    const c = h('canvas', { class: 'spwalk', width: w * scale, height: (hh + pad) * scale, role: 'img', 'aria-label': `${name} walking ${label}` });
+    const im = new Image();
+    im.src = walkUrl(name, scale);
+    const ctx = c.getContext('2d');
+    c._draw = () => {
+      if (!im.complete || !im.naturalWidth) return;
+      const f = walkTick % 4;
+      const [dx, dy] = s.offsets?.[dir]?.[f] || [0, 0];
+      ctx.clearRect(0, 0, c.width, c.height);
+      ctx.drawImage(im, f * w * scale, dir * hh * scale, w * scale, hh * scale, dx * scale, (dy - lo) * scale, w * scale, hh * scale);
+    };
+    im.onload = () => c._draw();
+    walkers.add(c);
+    return c;
+  }
+
+  function walkingSection(name) {
+    const s = info(name);
+    const w = s.tall ? 32 : 24;
+    const sec = h('section', { class: 'arsec spwalksec' }, h('h3', {}, `Walking ${name} `, h('small', {}, `four ${w} × ${w} steps for each direction`)));
+    const big = h('img', { class: 'spwalksheet', src: walkUrl(name, 3), alt: `Walking pictures of ${name}: left, right, up and down`, width: 4 * w * 3, height: 4 * w * 3 });
+    const labels = h('div', { class: 'spwalklabels', style: `height:${4 * w * 3}px` }, ...(D.dirs || []).map(d => h('span', {}, d)));
+    const file = h('input', { type: 'file', accept: 'image/png,image/*', hidden: true });
+    file.onchange = async () => { const f = file.files[0]; file.value = ''; if (f) importWalk(s, f); };
+    sec.append(h('div', { class: 'spdrawrow' }, h('div', { class: 'spwalkgrid' }, labels, big),
+      h('div', { class: 'spwalkers' }, ...(D.dirs || []).map((d, i) => h('figure', {}, walker(name, i, 3), h('figcaption', {}, d))))),
+      h('div', { class: 'ptactions' },
+        h('button', { class: 'btn btn-gilt', onclick: () => file.click() }, 'Replace walking pictures…'),
+        h('a', { class: 'btn btn-line', href: `/gfx/walk/${name}.idx.png?c=${s.walkVer}-${st.k}`, download: `walk_${name}.png` }, 'Download PNG'),
+        s.walkCustom ? h('button', { class: 'btn btn-line danger', onclick: () => sendWalk({ name, reset: true }, 'Back to the game\'s walking pictures') }, 'Use the original') : null, file),
+      h('p', { class: 'hint' }, `What the unit looks like while it moves, and while you have it picked up. The picture is ${4 * w} × ${4 * w} pixels: `,
+        `the four steps across, and left, right, up and down from the top (2× to 4× bigger works too). Same colours as the drawing above.`,
+        s.tall ? ' Mounted and flying units also bob by a few pixels per step, as the game does; the walkers here show that.' : ''));
+    return sec;
+  }
+
+  async function sendWalk(body, msg) {
+    try { await api('mapwalk', body); await reload(); toast(msg); } catch (e) { toast(e.message, true); }
+  }
+
+  function importWalk(s, f) {
+    const w = 4 * (s.tall ? 32 : 24), hh = w;
+    const u = URL.createObjectURL(f);
+    const im = new Image();
+    im.onerror = () => { URL.revokeObjectURL(u); toast('That file isn\'t a picture the browser can open.', true); };
+    im.onload = () => {
+      URL.revokeObjectURL(u);
+      const k = im.width / w;
+      if (!Number.isInteger(k) || k < 1 || k > 8 || im.height !== hh * k) {
+        toast(`Walking pictures for ${s.name} are ${w} × ${hh} pixels (or 2×, 3×, 4× that); the picture is ${im.width} × ${im.height}.`, true);
+        return;
+      }
+      const c = document.createElement('canvas');
+      c.width = w; c.height = hh;
+      const ctx = c.getContext('2d');
+      ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(im, 0, 0, w, hh);
+      sendWalk({ name: s.name, png: c.toDataURL('image/png').split(',')[1] }, `${s.name}: new walking pictures (Ctrl+Z undoes it)`);
+    };
+    im.src = u;
+  }
+
   function drawDetail() {
     detail.replaceChildren();
     const c = D.classes.find(x => x.c === st.sel) || D.classes[0];
@@ -84,12 +161,14 @@ export async function spritesPage(root) {
         h('div', {}, h('b', {}, entryLabel(e)), h('div', { class: 'sub' }, `${e.sprite} · ${s?.tall ? 'tall (mounted / flying)' : 'on foot'}${s?.custom ? ' · redrawn' : ''}`),
           h('div', { class: 'spbtns' }, h('button', { class: 'btn btn-line', onclick: () => picker(e) }, 'Use another sprite…'),
             h('button', { class: 'btn btn-line', onclick: () => drawing(e.sprite) }, 'Edit drawing'),
+            h('button', { class: 'btn btn-line', onclick: () => drawing(e.sprite, '.spwalksec') }, 'Edit walking'),
             e.gender !== 'default' ? h('button', { class: 'btn btn-line danger', title: 'Remove this row: these units use the next one that fits',
               onclick: () => entry({ row: e.row }, `Removed the row for ${entryLabel(e)}`) }, 'Remove') : null))));
     }
     rows.append(addRow(c));
     sheet.append(rows);
-    sheet.append(drawingSection(st.drawing && c.entries.some(e => e.sprite === st.drawing) ? st.drawing : c.entries[c.entries.length - 1].sprite));
+    const shown = st.drawing && c.entries.some(e => e.sprite === st.drawing) ? st.drawing : c.entries[c.entries.length - 1].sprite;
+    sheet.append(drawingSection(shown), walkingSection(shown));
     detail.append(sheet);
   }
 
@@ -117,7 +196,7 @@ export async function spritesPage(root) {
     try { await api('spriteentry', body); await loadTables(['map_sprites'], true); await reload(); toast(msg); } catch (e) { toast(e.message, true); }
   }
 
-  function drawing(name) { st.drawing = name; drawDetail(); detail.querySelector('.spdraw')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+  function drawing(name, where = '.spdraw') { st.drawing = name; drawDetail(); detail.querySelector(where)?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
 
   function drawingSection(name) {
     const s = info(name);

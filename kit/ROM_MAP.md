@@ -429,6 +429,29 @@ and 785 messages, with every script decoded to its end.
   on the Prologue map; a new drawing for small sprite 6 replaces the Verdane
   axe fighters (in enemy colours).
 
+## Walking pictures (v42)
+
+Found by moving Sigurd (tall sprite 10) and picking up Arden (small sprite 5) in the Prologue.
+
+- **Sets:** `$88:D365` ptr24 x 63 (small sprites 0-62), `$88:D428` ptr24 x 31 (tall 0-30), one per map
+  sprite, compressed (`$80:AA02` format; small sets unpack to `$1400` bytes, tall to `$2000`). When a unit
+  is picked up, `$88:C9C0` (small) / `$88:C9F4` (tall) unpack its set to `$7E:AB88`.
+- **Order:** 4 directions x 4 steps: left, right, up, down. `$07E2` = 0, 8, `$10`, `$18` from the d-pad
+  bits `$0200`, `$0100`, `$0800`, `$0400` (`$88:AA30`); the step `$07DC` counts 0 1 2 3 (`$88:C90C`).
+  The picked-up unit plays the same frames in place.
+- **Small** (24 x 24, `$140` bytes = 10 tiles): `$88:CA80` sends `$A0` bytes to VRAM `$6200` and `$A0` to
+  `$6300` (OBJ tiles `$20-$24`, `$30-$34`). Sprite record `$88:CC5F`: 16x16 `$20` at (0,0), 16x16 `$22`
+  at (8,8) in front, 8x8 `$24` at (16,0), 8x8 `$34` at (0,16), so the 8x8 cells are
+  `20 21 24 / 30 22 23 / 34 32 33`; tile `$31` (behind `$22`) is a copy of `$22` in every set. The frame
+  is centred on the unit's tile with its bottom on the tile's bottom.
+- **Tall** (32 x 32, `$200` bytes = 16 tiles): `$88:CB43`, `$100` bytes to `$6200` and `$100` to `$6300`.
+  Record `$88:CC49`: 16x16 `$20 $22 / $24 $26`. Per-step offsets: `$88:D488` word per tall sprite ->
+  offset into `$88:D4C6`, pairs of signed bytes (x, y) at offset + 2 x step + direction (`$88:C939`).
+  Three sets: `+$00` (y 8 for every step), `+$20` (sprites 0, 12, 16, 25-27), `+$40` (2, 17, 18; the
+  flyers' bob 0 3 10 7 left and right).
+- The kit writes a redrawn set compressed into the free banks `$70-$7D` and changes only its pointer.
+  Verified: Sigurd's set recoloured walks left and down in the new colours.
+
 ## Battle animations (v32)
 
 Found by watching a Prologue battle (Gandolf vs Midir) in the emulator: DMA log, RAM writes, traces.

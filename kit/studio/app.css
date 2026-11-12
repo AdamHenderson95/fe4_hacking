@@ -538,6 +538,13 @@ textarea.fe4box.bad { border-color: #E1606F; }
 .spdrawrow { display: flex; align-items: flex-end; gap: 22px; flex-wrap: wrap; margin: 8px 0; }
 .spframes { image-rendering: pixelated; background: #5E8F4A; border-radius: var(--r-sm); }
 .spanimbig { background: #5E8F4A; border-radius: var(--r-sm); padding: 6px; }
+.spwalkgrid { display: flex; gap: 8px; align-items: stretch; }
+.spwalklabels { display: flex; flex-direction: column; justify-content: space-around; font-size: 12px; color: var(--muted); text-align: right; }
+.spwalksheet { image-rendering: pixelated; background: #5E8F4A; border-radius: var(--r-sm); max-width: 100%; height: auto; }
+.spwalkers { display: flex; gap: 10px; flex-wrap: wrap; }
+.spwalkers figure { margin: 0; display: flex; flex-direction: column; align-items: center; gap: 4px; background: #5E8F4A; border-radius: var(--r-sm); padding: 6px; }
+.spwalkers figcaption { font-size: 12px; color: #fff; }
+.spwalk { image-rendering: pixelated; display: block; }
 .spmodal { width: min(980px, 100%); max-height: 90vh; overflow: auto; }
 .spmodal h4 { margin: 14px 0 6px; font-size: 14px; }
 .spgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(58px, 1fr)); gap: 6px; }

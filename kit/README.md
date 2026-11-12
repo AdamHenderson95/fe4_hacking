@@ -203,6 +203,14 @@ default browser). The editor runs on your PC only: nothing is sent anywhere.
      mounted; 2× to 4× bigger also works); colours become the nearest of the
      map palette, so every army recolours it. **Download PNG** gives the
      current drawing to edit. Classes that share a sprite all change.
+   - **Edit walking** shows what the unit looks like while it moves (and
+     while you have it picked up): four steps for each direction, with a
+     walker per direction playing them. **Replace walking pictures…** takes
+     one PNG with the steps across and left, right, up and down from the top
+     (96 × 96 on foot, four 24 × 24 frames per row; 128 × 128 mounted or
+     flying, 32 × 32 frames; 2× to 4× bigger also works), in the same
+     colours as the drawing. **Download PNG** gives the current pictures to
+     start from; **Use the original** goes back.
 12. Changes are checked as you type (a value out of range turns red and
    says why). **Undo / Redo** (Ctrl+Z / Ctrl+Y) cover every change (a whole
    paint stroke or fill is one step); **Save** (Ctrl+S) writes the project
@@ -420,6 +428,7 @@ runs this randomizer from its own menu (Mods → Randomizer).
 | `maps/tiles/<map>/tNNN.png` | – | Your own drawings for a chapter's tile NNN (0–255), 16 × 16 or bigger pixel art; only redrawn ones exist |
 | `map_sprites.csv` | 119 | Which map sprite each class uses (`S0`–`S62` on foot, `T0`–`T30` mounted/flying), with the per-gender and per-character rows; a class's last row is `default`, and a class can have up to 30 rows |
 | `sprites/sNN.png`, `sprites/tNN.png` | – | Your own drawings for map sprites (48 × 16 or 48 × 24, the map palette's colours); only replaced ones exist |
+| `sprites/walk_sNN.png`, `sprites/walk_tNN.png` | – | Your own walking pictures for map sprites (96 × 96 or 128 × 128: four steps across; left, right, up, down from the top); only replaced ones exist |
 | `portraits/pNNN.png` | – | Your own pictures for portrait NNN (80 × 64 sheet or 48 × 64 face, 15 colours + transparency); only replaced ones exist |
 | `armies.csv` | 72 | Every army: name, member units, castles it holds |
 | `ai_orders.evt` | 737 | Enemy AI programs: which castle to seize, which turn to march, what to attack |
