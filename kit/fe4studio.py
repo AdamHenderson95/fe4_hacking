@@ -48,7 +48,7 @@ import fe4skillanim                # noqa: E402
 from fe4project import Project, load_settings, save_settings   # noqa: E402
 
 APP = 'Builder of the Holy War'
-VERSION = '47'
+VERSION = '48'
 STATIC = os.path.join(KIT, 'studio')
 
 # ---------------------------------------------------------------- state
@@ -437,7 +437,15 @@ def check_value(table, field, value):
 TOKEN = secrets.token_urlsafe(16)
 
 
+class Server(ThreadingHTTPServer):
+    # The page loads a dozen scripts at once.  Windows refuses connections past the listen queue (5 by
+    # default) instead of letting them wait, which left the editor blank on some PCs (kit v47).
+    request_queue_size = 128
+    daemon_threads = True
+
+
 class Handler(BaseHTTPRequestHandler):
+    protocol_version = 'HTTP/1.1'     # keep connections open: every reply carries Content-Length
     server_version = 'BuilderOfTheHolyWar/' + VERSION
 
     def log_message(self, fmt, *args):
@@ -4236,7 +4244,7 @@ def main_loop(win, httpd):
 
 def main():
     port = int(os.environ.get('FE4STUDIO_PORT', '0'))
-    httpd = ThreadingHTTPServer(('127.0.0.1', port), Handler)
+    httpd = Server(('127.0.0.1', port), Handler)
     port = httpd.server_address[1]
     url = f'http://127.0.0.1:{port}/#{TOKEN}'
     threading.Thread(target=httpd.serve_forever, daemon=True).start()
