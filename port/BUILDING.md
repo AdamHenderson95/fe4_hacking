@@ -4,6 +4,10 @@ Layout
 - `src/main.c` — frontend (SDL2): ROM discovery, translation cache, video/audio/input, saves.
 - `src/menu.cpp`, `src/menu.h` — the in-game menu (F1), built with Dear ImGui 1.91.5 (put it in
   `ext/imgui`); `src/font_roboto.inc` is the menu font (Roboto, Apache 2.0) as a compressed array.
+- `src/music.c`, `src/music.h` — custom music: an MSU-1 chip ($2000-$2007, hooked in `src/snes/snes.c`) playing
+  files from the music folder (OGG / FLAC / MP3 / WAV / MSU-1 PCM; decoders in `third_party/audio`:
+  stb_vorbis 1.24, dr_flac, dr_mp3, dr_wav, public domain / MIT-0). `src/fe4music_patch.h` (made by
+  `tools/music_patch.py`) hooks the game's song start ($80:968A) and fades ($80:8FD5); see ROM_MAP "Music".
 - `src/cheats.c` — Cheats menu: the player's units from the army lists in RAM (layout in the file header).
 - `src/padmap.h` — gamepad bindings (SDL button names, triggers as pseudo-buttons) shared by the frontend and menu.
 - Automatic speed-ups (main.c) read three RAM values after every frame: the text pointer `$186A`
@@ -40,7 +44,8 @@ make work/recomp work/lockstep work/fe4       # needs SDL2 dev files, ext/tcc-li
 
 Build (Windows, cross-compiled with mingw-w64)
 ```
-make win/FE4.exe     # needs ext/sdl2w (SDL2 mingw devel 2.30.9), ext/tccw (TinyCC built as libtcc.dll), ext/imgui
+make win/FE4.exe     # (music decoders are in third_party/audio)
+                     # needs ext/sdl2w (SDL2 mingw devel 2.30.9), ext/tccw (TinyCC built as libtcc.dll), ext/imgui
 ```
 
 Coverage workflow

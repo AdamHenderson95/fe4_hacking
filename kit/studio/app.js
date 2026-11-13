@@ -12,6 +12,7 @@ import { battlePage } from './pages/battle.js';
 import { skillsPage } from './pages/skills.js';
 import { lovePage } from './pages/love.js';
 import { soonPage } from './pages/soon.js';
+import { musicPage } from './pages/music.js';
 
 const TOKEN = location.hash.slice(1).split('/')[0] || sessionStorage.getItem('fe4studio-token') || '';
 try { sessionStorage.setItem('fe4studio-token', TOKEN); } catch (e) { /* storage may be off */ }
@@ -203,6 +204,7 @@ const PAGES = {
   portraits: { title: 'Portraits', make: portraitsPage, needsProject: true },
   sprites: { title: 'Map sprites', make: spritesPage, needsProject: true },
   battle: { title: 'Battle animations', make: battlePage, needsProject: true },
+  music: { title: 'Music', make: musicPage, needsProject: true },
 };
 
 async function show() {

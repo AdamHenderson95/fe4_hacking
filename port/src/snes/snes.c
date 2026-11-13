@@ -490,6 +490,9 @@ static void snes_writeReg(Snes* snes, uint16_t adr, uint8_t val) {
   }
 }
 
+uint8_t (*snes_msuRead)(uint16_t adr) = NULL;          // MSU-1 chip at $2000-$2007 (custom music)
+void (*snes_msuWrite)(uint16_t adr, uint8_t val) = NULL;
+
 static uint8_t snes_rread(Snes* snes, uint32_t adr) {
   uint8_t bank = adr >> 16;
   adr &= 0xffff;
@@ -499,6 +502,9 @@ static uint8_t snes_rread(Snes* snes, uint32_t adr) {
   if(bank < 0x40 || (bank >= 0x80 && bank < 0xc0)) {
     if(adr < 0x2000) {
       return snes->ram[adr]; // ram mirror
+    }
+    if(adr < 0x2008 && snes_msuRead) {
+      return snes_msuRead(adr);
     }
     if(adr >= 0x2100 && adr < 0x2200) {
       return snes_readBBus(snes, adr & 0xff); // B-bus
@@ -535,6 +541,9 @@ void snes_write(Snes* snes, uint32_t adr, uint8_t val) {
   if(bank < 0x40 || (bank >= 0x80 && bank < 0xc0)) {
     if(adr < 0x2000) {
       snes->ram[adr] = val; // ram mirror
+    }
+    if(adr >= 0x2000 && adr < 0x2008 && snes_msuWrite) {
+      snes_msuWrite(adr, val);
     }
     if(adr >= 0x2100 && adr < 0x2200) {
       snes_writeBBus(snes, adr & 0xff, val); // B-bus

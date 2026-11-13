@@ -726,3 +726,24 @@ textarea.fe4box.bad { border-color: #E1606F; }
 .batable thead th { position: sticky; top: 0; background: var(--vellum); font-size: 14px; color: var(--muted); }
 .batable .in { min-width: 180px; }
 .baspellhint { padding: 0 16px; }
+
+/* Music page */
+.mupage { display: grid; grid-template-rows: auto 1fr; height: 100%; min-height: 0; }
+.mutop { padding: 0 28px; background: var(--stone); }
+.mubody { overflow: auto; min-height: 0; }
+.musheet { padding: 18px 28px 60px; display: grid; gap: 18px; max-width: 1100px; }
+.musec { padding: 16px 22px 20px; max-width: none; }
+.musec h2 { margin: 0 0 6px; font-size: 18px; }
+.mutable { border-collapse: collapse; width: 100%; }
+.mutable th, .mutable td { text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+.mutable thead th { font-size: 13px; color: var(--muted); font-weight: 600; }
+.mutable tbody th { font-weight: 600; white-space: nowrap; }
+.musel { min-width: 260px; max-width: 100%; }
+.mudim { color: var(--muted); font-weight: 400; }
+.muuses { font-size: 13px; color: var(--muted); max-width: 52ch; }
+.munum { font-variant-numeric: tabular-nums; color: var(--verdigris); width: 4em; }
+.mufile { min-width: 300px; }
+.mufname { font-weight: 600; word-break: break-all; }
+.muaudio { display: block; width: 280px; height: 32px; margin: 6px 0; }
+.muacts { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px; }
+.muwarn { color: var(--blood); }

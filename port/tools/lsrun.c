@@ -9,6 +9,7 @@
 #include "snes.h"
 #include "ppu.h"
 #include "fe4wide.h"
+#include "music.h"
 #include "cart.h"
 #include "cpu.h"
 static uint32_t* wideBuf; static int wideOn;
@@ -72,18 +73,32 @@ static uint8_t* read_file(const char* path, int* len) {
 
 static uint32_t watchLo, watchHi; static int watching;
 static uint32_t lastRom;
+static int apuLog; static int apuFrame; static int msuOn; static uint8_t* touchMap; static const char* touchOut; static FILE* wavOut; static int wavFrom;
+static void touch(uint32_t adr) {
+  if(apuFrame < 300) return;
+  uint8_t bank = adr >> 16; uint32_t a = adr & 0xffff;
+  if(bank == 0x7e || bank == 0x7f) touchMap[((bank & 1) << 16) | a] = 1;
+  else if(((bank & 0x7f) < 0x40) && a < 0x2000) touchMap[a] = 1;
+}
+static void touch_w(Snes* s, uint32_t adr, uint8_t val) { (void)s; (void)val; touch(adr); }
+static void touch_r(Snes* s, uint32_t adr) { (void)s; touch(adr); }
 static void write_hook(Snes* s, uint32_t adr, uint8_t val) {
+  if(apuLog && ((adr >> 16) & 0x7f) < 0x40 && (adr & 0xfffc) == 0x2140)
+    printf("APU f=%d %04X=%02X pc=%02X:%04X src=%06X a=%04X x=%04X y=%04X\n", apuFrame, adr & 0xffff, val, s->cpu->k, s->cpu->pc, lastRom, s->cpu->a, s->cpu->x, s->cpu->y);
   if(!watching) return;
   uint8_t bank = adr >> 16; uint32_t a = adr & 0xffff, w;
   if(bank == 0x7e || bank == 0x7f) w = ((bank & 1) << 16) | a;
   else if(((bank & 0x7f) < 0x40) && a < 0x2000) w = a; else return;
   if(w >= watchLo && w <= watchHi) {
-    printf("W %05X=%02X src=%06X pc=%02X:%04X a=%04X x=%04X y=%04X dp=%04X db=%02X sp=%04X stk:", w, val, lastRom, s->cpu->k, s->cpu->pc, s->cpu->a, s->cpu->x, s->cpu->y, s->cpu->dp, s->cpu->db, s->cpu->sp);
+    printf("W f=%d %05X=%02X src=%06X pc=%02X:%04X a=%04X x=%04X y=%04X dp=%04X db=%02X sp=%04X stk:", apuFrame, w, val, lastRom, s->cpu->k, s->cpu->pc, s->cpu->a, s->cpu->x, s->cpu->y, s->cpu->dp, s->cpu->db, s->cpu->sp);
     for(int i = 1; i <= 24; i++) printf(" %02X", s->ram[(s->cpu->sp + i) & 0xffff]);
     printf("\n");
   }
 }
 static uint32_t rwLo, rwHi; static int rwFrame;
+static void dsp_log(uint8_t adr, uint8_t val) {
+  if((adr == 0x4c || adr == 0x5c) && val) printf("DSP f=%d %s %02X\n", apuFrame, adr == 0x4c ? "KON" : "KOF", val);
+}
 static void read_hook(Snes* s, uint32_t adr) {
   { uint8_t bk = adr >> 16; uint16_t a = adr & 0xffff; if(bk < 0x7e && (bk >= 0x40 || a >= 0x8000) && !(bk >= 0x80 && bk < 0xc0 && a < 0x8000) && !(bk == s->cpu->k && (uint16_t)(a - s->cpu->pc + 4) <= 8)) lastRom = adr; }
   if(!watching || !rwHi) return;
@@ -178,6 +193,11 @@ int main(int argc, char** argv) {
     else if(!strcmp(argv[i], "--freeze")) { frzAdr[nFrz] = strtol(argv[++i], NULL, 16); frzVal[nFrz++] = strtol(argv[++i], NULL, 16); snes_writeMap = freeze_map; }
     else if(!strcmp(argv[i], "--dma")) { dmaLo = atoi(argv[++i]); dmaHi = atoi(argv[++i]); dma_logHook = dma_log; }
     else if(!strcmp(argv[i], "--rwatch")) { rwLo = strtol(argv[++i], NULL, 16); rwHi = strtol(argv[++i], NULL, 16); snes_readHook = read_hook; }
+    else if(!strcmp(argv[i], "--touch")) { touchOut = argv[++i]; touchMap = calloc(1, 0x20000); snes_writeHook = touch_w; snes_readHook = touch_r; }
+    else if(!strcmp(argv[i], "--msu")) { music_init(argv[++i]); snes_msuRead = music_read; snes_msuWrite = music_write; msuOn = 1; }
+    else if(!strcmp(argv[i], "--dsp")) dsp_writeHook = dsp_log;
+    else if(!strcmp(argv[i], "--wav")) { wavOut = fopen(argv[++i], "wb"); wavFrom = atoi(argv[++i]); }
+    else if(!strcmp(argv[i], "--apu")) { apuLog = 1; snes_writeHook = write_hook; snes_readHook = read_hook; }
     else if(!strcmp(argv[i], "--watch")) { watchLo = strtol(argv[++i], NULL, 16); watchHi = strtol(argv[++i], NULL, 16); snes_writeHook = write_hook; snes_readHook = read_hook; }
     else { char* s = argv[i]; while(*s) { shots[nshots++] = strtol(s, &s, 10); if(*s == ',') s++; } }
   }
@@ -187,11 +207,19 @@ int main(int argc, char** argv) {
     for(int b = 0; b < 12; b++) snes_setButtonState(snes, 1, b, (m >> b) & 1);
     execOn = fr >= (getenv("EXECFROM") ? atoi(getenv("EXECFROM")) : 0);
     watching = fr >= (getenv("WATCHFROM") ? atoi(getenv("WATCHFROM")) : frames - 10);
-    rwFrame = fr; dmaFrame = fr; dmaOn = fr >= dmaLo && fr <= dmaHi;
+    rwFrame = fr; apuFrame = fr; dmaFrame = fr; dmaOn = fr >= dmaLo && fr <= dmaHi;
     frzOn = fr >= (getenv("FREEZEFROM") ? atoi(getenv("FREEZEFROM")) : 0);
     if(getenv("REGLOG")) { regLine = atoi(getenv("REGLOG")); regFrame = fr; ppu_lineHook = line_hook; }
     if(dumpPrefix && fr == frames - 1) { char p[512]; snprintf(p, sizeof p, "%s.lines", dumpPrefix); lineLog = fopen(p, "w"); ppu_lineHook = line_hook; }
     snes_runFrame(snes);
+    if(wavOut) { // 32040 Hz stereo s16, raw (convert with sox/ffmpeg)
+      static int16_t wb[4096 * 2]; int n = snes->apu->dsp->sampleCount; if(n > 4096) n = 4096;
+      snes_setSamples(snes, wb, n);
+      if(msuOn) { static int16_t mb[4096 * 2]; int m = n * 48000 / 32040; memset(mb, 0, m * 4); music_mix(mb, m, 100);
+        for(int k = 0; k < n; k++) { int j = k * m / n; int a = wb[2*k] + mb[2*j], b = wb[2*k+1] + mb[2*j+1];
+          wb[2*k] = a > 32767 ? 32767 : a < -32768 ? -32768 : a; wb[2*k+1] = b > 32767 ? 32767 : b < -32768 ? -32768 : b; } }
+      if(fr >= wavFrom) fwrite(wb, 4, n, wavOut);
+    }
     if(wideOn && getenv("OAMSTAT")) {
       static int maxUsed = 0, maxFrame = 0;
       int used = 0;
@@ -245,5 +273,6 @@ int main(int argc, char** argv) {
   if(ramOut) { FILE* f = fopen(ramOut, "wb"); fwrite(snes->ram, 1, 0x20000, f); fclose(f); }
   char p[512]; snprintf(p, sizeof p, "%s/last.ppm", outdir); write_ppm(snes, p);
   printf("frames=%d cycles=%llu pc=%02x:%04x\n", frames, (unsigned long long)snes->cycles, snes->cpu->k, snes->cpu->pc);
+  if(touchOut) { FILE* tf = fopen(touchOut, "wb"); fwrite(touchMap, 1, 0x20000, tf); fclose(tf); }
   return 0;
 }

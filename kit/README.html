@@ -383,7 +383,23 @@ default browser). The editor runs on your PC only: nothing is sent anywhere.
    colours alone. Saved
    in <code>map_spells.csv</code>, <code>map_palettes.csv</code>, <code>map_colour_words.csv</code>,
    <code>map_spell_block.csv</code> and <code>mapfx/</code>.
-15. On the Project page, <strong>Add unit stats to the map box</strong> puts the PC port's
+15. <strong>Music</strong> (kit v49), in two tabs:
+   - <strong>Where songs play</strong>: for each chapter, the song when its map first
+     starts and the song in your phase; for each enemy or other army (by the
+     name it shows on the map), the song in its phase. Pick any of the game's
+     160 songs from the list. Saved in <code>music.csv</code>.
+   - <strong>Songs &amp; your music</strong>: every song with what it is (map music, battle
+     music, other music) and where it plays. <strong>Use a music file…</strong> gives a
+     song your own music (.ogg, .flac, .mp3, .wav or an MSU-1 .pcm): the PC
+     port (0.10 or newer) plays it instead of the game's music, with the game's
+     sound effects on top, and <strong>Test play</strong> uses this project's files. Listen
+     to a file right there; <strong>Remove</strong> goes back to the game's music. The files
+     are kept in the project's <code>music</code> folder as <code>17.ogg</code> and so on; to share
+     them, players put them in the PC port's <code>music</code> folder. Loop points:
+     LOOPSTART / LOOPLENGTH tags in .ogg files, or a <code>.txt</code> with the same name
+     (<code>loop_start = 12.5</code> in seconds). To find a song's number, play in the PC
+     port: its menu (F1) &gt; Audio shows the song playing now.
+16. On the Project page, <strong>Add unit stats to the map box</strong> puts the PC port's
    MT / HIT / AS / AVO box into the ROMs and patches you build, so players
    on emulators get it too (the port can still switch it off).</p>
 <p>The <strong>classic editor</strong> (link on the Project page, or run
@@ -640,6 +656,16 @@ runs this randomizer from its own menu (Mods → Randomizer).</p>
 <td><code>map_spell_block.csv</code></td>
 <td>12</td>
 <td>Background colours of the spells that don't cycle (palette 6 then 7, colours 9-15)</td>
+</tr>
+<tr>
+<td><code>music.csv</code></td>
+<td>77</td>
+<td>Which song (1-160) plays when each chapter's map starts (<code>first</code>), in your phase (<code>phase</code>), and in each army's phase by its name number (<code>army</code>)</td>
+</tr>
+<tr>
+<td><code>music/NNN.ogg</code> (.flac, .mp3, .wav, .pcm)</td>
+<td>–</td>
+<td>Your own music for song NNN, played by the PC port (0.10+) instead of the game's</td>
 </tr>
 <tr>
 <td><code>mapfx/bgNN.png</code></td>

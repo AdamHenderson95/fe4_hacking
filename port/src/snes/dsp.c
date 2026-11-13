@@ -465,8 +465,10 @@ uint8_t dsp_read(Dsp* dsp, uint8_t adr) {
   return dsp->ram[adr];
 }
 
+void (*dsp_writeHook)(uint8_t adr, uint8_t val) = NULL; // debug
 void dsp_write(Dsp* dsp, uint8_t adr, uint8_t val) {
   int ch = adr >> 4;
+  if(dsp_writeHook) dsp_writeHook(adr, val);
   switch(adr) {
     case 0x00: case 0x10: case 0x20: case 0x30: case 0x40: case 0x50: case 0x60: case 0x70: {
       dsp->channel[ch].volumeL = val;

@@ -37,8 +37,10 @@
 #include "cheats.h"
 #include <utime.h>
 #include "kit.h"
+#include "music.h"
+#include "fe4music_patch.h"
 
-#define PORT_VERSION "0.9"
+#define PORT_VERSION "0.10"
 #define GAME_TITLE "Fire Emblem: Genealogy of the Holy War"
 #define NAGA_SHA1 "2b6eb74646a527ba293b0e004db3e0134a28dc6c"
 
@@ -49,6 +51,7 @@ static const char* BTN_DEFKEYS[12] = { "Z", "A", "Right Shift", "Return", "Up", 
 typedef struct {
   char rom[1024];
   int scale, fullscreen, aspect43, recompiled, volume, learn, vsync, linear, turbo, widescreen, hoverstats, mute, pauseInMenu, showFps;
+  int customMusic, musicVolume;   // music folder tracks on/off, their volume 0-100
   int ffText, ffBattle, ffEnemy, ffCursor;  // automatic speed-ups (1 = off)
   SDL_Keycode keys[12];
   int pad[PAD_BINDINGS];          // gamepad bindings (padmap.h)
@@ -63,7 +66,7 @@ static void trim(char* s) {
 
 static void config_defaults(void) {
   memset(&cfg, 0, sizeof cfg);
-  cfg.scale = 3; cfg.turbo = 4; cfg.ffText = cfg.ffBattle = cfg.ffEnemy = cfg.ffCursor = 1; cfg.widescreen = 1; cfg.hoverstats = 1; cfg.pauseInMenu = 1; cfg.recompiled = 1; cfg.volume = 100; cfg.learn = 1; cfg.vsync = 1;
+  cfg.scale = 3; cfg.turbo = 4; cfg.ffText = cfg.ffBattle = cfg.ffEnemy = cfg.ffCursor = 1; cfg.widescreen = 1; cfg.hoverstats = 1; cfg.pauseInMenu = 1; cfg.recompiled = 1; cfg.volume = 100; cfg.customMusic = 1; cfg.musicVolume = 100; cfg.learn = 1; cfg.vsync = 1;
   for(int i = 0; i < 12; i++) cfg.keys[i] = SDL_GetKeyFromName(BTN_DEFKEYS[i]);
   memcpy(cfg.pad, PAD_DEFAULTS, sizeof cfg.pad);
 }
@@ -78,6 +81,7 @@ static void config_save(void) {
   fprintf(f, "# widescreen=1 shows more of the map and battle backgrounds (16:9); F4 or the F1 menu switches while playing\nwidescreen=%d\n", cfg.widescreen);
   fprintf(f, "# hover_stats=1 adds MT/HIT/AS/AVO to the unit box on the map (also in the F1 menu)\nhover_stats=%d\n", cfg.hoverstats);
   fprintf(f, "# volume 0-100\nvolume=%d\nmute=%d\n", cfg.volume, cfg.mute);
+  fprintf(f, "# custom music from the music folder (1 = on) and its volume 0-100\ncustom_music=%d\nmusic_volume=%d\n", cfg.customMusic, cfg.musicVolume);
   fprintf(f, "# in-game menu (F1): pause the game while it is open; FPS counter\npause_in_menu=%d\nshow_fps=%d\n", cfg.pauseInMenu, cfg.showFps);
   fprintf(f, "# fast-forward speed (2-8). Hold Tab (or the right trigger), or press F3 to toggle. Music stays at normal speed.\nfast_forward=%d\n", cfg.turbo);
   fprintf(f, "# automatic speed-ups (1 = off, 2-8 = speed): while text is being written, in battle scenes,\n# during other armies' phases, while moving the cursor on the map. Music stays at normal speed.\nfaster_text=%d\nfaster_battles=%d\nfaster_enemy_phase=%d\nfaster_cursor=%d\n", cfg.ffText, cfg.ffBattle, cfg.ffEnemy, cfg.ffCursor);
@@ -112,6 +116,8 @@ static void config_load(void) {
     else if(!strcmp(line, "pause_in_menu")) cfg.pauseInMenu = atoi(v);
     else if(!strcmp(line, "show_fps")) cfg.showFps = atoi(v);
     else if(!strcmp(line, "volume")) cfg.volume = atoi(v);
+    else if(!strcmp(line, "custom_music")) cfg.customMusic = atoi(v);
+    else if(!strcmp(line, "music_volume")) cfg.musicVolume = atoi(v);
     else if(!strcmp(line, "fast_forward")) cfg.turbo = atoi(v);
     else if(!strcmp(line, "faster_text")) cfg.ffText = atoi(v);
     else if(!strcmp(line, "faster_battles")) cfg.ffBattle = atoi(v);
@@ -228,7 +234,7 @@ static int pick_rom_dialog(char* out, int outn) {
 
 // ---------------- recompilation ----------------
 static void* jitHandle;
-static int widePatched, hoverPatched;
+static int widePatched, hoverPatched, musicPatched;
 // write the on/off flags of the switchable game changes into the ROM image (and the running copy)
 static void set_rom_flags(Snes* snes) {
   for(int k = 0; k < 2; k++) {
@@ -295,7 +301,7 @@ static int recompile(SDL_Window* win, Snes* snes) {
   // cache key: ROM hash + entry list
   char keySrc[64]; uint32_t eh = 2166136261u;
   for(int i = 0; i < L.n; i++) { eh = (eh ^ L.e[i].pc) * 16777619u; eh = (eh ^ L.e[i].fs) * 16777619u; }
-  snprintf(keySrc, sizeof keySrc, "%.12s_%08x%s%s", gameSha, eh, widePatched ? "_w2" : "", hoverPatched ? "_h2" : "");
+  snprintf(keySrc, sizeof keySrc, "%.12s_%08x%s%s%s", gameSha, eh, widePatched ? "_w2" : "", hoverPatched ? "_h2" : "", musicPatched ? "_m1" : "");
   char srcPath[1200]; snprintf(srcPath, sizeof srcPath, "%sfe4_%s.c", cacheDir, keySrc);
   if(!file_exists(srcPath)) {
     set_title(win, "translating the game's code to C (first launch)...");
@@ -371,10 +377,16 @@ static int state_io(Snes* snes, int slot, int save) {
   char p[1200]; snprintf(p, sizeof p, "%s%s.state%d", saveDir, romBase, slot);
   if(save) {
     int n = snes_saveState(snes, NULL); uint8_t* d = malloc(n);
-    snes_saveState(snes, d); int ok = write_file(p, d, n); free(d); return ok;
+    snes_saveState(snes, d); int ok = write_file(p, d, n); free(d);
+    if(ok && musicPatched) { uint8_t m[256]; music_state_save(m); char q[1220]; snprintf(q, sizeof q, "%s.music", p); write_file(q, m, music_state_size()); }
+    return ok;
   }
   int n; uint8_t* d = read_file(p, &n); if(!d) return 0;
   int ok = snes_loadState(snes, d, n); free(d);
+  if(ok && musicPatched) {
+    char q[1220]; snprintf(q, sizeof q, "%s.music", p); int mn; uint8_t* m = read_file(q, &mn);
+    music_state_load(m, m ? mn : 0); free(m);
+  }
   return ok;
 }
 
@@ -471,12 +483,13 @@ static void usage(void) {
     "  --loop-at N            after --turbo-until, go back to that frame when frame N is reached\n"
     "  --freeze ADDR VAL FROM from frame FROM, writes to RAM ADDR (hex) store VAL (hex)\n"
     "  --title TEXT           text for the window title\n"
+    "  --music DIR            custom music from DIR instead of the music folder\n"
     "  --state-cache FILE     with --turbo-until: start from FILE if it holds that frame, else save it there\n", PORT_VERSION);
 }
 
 int main(int argc, char** argv) {
   const char* romArg = NULL; int forceInterp = 0, maxFrames = 0, fast = 0, forceSpeed = 0;
-  const char* movieArg = NULL; const char* shotArg = NULL; const char* wavArg = NULL;
+  const char* movieArg = NULL; const char* shotArg = NULL; const char* wavArg = NULL; const char* musicArg = NULL;
   int turboUntil = 0, loopAt = 0; const char* titleArg = NULL; const char* stateCache = NULL;
   const char* shotDir = NULL; int shotEvery = 0; const char* stateArg = NULL;
   int noMods = 0, testPlay = 0;
@@ -492,6 +505,7 @@ int main(int argc, char** argv) {
     else if(!strcmp(argv[i], "--state") && i + 1 < argc) stateArg = argv[++i];
     else if(!strcmp(argv[i], "--shotdir") && i + 2 < argc) { shotDir = argv[++i]; shotEvery = atoi(argv[++i]); }
     else if(!strcmp(argv[i], "--wav") && i + 1 < argc) wavArg = argv[++i];
+    else if(!strcmp(argv[i], "--music") && i + 1 < argc) musicArg = argv[++i];
     else if(!strcmp(argv[i], "--turbo-until") && i + 1 < argc) turboUntil = atoi(argv[++i]);
     else if(!strcmp(argv[i], "--loop-at") && i + 1 < argc) loopAt = atoi(argv[++i]);
     else if(!strcmp(argv[i], "--title") && i + 1 < argc) titleArg = argv[++i];
@@ -563,6 +577,15 @@ int main(int argc, char** argv) {
   // map hover box: MT/HIT/AS/AVO
   hoverPatched = fe4patch_apply(romData, romLen, FE4_HOVER);
   printf("hover stats: %s\n", hoverPatched ? "available" : "ROM not recognised, not available");
+  // custom music: an MSU-1 chip that plays files from the music folder
+  musicPatched = fe4patch_apply(romData, romLen, FE4_MUSIC);
+  { char md[1100];
+    if(musicArg) { size_t l = strlen(musicArg); snprintf(md, sizeof md, "%s%s", musicArg, l && musicArg[l - 1] != '/' && musicArg[l - 1] != '\\' ? "/" : ""); }
+    else { snprintf(md, sizeof md, "%smusic/", baseDir); MKDIR(md); }
+    music_init(md); }
+  music_set_enabled(cfg.customMusic);
+  printf("custom music: %s, %d track(s) in the music folder\n", musicPatched ? "available" : "ROM not recognised, not available", music_count());
+  if(musicPatched) { snes_msuRead = music_read; snes_msuWrite = music_write; }
   set_rom_flags(NULL);
 
   // ---- machine ----
@@ -639,6 +662,7 @@ int main(int argc, char** argv) {
   ms.fullscreen = &cfg.fullscreen; ms.scale = &cfg.scale; ms.volume = &cfg.volume; ms.mute = &cfg.mute;
   ms.pad = cfg.pad; ms.padCount = 0;
   ms.ffText = &cfg.ffText; ms.ffBattle = &cfg.ffBattle; ms.ffEnemy = &cfg.ffEnemy; ms.ffCursor = &cfg.ffCursor;
+  ms.customMusic = &cfg.customMusic; ms.musicVolume = &cfg.musicVolume; ms.musicAvail = musicPatched; ms.musicDir = music_dir();
   ms.turbo = &cfg.turbo; ms.ffToggle = &turboToggle; ms.hoverstats = &cfg.hoverstats; ms.pauseInMenu = &cfg.pauseInMenu;
   ms.showFps = &cfg.showFps; ms.paused = &paused; ms.slot = &slot; ms.keys = cfg.keys;
   ms.version = PORT_VERSION; ms.romName = romBase; ms.recompiled = recompiled; ms.hoverActive = hoverPatched;
@@ -772,9 +796,12 @@ int main(int argc, char** argv) {
       if(out > 8192) out = 8192;
       if(out > 0) {
         snes_setSamples(snes, abuf, out);
+        int queue = dev && SDL_GetQueuedAudioSize(dev) <= 48000 * 4 / 10;
+        // music folder tracks play along with what is heard (the game's sound option "off" silences them too)
+        if(queue || wav) music_mix(abuf, out, (snes->ram[0x4EA] & 0x10) ? 0 : cfg.musicVolume);
         int vol = cfg.mute ? 0 : cfg.volume;
         if(vol < 100) for(int i = 0; i < out * 2; i++) abuf[i] = abuf[i] * vol / 100;
-        if(dev && SDL_GetQueuedAudioSize(dev) <= 48000 * 4 / 10) SDL_QueueAudio(dev, abuf, out * 4);
+        if(queue) SDL_QueueAudio(dev, abuf, out * 4);
         if(wav) { fwrite(abuf, 4, out, wav); wavBytes += out * 4; }
       }
     }
@@ -822,10 +849,21 @@ int main(int argc, char** argv) {
       }
       ms.padCount = 0; for(int i = 0; i < 4; i++) if(pads[i]) ms.padCount++;
       ms.fps = fps; ms.speed = speed; ms.compiledBlocks = rc_stats.blocks; ms.interpOps = rc_stats.interp; ms.wideActive = wideOn;
+      ms.musicTracks = music_count(); ms.musicNow = music_playing(); ms.musicReq = music_last_request();
+      ms.musicNowFile = music_file(ms.musicNow); ms.musicReqFile = music_file(ms.musicReq);
       int act = menu_frame(&ms);
       if(act & MA_SAVE_STATE) { char t[64]; snprintf(t, sizeof t, state_io(snes, slot, 1) ? "Saved state %d" : "Couldn't save state %d", slot); menu_notify(t); }
       if(act & MA_LOAD_STATE) { char t[64]; snprintf(t, sizeof t, state_io(snes, slot, 0) ? "Loaded state %d" : "No state in slot %d", slot); menu_notify(t); }
-      if(act & MA_RESET) { snes_reset(snes, false); menu_notify("Reset"); }
+      if(act & MA_RESET) { snes_reset(snes, false); music_stop(); menu_notify("Reset"); }
+      if(act & (MA_MUSIC_RESCAN | MA_MUSIC_TOGGLE)) {
+        if(act & MA_MUSIC_RESCAN) music_rescan();
+        music_set_enabled(cfg.customMusic);
+        // ask for the current song again, so it switches between the file and the game's own music now
+        int s = music_last_request();
+        if(s && musicPatched) { snes->ram[0x4BA] = (uint8_t)s; snes->ram[0x4BB] = 0; snes->ram[0x4C6] = 0; snes->ram[0x4C7] = 0; }
+        if(act & MA_MUSIC_RESCAN) { char t[80]; snprintf(t, sizeof t, "%d track%s in the music folder", music_count(), music_count() == 1 ? "" : "s"); menu_notify(t); }
+      }
+      if(act & MA_MUSIC_FOLDER) { char u[1200]; snprintf(u, sizeof u, "file:///%s", music_dir()); for(char* q = u; *q; q++) if(*q == '\\') *q = '/'; SDL_OpenURL(u); }
       if(act & MA_QUIT) running = 0;
       if(act & MA_RESTART) { running = 0; restartAfter = 1; }
       if(act & MA_RANDOMIZE) {

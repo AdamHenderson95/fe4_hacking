@@ -375,7 +375,23 @@ default browser). The editor runs on your PC only: nothing is sent anywhere.
    colours alone. Saved
    in `map_spells.csv`, `map_palettes.csv`, `map_colour_words.csv`,
    `map_spell_block.csv` and `mapfx/`.
-15. On the Project page, **Add unit stats to the map box** puts the PC port's
+15. **Music** (kit v49), in two tabs:
+   - **Where songs play**: for each chapter, the song when its map first
+     starts and the song in your phase; for each enemy or other army (by the
+     name it shows on the map), the song in its phase. Pick any of the game's
+     160 songs from the list. Saved in `music.csv`.
+   - **Songs & your music**: every song with what it is (map music, battle
+     music, other music) and where it plays. **Use a music file…** gives a
+     song your own music (.ogg, .flac, .mp3, .wav or an MSU-1 .pcm): the PC
+     port (0.10 or newer) plays it instead of the game's music, with the game's
+     sound effects on top, and **Test play** uses this project's files. Listen
+     to a file right there; **Remove** goes back to the game's music. The files
+     are kept in the project's `music` folder as `17.ogg` and so on; to share
+     them, players put them in the PC port's `music` folder. Loop points:
+     LOOPSTART / LOOPLENGTH tags in .ogg files, or a `.txt` with the same name
+     (`loop_start = 12.5` in seconds). To find a song's number, play in the PC
+     port: its menu (F1) > Audio shows the song playing now.
+16. On the Project page, **Add unit stats to the map box** puts the PC port's
    MT / HIT / AS / AVO box into the ROMs and patches you build, so players
    on emulators get it too (the port can still switch it off).
 
@@ -477,6 +493,8 @@ runs this randomizer from its own menu (Mods → Randomizer).
 | `map_palettes.csv` | 6 | The six colour sets of map spell effects (16 hex colours each) |
 | `map_colour_words.csv` | 743 | The colour lists map spell backgrounds cycle through (address in bank $9F, colour) |
 | `map_spell_block.csv` | 12 | Background colours of the spells that don't cycle (palette 6 then 7, colours 9-15) |
+| `music.csv` | 77 | Which song (1-160) plays when each chapter's map starts (`first`), in your phase (`phase`), and in each army's phase by its name number (`army`) |
+| `music/NNN.ogg` (.flac, .mp3, .wav, .pcm) | – | Your own music for song NNN, played by the PC port (0.10+) instead of the game's |
 | `mapfx/bgNN.png` | – | Your own map spell backgrounds (256 × 256); only replaced ones exist |
 | `mapfx/spellNN.png` | – | Your own map effect sheets (128 × 16; kept in stand-in colours, one per colour number); only replaced ones exist |
 | `sprites/walk_sNN.png`, `sprites/walk_tNN.png` | – | Your own walking pictures for map sprites (96 × 96 or 128 × 128: four steps across; left, right, up, down from the top); only replaced ones exist |

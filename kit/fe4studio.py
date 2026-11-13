@@ -42,13 +42,14 @@ import fe4walk                     # noqa: E402
 import fe4mapbattle                # noqa: E402
 import fe4mapfx                    # noqa: E402
 import fe4maptiles                 # noqa: E402
+import fe4music                    # noqa: E402
 import fe4battle                  # noqa: E402
 import fe4spellfx                  # noqa: E402
 import fe4skillanim                # noqa: E402
 from fe4project import Project, load_settings, save_settings   # noqa: E402
 
 APP = 'Builder of the Holy War'
-VERSION = '48'
+VERSION = '49'
 STATIC = os.path.join(KIT, 'studio')
 
 # ---------------------------------------------------------------- state
@@ -110,6 +111,9 @@ def open_project(d):
             fe4mapfx.export(rom, d, L.item_names(rom))
         else:                                                        # kits before v46 / v47
             fe4mapfx.upgrade_colours(rom, d, L.item_names(rom))
+        if not os.path.exists(os.path.join(d, fe4music.FILE)):   # kits before v49
+            fe4music.export(rom, os.path.join(d, fe4music.FILE), fe4music.CHAPTER_NAMES,
+                            lambda i: fe4locations.castle_name(rom, i))
         if not os.path.exists(os.path.join(d, 'map_battle.csv')):   # kits before v43
             import fe4mapbattle
             fe4mapbattle.export(rom, os.path.join(d, 'map_battle.csv'), L.class_names(rom)[:72])
@@ -186,7 +190,7 @@ def port_exe():
 
 # ---------------------------------------------------------------- data for the pages
 TABLES = {'units_playable', 'units_children', 'units_npc', 'units_generic', 'classes', 'items', 'rings',
-          'item_instances', 'skills', 'names', 'lovers', 'gen2_rules', 'deploy', 'locations', 'arena', 'armies', 'talks', 'map_sprites', 'map_terrain', 'battle_anims', 'spells', 'skill_anims', 'map_battle', 'map_spells', 'map_palettes', 'map_colour_words', 'map_spell_block'}
+          'item_instances', 'skills', 'names', 'lovers', 'gen2_rules', 'deploy', 'locations', 'arena', 'armies', 'talks', 'map_sprites', 'map_terrain', 'battle_anims', 'spells', 'skill_anims', 'map_battle', 'map_spells', 'map_palettes', 'map_colour_words', 'map_spell_block', 'music'}
 
 
 def unit_portrait(table, row):
@@ -338,6 +342,10 @@ NUMERIC.update({'blood_lock': (0, 15), 'staff_effect': (0, 255), 'weapon_type': 
 def check_value(table, field, value):
     """Returns (value, warning) or raises ValueError with a message for the person."""
     v = value.strip() if isinstance(value, str) else str(value)
+    if table == 'music':
+        if field != 'song' or not v.isdigit() or not 1 <= int(v) <= fe4music.SONGS:
+            raise ValueError(f'Songs are 1 to {fe4music.SONGS}.')
+        return str(int(v)), None
     if table == 'locations' and field == 'gold':
         if v == '':
             return v, None
@@ -523,6 +531,13 @@ class Handler(BaseHTTPRequestHandler):
             except ValueError:
                 return self._send(404, 'no')
             return (self._send(200, data, 'image/png', cache='c' in q) if data else self._send(404, 'no'))
+        if path.startswith('/music/'):
+            try:
+                song = int(path.rsplit('/', 1)[1].split('.')[0])
+                got = music_audio(song)
+            except (ValueError, KeyError, RuntimeError):
+                return self._send(404, 'no')
+            return self._send(200, got[0], got[1]) if got else self._send(404, 'no')
         if path.startswith('/gfx/walk/'):
             q = parse_qs(u.query)
             try:
@@ -2150,9 +2165,13 @@ def api_testplay(b, q):
     out = os.path.join(d, os.path.basename(os.path.normpath(p.path)) + '.smc')
     hover = bool(settings.get('hover_stats', False))
 
+    args = [exe, '--play', out]
+    if fe4music.music_files(p.path) and port_knows(exe, b'--music'):
+        args += ['--music', os.path.join(p.path, fe4music.FOLDER)]
+
     def go():
         fe4hack.build(rom, p.path, out, None, hover)
-        subprocess.Popen([exe, '--play', out], cwd=os.path.dirname(exe))
+        subprocess.Popen(args, cwd=os.path.dirname(exe))
         print('started the PC port')
         return out
     return job_json_of(run_job('Building for test play', go))
@@ -3658,6 +3677,107 @@ def walk_image(sid, army, scale, indexed=False):
     return fe4sprites.rows_png(rows, pal, scale)
 
 
+# ---------------------------------------------------------------- music
+AUDIO_TYPES = {'.ogg': 'audio/ogg', '.flac': 'audio/flac', '.mp3': 'audio/mpeg', '.wav': 'audio/wav', '.pcm': 'application/octet-stream'}
+
+
+def port_knows(exe, word):
+    try:
+        with open(exe, 'rb') as fh:
+            return word in fh.read()
+    except OSError:
+        return False
+
+
+def music_folder_files(p):
+    """{song: relative path} of the project's music files, counting unsaved changes."""
+    out = {s: fe4music.FOLDER + '/' + f for s, f in fe4music.music_files(p.path).items()}
+    for rel, bl in p.blobs.items():
+        if not rel.startswith(fe4music.FOLDER + '/'):
+            continue
+        f = rel.split('/', 1)[1]
+        num = re.match(r'(\d+)', f)
+        if not num:
+            continue
+        n = int(num.group(1))
+        if bl.data is None:
+            if out.get(n) == rel:
+                del out[n]
+        elif f.lower().endswith(fe4music.AUDIO):
+            out[n] = rel
+    return out
+
+
+def music_audio(song):
+    p = need_project()
+    rel = music_folder_files(p).get(song)
+    if not rel:
+        return None
+    data = p.blob(rel).data
+    if data is None:
+        return None
+    return data, AUDIO_TYPES.get(os.path.splitext(rel)[1].lower(), 'application/octet-stream')
+
+
+def api_music(b, q):
+    p = need_project()
+    rom = rom_data()
+    if rom is None:
+        raise ValueError('Choose your FE4 ROM first.')
+    t = p.table('music')
+    rows = {'first': {}, 'phase': {}, 'army': {}}
+    for i, r in enumerate(t.rows):
+        if r.get('table') in rows:
+            rows[r['table']][int(r['index'])] = {'row': i, 'song': int(r['song'] or 0), 'name': r.get('_name', '')}
+    files = music_folder_files(p)
+    uses = {}
+    for name, label in (('first', 'map starts'), ('phase', 'your phase')):
+        for i, r in rows[name].items():
+            uses.setdefault(r['song'], []).append('%s: %s' % (CHAPTER_TITLES[i].split(':')[0] if i < len(CHAPTER_TITLES) else i, label))
+    for i, r in rows['army'].items():
+        if r['name']:
+            uses.setdefault(r['song'], []).append('%s army\'s phase' % r['name'])
+    songs = []
+    for n in range(1, fe4music.SONGS + 1):
+        rel = files.get(n)
+        songs.append({'n': n, 'kind': fe4music.song_kind(rom, n), 'sameAs': fe4music.same_as(rom, n),
+                      'uses': uses.get(n, []), 'file': rel.split('/', 1)[1] if rel else None,
+                      'size': len(p.blob(rel).data or b'') if rel else 0})
+    exe = port_exe()
+    return {'songs': songs, 'chapters': [{'title': CHAPTER_TITLES[i] if i < len(CHAPTER_TITLES) else str(i),
+                                          'first': rows['first'].get(i), 'phase': rows['phase'].get(i)}
+                                         for i in range(fe4music.CHAPTERS)],
+            'armies': [dict(r, index=i) for i, r in sorted(rows['army'].items()) if r['name']],
+            'portMusic': bool(exe and port_knows(exe, b'--music')), 'folder': os.path.join(p.path, fe4music.FOLDER)}
+
+
+def api_musicfile(b, q):
+    """Give a song a music file ({song, name, data: base64}) or take it away ({song, remove: true})."""
+    p = need_project()
+    song = int(b['song'])
+    if not 1 <= song <= 999:
+        raise ValueError('Songs are numbered 1 to 999.')
+    old = music_folder_files(p).get(song)
+    ops = []
+    if b.get('remove'):
+        if old:
+            ops += p.set_blob(old, None)
+        return {'ok': True}
+    ext = os.path.splitext(b.get('name', ''))[1].lower()
+    if ext not in AUDIO_TYPES:
+        raise ValueError('Music files can be .ogg, .flac, .mp3, .wav or MSU-1 .pcm.')
+    data = base64.b64decode(b.get('data', ''), validate=True)
+    if len(data) < 64:
+        raise ValueError('That file is empty.')
+    if ext == '.pcm' and data[:4] != b'MSU1':
+        raise ValueError('That .pcm file isn\'t an MSU-1 track (it should start with MSU1).')
+    rel = '%s/%d%s' % (fe4music.FOLDER, song, ext)
+    if old and old != rel:
+        p.set_blob(old, None)
+    p.set_blob(rel, data)
+    return {'ok': True, 'file': rel.split('/', 1)[1]}
+
+
 def api_mapwalk(b, q):
     """Replace a sprite's walking pictures with a PNG (base64), or {reset: true}."""
     import base64
@@ -4154,7 +4274,7 @@ API = {('GET', 'session'): api_session, ('POST', 'ping'): api_ping, ('GET', 'tab
        ('GET', 'chapters'): api_chapters, ('GET', 'scene'): api_scene, ('POST', 'messages'): api_messages,
        ('POST', 'msg'): api_msg, ('POST', 'evtcmd'): api_evtcmd, ('GET', 'dsearch'): api_dsearch, ('GET', 'villages'): api_villages, ('GET', 'itemuse'): api_itemuse, ('POST', 'newevent'): api_newevent, ('POST', 'talkmenu'): api_talkmenu, ('POST', 'delstep'): api_delstep,
        ('POST', 'addstep'): api_addstep, ('GET', 'eventinfo'): api_eventinfo, ('GET', 'maps'): api_maps, ('GET', 'map'): api_map, ('POST', 'paint'): api_paint,
-       ('GET', 'armies'): api_armies, ('GET', 'portraits'): api_portraits, ('GET', 'mapsprites'): api_mapsprites, ('GET', 'skills'): api_skills, ('POST', 'gen2check'): api_gen2check, ('POST', 'newchild'): api_newchild, ('POST', 'skillcheck'): api_skillcheck, ('POST', 'skilledit'): api_skilledit, ('POST', 'spriteentry'): api_spriteentry, ('GET', 'tileinfo'): api_tileinfo, ('POST', 'tiledraw'): api_tiledraw, ('POST', 'mapsprite'): api_mapsprite, ('POST', 'mapwalk'): api_mapwalk, ('GET', 'mapbattle'): api_mapbattle, ('GET', 'mbplayer'): api_mbplayer, ('GET', 'mapspells'): api_mapspells, ('POST', 'mapspellset'): api_mapspellset, ('POST', 'mapspellsheet'): api_mapspellsheet, ('POST', 'mapspellbg'): api_mapspellbg, ('POST', 'mapspellcolour'): api_mapspellcolour, ('POST', 'mapspellpreview'): api_mapspellpreview, ('POST', 'mapbattleset'): api_mapbattleset, ('POST', 'mapbattlesheet'): api_mapbattlesheet, ('POST', 'mapbattlepreview'): api_mapbattlepreview, ('POST', 'portrait'): api_portrait, ('POST', 'aicmd'): api_aicmd, ('POST', 'airecipe'): api_airecipe}
+       ('GET', 'armies'): api_armies, ('GET', 'portraits'): api_portraits, ('GET', 'mapsprites'): api_mapsprites, ('GET', 'skills'): api_skills, ('POST', 'gen2check'): api_gen2check, ('POST', 'newchild'): api_newchild, ('POST', 'skillcheck'): api_skillcheck, ('POST', 'skilledit'): api_skilledit, ('POST', 'spriteentry'): api_spriteentry, ('GET', 'tileinfo'): api_tileinfo, ('POST', 'tiledraw'): api_tiledraw, ('POST', 'mapsprite'): api_mapsprite, ('POST', 'mapwalk'): api_mapwalk, ('GET', 'mapbattle'): api_mapbattle, ('GET', 'mbplayer'): api_mbplayer, ('GET', 'mapspells'): api_mapspells, ('POST', 'mapspellset'): api_mapspellset, ('POST', 'mapspellsheet'): api_mapspellsheet, ('POST', 'mapspellbg'): api_mapspellbg, ('POST', 'mapspellcolour'): api_mapspellcolour, ('POST', 'mapspellpreview'): api_mapspellpreview, ('POST', 'mapbattleset'): api_mapbattleset, ('POST', 'mapbattlesheet'): api_mapbattlesheet, ('POST', 'mapbattlepreview'): api_mapbattlepreview, ('POST', 'portrait'): api_portrait, ('POST', 'aicmd'): api_aicmd, ('POST', 'airecipe'): api_airecipe, ('GET', 'music'): api_music, ('POST', 'musicfile'): api_musicfile}
 
 
 # ---------------------------------------------------------------- window

@@ -21,6 +21,7 @@ import fe4locations as LOC
 import fe4gfx as GFX
 import fe4sprites as SPR
 import fe4walk as WK
+import fe4music as MU
 import fe4mapbattle as MBT
 import fe4mapfx as MFX
 import fe4battle as BA
@@ -102,6 +103,7 @@ def extract(rom_path, proj):
     SA.export(rom, os.path.join(proj, SA.FILE), dict(enumerate(SK.NAMES)))
     MBT.export(rom, os.path.join(proj, MBT.FILE), cnames[:72])
     MFX.export(rom, proj, inames)
+    MU.export(rom, os.path.join(proj, MU.FILE), MU.CHAPTER_NAMES, lambda i: LOC.castle_name(rom, i))
     MT.export_terrain(rom, os.path.join(proj, 'map_terrain.csv'))
     AR.export(rom, proj)
     G2.export(rom, proj)
@@ -386,6 +388,7 @@ def build(rom_path, proj, out_path, ips=None, hover=False):
     n += WK.apply(rom, proj, far)
     n += MBT.apply(rom, proj, far, 72)
     n += MFX.apply(rom, proj, far)
+    n += MU.apply(rom, proj)
     n += BA.apply(rom, proj)
     n += SFX.apply_all(rom, proj, far)        # first: new effects add spell numbers
     n += SA.apply(rom, proj, SFX.spell_count(rom))

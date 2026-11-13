@@ -1327,6 +1327,38 @@ lost commands.
   - `RAID_ANY_VILLAGE` added to the top of army 2 orders 1 (moved to
     `$90:F682`) sends those four units toward the villages on turn 1.
 
+## Music (V)
+
+Found for kit v49 by logging the SNES side of the sound chip ports and the song requests in the
+Prologue (lsrun `--apu`, `--dsp`, `--wav`).
+- The game asks for a song by writing its number to `$04BA` (slot 0; `$04BC` is a second slot). Each
+  frame `$80:95CD` runs `$80:9677` for a new number: `$04C6` = the song running, `$0510` = the last one.
+  Song n's script: word pointer `$F7:943E + 2(n-1)`, bank `$F7` (160 songs). A script word's top 6
+  bits are a command (1-based, table `$80:9703`), the low 10 bits frames to wait; a command takes a
+  word argument. 11 (0-based 10) uploads the music data (list at the argument, `$04FA`/`$04FC` = FD,
+  sent by `$80:91B3` through ports 0-3), 16 starts it (`$80:9846`: C8-CA play, CB-CD play as map music
+  that the sound option can bring back, `$04EB`), 17 picks the battle variant by the fighters' classes
+  (`$7E:4EC3` / `$7E:4F23`, C2-C4), 0-3 queue sound effects. Ten numbers share another's script.
+- Commands to the sound chip: queue `$04D8-$04DD` (`$80:8F6F`, `$80:8FA3`, `$80:8FAD`; `$04D6` is the
+  one being sent through `$2140`), a second queue `$04E0-$04E8` for port 2 (`$80:900D`). Measured:
+  E0 / E1 / E2 fade the music out in about 0.5 / 0.75 / 1.25 s, C0 and F8 stop it, C2 stops all sound.
+  `$04F6` bit 1 = the chip says music is playing. `$04EA` bit 4 = the sound option "off" (no music,
+  sound effects stay; `$87:BF70`), bit 6 = mono.
+- Map music tables (bank `$81`, words): `$81:AB0E` the song when a chapter's map first starts and
+  `$81:AA4D` your phase's song, 12 chapters each (they differ only in the final chapter, 46 / 45);
+  `$81:AA65` + 2 x name: an army's phase song, by its name (army record +0, the castle name number;
+  `$84:BD78`). `$81:AACF` picks song 32 instead of yours in some cases; `$84:C15F` gives some armies
+  29 (`$1D`) or 42 (`$2A`). Verified: Prologue first song 17 -> 52 and Evans (name 34) 33 -> 60 play.
+- **MSU-1 hooks** (the PC port 0.10 adds them; `port/tools/music_patch.py`, kit `fe4msu_data.py`):
+  `$80:968A` (`STA $04C6,X / AND #$00FF` -> `JSL $80:FD00`): for slot 0, if `$2002-$2007` read
+  "S-MSU1", the track is chosen (`$2004/$2005`) and, when present, played (`$2006` = FF, `$2007` = 3),
+  the game's music is stopped (F8 when `$04F6` bit 1) and the script ends (return to `$80:96F0`, A = 0);
+  a missing track stops the MSU-1 track. `$80:8FD5` (`PLA / STA $04D8,X` -> `JSL $80:FD73`): E0-E2
+  joining the queue also set the MSU-1 volume to 0 (a fade). Code at `$80:FD00-$80:FDAF` (bank `$80`'s
+  empty end). Verified in lsrun and in FE4.exe under Wine (recompiled): OGG / FLAC / MP3 tracks play
+  for songs 17, 51 and 107, the game's music stops and the sound effects stay; without the chip the
+  patched ROM plays as before.
+
 ## Engine routines found so far
 
 | Routine | Purpose |

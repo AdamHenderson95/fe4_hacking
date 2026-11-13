@@ -94,6 +94,7 @@ void dsp_handleState(Dsp* dsp, StateHandler* sh);
 void dsp_cycle(Dsp* dsp);
 uint8_t dsp_read(Dsp* dsp, uint8_t adr);
 void dsp_write(Dsp* dsp, uint8_t adr, uint8_t val);
+extern void (*dsp_writeHook)(uint8_t adr, uint8_t val);
 void dsp_getSamples(Dsp* dsp, int16_t* sampleData, int samplesPerFrame);
 void dsp_newFrame(Dsp* dsp);
 

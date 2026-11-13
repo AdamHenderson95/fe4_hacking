@@ -327,6 +327,26 @@ extern "C" int menu_frame(MenuState* st) {
       ImGui::SetNextItemWidth(baseFont * 10);
       if(ImGui::SliderInt("Volume", st->volume, 0, 100, "%d%%")) act |= MA_SAVE_CONFIG;
       if(check("Mute", st->mute)) act |= MA_SAVE_CONFIG;
+      ImGui::SeparatorText("Custom music");
+      if(!st->musicAvail) ImGui::BeginDisabled();
+      if(check("Play songs from the music folder", st->customMusic)) {
+        act |= MA_SAVE_CONFIG | MA_MUSIC_TOGGLE; menu_notify(*st->customMusic ? "Custom music on" : "Custom music off");
+      }
+      help_marker("Put music files in the port's music folder, named after the song number: 17.ogg, \"017 Prologue.flac\", \"51 - battle.mp3\", 17.wav, "
+        "or MSU-1 packs' name-17.pcm. A song with a file plays the file; the others play the game's own music. "
+        "Loop points come from .pcm headers, LOOPSTART/LOOPLENGTH tags in .ogg files, or a .txt file with the same name "
+        "(loop_start = 12.5 in seconds). See \"Now playing\" below for a song's number.");
+      ImGui::SetNextItemWidth(baseFont * 10);
+      if(ImGui::SliderInt("Music volume", st->musicVolume, 0, 100, "%d%%")) act |= MA_SAVE_CONFIG;
+      if(st->musicReq) {
+        if(st->musicNow) ImGui::Text("Now playing: song %d (%s)", st->musicNow, st->musicNowFile ? st->musicNowFile : "");
+        else ImGui::Text("Now playing: song %d (the game's own music)", st->musicReq);
+      } else ImGui::TextDisabled("Now playing: no song yet");
+      ImGui::Text("%d track%s in the music folder", st->musicTracks, st->musicTracks == 1 ? "" : "s");
+      if(ImGui::MenuItem("Open the music folder")) act |= MA_MUSIC_FOLDER;
+      if(ImGui::MenuItem("Look for new files")) act |= MA_MUSIC_RESCAN;
+      if(!st->musicAvail) ImGui::EndDisabled();
+      if(!st->musicAvail) help_marker("Not available for this ROM: its sound code is different where songs start.");
       ImGui::EndMenu();
     }
     if(ImGui::BeginMenu("Enhancements")) {

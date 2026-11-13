@@ -5,8 +5,8 @@ CORE = $(S)/spc.c $(S)/dsp.c $(S)/apu.c $(S)/cpu.c $(S)/dma.c $(S)/ppu.c $(S)/ca
        $(S)/input.c $(S)/statehandler.c $(S)/snes.c $(S)/snes_other.c
 HDRS = $(wildcard $(S)/*.h) $(wildcard src/*.h)
 
-work/lsrun: tools/lsrun.c src/fe4wide.c $(CORE) $(HDRS)
-	$(CC) $(CFLAGS) -I $(S) -I src -o $@ tools/lsrun.c src/fe4wide.c $(CORE) -lm
+work/lsrun: tools/lsrun.c src/fe4wide.c src/music.c $(CORE) $(HDRS)
+	$(CC) $(CFLAGS) -I $(S) -I src -o $@ tools/lsrun.c src/fe4wide.c src/music.c $(CORE) -lm
 
 RCINC = -I $(S) -I src/rc -I tools
 RT = src/rc/rc_rt.c
@@ -27,7 +27,7 @@ src/rc/rc_gen_h.inc: src/rc/rc_gen.h
 work/lockstep_jit: tools/lockstep.c $(RT) src/rc/rc_jit.c src/rc/rc_gen_h.inc $(CORE) $(HDRS) src/rc/rc_rt.h src/rc/rc_gen.h tools/movie.h
 	$(CC) $(CFLAGS) -DUSE_JIT $(RCINC) -I $(TCCL)/include -o $@ tools/lockstep.c $(RT) src/rc/rc_jit.c $(CORE) $(TCCL)/lib/libtcc.a -lm -ldl -lpthread
 
-APPSRC = src/main.c src/sha1.c src/fe4wide.c src/mods.c src/kit.c src/cheats.c $(RT) src/rc/rc_jit.c src/rc/recomp.c
+APPSRC = src/main.c src/sha1.c src/fe4wide.c src/mods.c src/kit.c src/cheats.c src/music.c $(RT) src/rc/rc_jit.c src/rc/recomp.c
 # ---- in-game menu (Dear ImGui, C++) ----
 IMGUI = ext/imgui
 IMSRC = $(IMGUI)/imgui.cpp $(IMGUI)/imgui_draw.cpp $(IMGUI)/imgui_tables.cpp $(IMGUI)/imgui_widgets.cpp \

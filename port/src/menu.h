@@ -34,6 +34,11 @@ typedef struct MenuState {
   // cheats: the player's units right now (filled while the menu is open)
   int armyCount; int armyHurt; int selOk; CheatUnit sel;
   int cheatWhat, cheatAll;           // filled by the menu with MA_CHEAT
+  // custom music (music folder)
+  int* customMusic; int* musicVolume; int musicAvail; int musicTracks;
+  int musicNow;  const char* musicNowFile;   // track playing from a file (0 = none)
+  int musicReq;  const char* musicReqFile;   // the song the game asked for last
+  const char* musicDir;
 } MenuState;
 
 enum {
@@ -44,7 +49,10 @@ enum {
   MA_RESTART = 1 << 7,      // restart the game (to apply mods)
   MA_RANDOMIZE = 1 << 8,    // run the kit's randomizer with randoPreset / randoSeed / randoKeys
   MA_PAD_DEFAULT = 1 << 9,  // gamepad bindings back to default
-  MA_CHEAT = 1 << 10        // apply cheatWhat to the selected unit or (cheatAll) every unit of the army
+  MA_CHEAT = 1 << 10,       // apply cheatWhat to the selected unit or (cheatAll) every unit of the army
+  MA_MUSIC_RESCAN = 1 << 11, // look at the music folder again
+  MA_MUSIC_FOLDER = 1 << 12, // open the music folder
+  MA_MUSIC_TOGGLE = 1 << 13  // custom music switched on or off
 };
 
 void menu_init(SDL_Window* win, SDL_Renderer* ren);

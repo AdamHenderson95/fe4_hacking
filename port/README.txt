@@ -1,5 +1,5 @@
-Fire Emblem: Genealogy of the Holy War - PC port (fe4port) 0.9
-==============================================================
+Fire Emblem: Genealogy of the Holy War - PC port (fe4port) 0.10
+===============================================================
 
 This is a native Windows build of FE4. It runs from YOUR OWN ROM: the
 program contains no game code, graphics, music or text. On first launch it
@@ -50,7 +50,8 @@ and is saved in fe4port.ini.
                 each was saved), pause, reset, quit
   Graphics .... widescreen, square pixels or TV shape, fullscreen, window
                 size 1x-6x, smooth scaling, vsync, FPS counter
-  Audio ....... volume, mute
+  Audio ....... volume, mute, custom music (on/off, its volume, the song
+                playing now, open the music folder, look for new files)
   Enhancements  unit stats in the map box, fast-forward on/off and speed,
                 automatic speed-ups, pause while the menu is open
   Controls .... click a box, then press the key or gamepad button you want
@@ -62,6 +63,37 @@ Mouse, keyboard (arrow keys + Enter, Esc to go back) and gamepad (d-pad,
 bottom face button to choose, right face button to go back) all work in
 the menu. Hover over an option to
 see what it does.
+
+
+
+Custom music
+------------
+Any song can play a music file of your own instead of the game's music. Put
+the files in the music folder next to FE4.exe, named after the song number
+the game asks for:
+    17.ogg   "017 Prologue map.flac"   "51 - battle.mp3"   17.wav
+    (MSU-1 packs' tracks work too: anything-17.pcm)
+A song with a file plays the file, with the game's sound effects on top; the
+other songs play the game's own music. To find a song's number, open the menu
+(F1) > Audio: "Now playing" shows the song the game asked for last. After
+adding files, click "Look for new files" there (or restart).
+  * Loops: MSU-1 .pcm headers, LOOPSTART / LOOPLENGTH (or LOOPEND) tags in
+    .ogg files, in samples, or a text file with the same name and .txt:
+        loop_start = 12.5          (seconds; loop_start_sample = 551250)
+        loop_end = 190.0           (optional; loop_end_sample likewise)
+    Without loop points a track starts again from the beginning.
+  * The game's fades (before a scene or a battle) fade your track too. Going
+    back to the song before (map music after a battle) carries on where it
+    was. The game's sound option "off" silences your music too.
+  * Music volume and switching custom music off are in the menu (Audio).
+  * The music works with hacks and randomized games as well. Builder of the
+    Holy War's Music page keeps a hack's music files with the project and its
+    Test play uses them.
+How it works: the port adds an MSU-1 sound chip (the standard way SNES games
+play CD-quality music) and a small patch where FE4 starts a song: if the chip
+has a file for that song number, it plays it and stops the game's music.
+Formats are decoded with stb_vorbis, dr_flac, dr_mp3 and dr_wav (public
+domain / MIT-0).
 
 
 Widescreen
