@@ -1,4 +1,4 @@
-Fire Emblem: Genealogy of the Holy War - PC port (fe4port) 0.11
+Fire Emblem: Genealogy of the Holy War - PC port (fe4port) 0.12
 ===============================================================
 
 This is a native Windows build of FE4. It runs from YOUR OWN ROM: the
@@ -274,9 +274,9 @@ How the translation works, and "learning"
 -----------------------------------------
 fe4port.cov lists the places in the game's code where translated blocks
 start (addresses only, no game data). It was recorded by playing from the
-opening through Chapter 1 battles and menus, plus the start of Chapter 6
-(the generation 2 handover and its first enemy phase), and covers more than
-99% of the code those parts run.
+opening through Chapter 1 battles and menus, the start of Chapter 6 (the
+generation 2 handover and its first enemy phase) and chapters 7 and 8 with a
+generation-2 save and load, and covers more than 99% of the code those parts run.
 
 When the game reaches code that hasn't been translated yet, that code runs
 in the built-in interpreter instead, so nothing breaks; it is only a little
@@ -322,8 +322,16 @@ It also held for a run into Chapter 6 (a test copy of the ROM whose New
 Game jumps there, with the usual couples married): the children's births,
 the chapter 6 opening scenes, the map, unit lists and menus, ending the
 turn and the enemy phase, then turn 2. That is 42,000 frames and 586
-million more instructions with zero differences. Later chapters and a save
-made in generation 2 haven't been checked yet.
+million more instructions with zero differences.
+Port 0.12 adds chapters 7 and 8 (test copies whose New Game opens there):
+random-input runs of 80,000 frames each (23 minutes of play) through their
+opening scenes, maps, battles, the arena, shops, enemy phases and saving at
+the start of a turn, a further 100,000-frame chapter 8 run, and loading that
+generation-2 save from the title screen ("Start Chapter") and playing on for
+60,000 frames: about 4 billion more instructions, with zero differences.
+fe4port.cov now also covers what those runs reached (5,200 more places), so
+later chapters run less code in the interpreter on a first launch.
+Not checked yet: chapters 9-11 (the test copy can't open them yet).
 
 Tested on: Linux, and the Windows build under Wine. It has not yet been run
 on a real Windows PC.

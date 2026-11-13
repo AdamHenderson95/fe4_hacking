@@ -40,6 +40,9 @@ Build (Linux, for testing)
 ```
 make work/recomp work/lockstep work/fe4       # needs SDL2 dev files, ext/tcc-linux (TinyCC), ext/imgui
 ./work/lockstep rom.sfc work/ch1.txt 20447    # verify; exits non-zero on the first mismatch
+# later chapters: kit/dev/ch6start.py rom.sfc c7.smc --chapter 7 (the test start reads the chapter
+# from data, so one gen.c serves every chapter copy); --sram-in / --sram-out load and keep save RAM
+# (e.g. a generation-2 save made by one run, loaded by the next from "Start Chapter")
 ```
 
 Build (Windows, cross-compiled with mingw-w64)

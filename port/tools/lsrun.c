@@ -73,7 +73,7 @@ static uint8_t* read_file(const char* path, int* len) {
 
 static uint32_t watchLo, watchHi; static int watching;
 static uint32_t lastRom;
-static int apuLog; static int apuFrame; static int msuOn; static uint8_t* touchMap; static const char* touchOut; static FILE* wavOut; static int wavFrom;
+static int apuLog; static int apuFrame; static const char *sramIn, *sramOut; static int msuOn; static uint8_t* touchMap; static const char* touchOut; static FILE* wavOut; static int wavFrom;
 static void touch(uint32_t adr) {
   if(apuFrame < 300) return;
   uint8_t bank = adr >> 16; uint32_t a = adr & 0xffff;
@@ -195,12 +195,15 @@ int main(int argc, char** argv) {
     else if(!strcmp(argv[i], "--rwatch")) { rwLo = strtol(argv[++i], NULL, 16); rwHi = strtol(argv[++i], NULL, 16); snes_readHook = read_hook; }
     else if(!strcmp(argv[i], "--touch")) { touchOut = argv[++i]; touchMap = calloc(1, 0x20000); snes_writeHook = touch_w; snes_readHook = touch_r; }
     else if(!strcmp(argv[i], "--msu")) { music_init(argv[++i]); snes_msuRead = music_read; snes_msuWrite = music_write; msuOn = 1; }
+    else if(!strcmp(argv[i], "--sram-in")) sramIn = argv[++i];
+    else if(!strcmp(argv[i], "--sram-out")) sramOut = argv[++i];
     else if(!strcmp(argv[i], "--dsp")) dsp_writeHook = dsp_log;
     else if(!strcmp(argv[i], "--wav")) { wavOut = fopen(argv[++i], "wb"); wavFrom = atoi(argv[++i]); }
     else if(!strcmp(argv[i], "--apu")) { apuLog = 1; snes_writeHook = write_hook; snes_readHook = read_hook; }
     else if(!strcmp(argv[i], "--watch")) { watchLo = strtol(argv[++i], NULL, 16); watchHi = strtol(argv[++i], NULL, 16); snes_writeHook = write_hook; snes_readHook = read_hook; }
     else { char* s = argv[i]; while(*s) { shots[nshots++] = strtol(s, &s, 10); if(*s == ',') s++; } }
   }
+  if(sramIn) { FILE* sf = fopen(sramIn, "rb"); if(sf) { fread(snes->cart->ram, 1, snes->cart->ramSize, sf); fclose(sf); } }
   if(getenv("TRACEPC")) cpu_execHook = exec_hook;
   for(int fr = startFrame; fr < frames; fr++) {
     uint16_t m = movie_mask(fr);
@@ -212,6 +215,8 @@ int main(int argc, char** argv) {
     if(getenv("REGLOG")) { regLine = atoi(getenv("REGLOG")); regFrame = fr; ppu_lineHook = line_hook; }
     if(dumpPrefix && fr == frames - 1) { char p[512]; snprintf(p, sizeof p, "%s.lines", dumpPrefix); lineLog = fopen(p, "w"); ppu_lineHook = line_hook; }
     snes_runFrame(snes);
+    if(getenv("FRAMEPC") && fr >= atoi(getenv("FRAMEPC")))
+      printf("FPC f=%d pc=%02X:%04X d=%04X sp=%04X 0D6A=%02X\n", fr, snes->cpu->k, snes->cpu->pc, snes->cpu->dp, snes->cpu->sp, snes->ram[0xD6A]);
     if(wavOut) { // 32040 Hz stereo s16, raw (convert with sox/ffmpeg)
       static int16_t wb[4096 * 2]; int n = snes->apu->dsp->sampleCount; if(n > 4096) n = 4096;
       snes_setSamples(snes, wb, n);
@@ -274,5 +279,6 @@ int main(int argc, char** argv) {
   char p[512]; snprintf(p, sizeof p, "%s/last.ppm", outdir); write_ppm(snes, p);
   printf("frames=%d cycles=%llu pc=%02x:%04x\n", frames, (unsigned long long)snes->cycles, snes->cpu->k, snes->cpu->pc);
   if(touchOut) { FILE* tf = fopen(touchOut, "wb"); fwrite(touchMap, 1, 0x20000, tf); fclose(tf); }
+  if(sramOut) { FILE* sf = fopen(sramOut, "wb"); if(sf) { fwrite(snes->cart->ram, 1, snes->cart->ramSize, sf); fclose(sf); } }
   return 0;
 }

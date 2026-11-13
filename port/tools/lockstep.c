@@ -70,17 +70,21 @@ int main(int argc, char** argv) {
   int len; uint8_t* rom = read_file(argv[1], &len);
   movie_load(argv[2]);
   int frames = atoi(argv[3]);
-  const char* shotDir = NULL; int shots[4096], nshots = 0; const char* covOut = NULL; int check = 1;
+  const char* shotDir = NULL; int shots[4096], nshots = 0; const char* covOut = NULL; int check = 1; const char *sramIn = NULL, *sramOut = NULL;
   const char* stateOut = NULL; int stateOutFrame = -1; const char* stateIn = NULL;
   for(int i = 4; i < argc; i++) {
     if(!strcmp(argv[i], "--shots")) { shotDir = argv[++i]; char* s = argv[++i]; while(*s) { shots[nshots++] = strtol(s, &s, 10); if(*s == ',') s++; } }
     else if(!strcmp(argv[i], "--cov")) covOut = argv[++i];
     else if(!strcmp(argv[i], "--nocheck")) check = 0;
+    else if(!strcmp(argv[i], "--sram-in")) sramIn = argv[++i];
+    else if(!strcmp(argv[i], "--sram-out")) sramOut = argv[++i];
     else if(!strcmp(argv[i], "--state-out")) { stateOut = argv[++i]; stateOutFrame = atoi(argv[++i]); }
     else if(!strcmp(argv[i], "--state-in")) stateIn = argv[++i];
   }
   Snes* A = snes_init(); Snes* B = snes_init();
   if(!snes_loadRom(A, rom, len) || !snes_loadRom(B, rom, len)) return 1;
+  if(sramIn) { FILE* sf = fopen(sramIn, "rb"); if(sf) { fread(A->cart->ram, 1, A->cart->ramSize, sf); fclose(sf);
+    memcpy(B->cart->ram, A->cart->ram, A->cart->ramSize); } }
   int startFrame = 0;
   if(stateIn) {
     int sl; uint8_t* sd = read_file(stateIn, &sl);
@@ -148,5 +152,6 @@ int main(int argc, char** argv) {
   if(covOut) fprintf(stderr, "coverage entries written: %d\n", rc_saveCoverage(covOut, 0));
   if(shotDir) { char p[512]; snprintf(p, sizeof p, "%s/last.ppm", shotDir); write_ppm(B, p); }
   printf("OK frames=%d icount=%llu cycles=%llu\n", frames, (unsigned long long)B->cpu->icount, (unsigned long long)B->cycles);
+  if(sramOut) { FILE* sf = fopen(sramOut, "wb"); if(sf) { fwrite(A->cart->ram, 1, A->cart->ramSize, sf); fclose(sf); } }
   return 0;
 }

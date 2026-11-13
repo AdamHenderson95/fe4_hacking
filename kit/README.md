@@ -981,6 +981,12 @@ The children are born through the real transition, with your parent links and
 rules. Generation-1 stats are their starting values, so the children come out
 weaker than in a full playthrough.
 
+`--chapter 7` or `--chapter 8` opens that chapter instead (kit v51), to test a
+hack's later maps, events and AI. The army is then only the units that chapter
+adds itself, since the earlier chapters didn't run. Chapters 9-11 can't be
+opened this way yet: they need units carried over from the chapters before
+them, and the game stops during their opening scenes.
+
 ## Names
 
 `names.csv` has one row per name the game draws. Change the `name` column to rename it.

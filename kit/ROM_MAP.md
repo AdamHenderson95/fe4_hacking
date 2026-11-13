@@ -1299,6 +1299,14 @@ defender `$4F15`, `$60` bytes each.
 - **Verified with `dev/ch6start.py`:** all 17 children plus a new one (18 in
   all); Ced as Lewyn's son; Ulster's substitute swapped; a new child joining
   at chapter 6; save and reload with 18 children.
+- **Later chapters (v51):** `ch6start.py --chapter N` keeps the chapter number as data after its code
+  (`LDA long`), so its code is identical for every chapter. Chapters 7 and 8 open and play (their own
+  recruits only). Chapters 9-11 stop in their opening scenes: the player list `$7E:46EB` is empty, so
+  the list `$7F:832D` (count `$7F:82CD` = 0) is sorted by `$8B:CCFA` / `$8B:CD20` with a bad index and
+  the rotation at `$8B:CD3C` overwrites RAM. They need the units a chapter end carries over.
+- **Saves in generation 2:** each player phase can start with the "Save Game" screen (slots at
+  `$30:6000` + slot x `$800`; written by `$91:ED47` and friends); the title then offers "Start Chapter",
+  which resumes on the map.
 
 ## Moving script blocks (V)
 

@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Make a TEST copy of a built ROM whose New Game opens straight on chapter 6.
+"""Make a TEST copy of a built ROM whose New Game opens straight on chapter 6 (or 7-11 with --chapter).
 
     python dev/ch6start.py myhack.smc test6.smc
     python dev/ch6start.py myhack.smc test6.smc --marry Lewyn-Ayra,Lex-Erin --single Bridget
+    python dev/ch6start.py myhack.smc test9.smc --chapter 9
 
 Before chapter 6 loads, the gen-1 cast is created and married (FE4's usual pairs unless you
 give --marry; --single leaves a woman unmarried so her children's substitutes appear), and
@@ -10,6 +11,8 @@ Sigurd is marked dead, as at the end of chapter 5.  Then the game's own transiti
 children are born (with your parent links and inheritance rules), and chapter 6 opens.
 Gen-1 stats are their starting ones, so the children's numbers are lower than in a real
 playthrough.  For testing only: the copy can't play the first half of the game.
+With --chapter 7-11 the transition runs the same way, then that chapter loads: the army is the
+children and their substitutes as chapter 6 starts them (no later recruits, no levels).
 """
 import argparse
 import os
@@ -31,6 +34,7 @@ def main():
     ap.add_argument('out')
     ap.add_argument('--marry', default='', help='man-woman pairs by name or id, comma-separated')
     ap.add_argument('--single', default='', help='women left unmarried, comma-separated')
+    ap.add_argument('--chapter', type=int, default=6, help='the chapter New Game opens (6-11)')
     a = ap.parse_args()
     copier, rom = L.load_rom(a.rom)
     look = {}
@@ -54,6 +58,8 @@ def main():
         for k in [k for k, v in pairs.items() if v == m]:
             del pairs[k]
         pairs[w] = m
+    if not 6 <= a.chapter <= 11:
+        sys.exit('--chapter is 6 to 11')
     for t in filter(None, a.single.split(',')):
         pairs.pop(uid(t), None)
     if rom[CHAPTER_LOAD:CHAPTER_LOAD + 7] != bytes.fromhex('ad6a0d2228c586') or \
@@ -67,7 +73,7 @@ def main():
     s.label('load')
     s.op('lda', 'abs', 0x0D6A)
     s.op('bne', 'rel', 'a1')
-    s.op('lda', '#', 6)
+    s.op('lda', 'long', 'chapter')
     s.op('sta', 'abs', 0x0D6A)
     s.label('a1')
     s.op('lda', 'abs', 0x0D6A)
@@ -78,7 +84,7 @@ def main():
     s.op('rep', '#8', 0x30)
     s.op('phb')
     s.op('lda', 'abs', 0x0D6A)
-    s.op('cmp', '#', 6)
+    s.op('cmp', 'long', 'chapter')
     s.op('bne', 'far', 'go')
     s.op('lda', 'abs', 0x0D79)                  # not when a save is being loaded
     s.op('bit', '#', 0x0100)
@@ -105,11 +111,23 @@ def main():
     s.label('nos')
     s.op('lda', '#', 0)                         # event flag 0: Seliph leads the army
     s.op('jsl', 'long', 0x8680BE)
+    s.op('lda', 'abs', 0x0D6A)                  # chapters 7-11: the gen-2 transition as chapter 6 runs it
+    s.op('cmp', '#', 7)                         # ($84:81A1), then that chapter's own units
+    s.op('bcc', 'far', 'go')
+    s.op('lda', '#', 6)
+    s.op('sta', 'abs', 0x0D6A)
+    s.op('jsl', 'long', 0x82F866)
+    s.op('jsl', 'long', 0x8481FF)
+    s.op('jsl', 'long', 0x8BCE71)
+    s.op('lda', 'long', 'chapter')
+    s.op('sta', 'abs', 0x0D6A)
     s.label('go')
     s.op('jsl', 'long', 0x8480EC)
     s.op('plb')
     s.op('plp')
     s.op('rtl')
+    s.label('chapter')                          # data: the chapter New Game opens
+    s.data([a.chapter, 0])
     code = s.assemble()
     rom[org:org + len(code)] = code
     rom[CHAPTER_LOAD:CHAPTER_LOAD + 7] = bytes([0x22]) + s.labels['load'].to_bytes(3, 'little') + b'\xea' * 3
@@ -117,7 +135,7 @@ def main():
     L.save_rom(a.out, copier, rom)
     names = {idx: lab for k in (0, 2) for idx, _, _, lab in L.unit_rows(rom, k)}
     print('couples:', ', '.join(f'{names.get(m, m)}-{names.get(w, w)}' for w, m in sorted(pairs.items())))
-    print('wrote', a.out, '(New Game starts at chapter 6)')
+    print('wrote', a.out, f'(New Game starts at chapter {a.chapter})')
 
 
 if __name__ == '__main__':
