@@ -353,8 +353,20 @@ default browser). The editor runs on your PC only: nothing is sent anywhere.
    <strong>Download</strong> one, paint over the pieces and <strong>Replace…</strong> it (128 × 128,
    or 2× to 4× that, in the map palette's colours); every class showing the
    figure changes. <strong>Watch a map battle</strong> opens the PC port on the Prologue
-   fight as a map battle, with Midir shown as the class's figure. Saved in
-   <code>map_battle.csv</code> and <code>mapbattle/</code>.
+   fight as a map battle, with Midir shown as the class's figure. <strong>How it
+   moves</strong> plays the figure's motions (standing and its attacks) for the way
+   it faces and the weapon it holds, drawn from its sheets, so a redrawn
+   sheet shows at once. Saved in <code>map_battle.csv</code> and <code>mapbattle/</code>.</p>
+<p><strong>Map spells</strong> (the sixth switch) is what tomes and staves show on the map
+   in those battles: the fireball, bolt, rock or sparkle that flies to the
+   target (Fire, Thunder, Wind, Light, Meteor and the rest, plus Return,
+   Warp, Rescue, Restore, Sleep and Thief). Each spell has a sheet of 32
+   tiles (128 × 16); <strong>Download</strong>, paint and <strong>Replace…</strong> it in the spell's
+   colours. Colours are one of six sets the spells share: pick which one a
+   spell uses, change a colour by clicking it, or shift them all with the
+   sliders (every spell using that set changes). <strong>Watch on the map</strong> opens
+   the PC port on the Prologue fight with Midir casting the tome. Saved in
+   <code>map_spells.csv</code>, <code>map_palettes.csv</code> and <code>mapfx/</code>.
 15. On the Project page, <strong>Add unit stats to the map box</strong> puts the PC port's
    MT / HIT / AS / AVO box into the ROMs and patches you build, so players
    on emulators get it too (the port can still switch it off).</p>
@@ -592,6 +604,21 @@ runs this randomizer from its own menu (Mods → Randomizer).</p>
 <td><code>mapbattle/figNN_K.png</code></td>
 <td>–</td>
 <td>Your own sheets for map battle figure NN, direction K (128 × 128, 16 tiles across); only replaced ones exist</td>
+</tr>
+<tr>
+<td><code>map_spells.csv</code></td>
+<td>24</td>
+<td>Which colour set (0-5) each spell's map effect uses</td>
+</tr>
+<tr>
+<td><code>map_palettes.csv</code></td>
+<td>6</td>
+<td>The six colour sets of map spell effects (16 hex colours each)</td>
+</tr>
+<tr>
+<td><code>mapfx/spellNN.png</code></td>
+<td>–</td>
+<td>Your own map effect sheets (128 × 16; kept in stand-in colours, one per colour number); only replaced ones exist</td>
 </tr>
 <tr>
 <td><code>sprites/walk_sNN.png</code>, <code>sprites/walk_tNN.png</code></td>

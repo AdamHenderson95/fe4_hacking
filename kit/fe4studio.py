@@ -40,6 +40,7 @@ import fe4locations                # noqa: E402
 import fe4sprites                  # noqa: E402
 import fe4walk                     # noqa: E402
 import fe4mapbattle                # noqa: E402
+import fe4mapfx                    # noqa: E402
 import fe4maptiles                 # noqa: E402
 import fe4battle                  # noqa: E402
 import fe4spellfx                  # noqa: E402
@@ -47,7 +48,7 @@ import fe4skillanim                # noqa: E402
 from fe4project import Project, load_settings, save_settings   # noqa: E402
 
 APP = 'Builder of the Holy War'
-VERSION = '43'
+VERSION = '44'
 STATIC = os.path.join(KIT, 'studio')
 
 # ---------------------------------------------------------------- state
@@ -105,6 +106,8 @@ def open_project(d):
         if not os.path.exists(os.path.join(d, 'skill_anims.csv')):   # kits before v40
             import fe4skillanim, fe4skills
             fe4skillanim.export(rom, os.path.join(d, 'skill_anims.csv'), dict(enumerate(fe4skills.NAMES)))
+        if not os.path.exists(os.path.join(d, 'map_spells.csv')):   # kits before v44
+            fe4mapfx.export(rom, d, L.item_names(rom))
         if not os.path.exists(os.path.join(d, 'map_battle.csv')):   # kits before v43
             import fe4mapbattle
             fe4mapbattle.export(rom, os.path.join(d, 'map_battle.csv'), L.class_names(rom)[:72])
@@ -181,7 +184,7 @@ def port_exe():
 
 # ---------------------------------------------------------------- data for the pages
 TABLES = {'units_playable', 'units_children', 'units_npc', 'units_generic', 'classes', 'items', 'rings',
-          'item_instances', 'skills', 'names', 'lovers', 'gen2_rules', 'deploy', 'locations', 'arena', 'armies', 'talks', 'map_sprites', 'map_terrain', 'battle_anims', 'spells', 'skill_anims', 'map_battle'}
+          'item_instances', 'skills', 'names', 'lovers', 'gen2_rules', 'deploy', 'locations', 'arena', 'armies', 'talks', 'map_sprites', 'map_terrain', 'battle_anims', 'spells', 'skill_anims', 'map_battle', 'map_spells', 'map_palettes'}
 
 
 def unit_portrait(table, row):
@@ -476,6 +479,23 @@ class Handler(BaseHTTPRequestHandler):
             # ?c=<version> URLs (the Portraits page) change whenever the picture does, so they can be cached
             return (self._send(200, data, 'image/png', cache='c' in parse_qs(u.query)) if data
                     else self._send(404, 'no'))
+        if path.startswith('/gfx/mapfx/'):
+            q = parse_qs(u.query)
+            try:
+                sp = int(path.rsplit('/', 1)[1].split('.')[0])
+                data = mapfx_image(sp, max(1, min(int(q.get('s', ['1'])[0]), 6)), indexed=path.endswith('.idx.png'))
+            except (ValueError, KeyError):
+                return self._send(404, 'no')
+            return (self._send(200, data, 'image/png', cache='c' in q) if data else self._send(404, 'no'))
+        if path.startswith('/gfx/mbplay/'):
+            q = parse_qs(u.query)
+            try:
+                fig, k, sec = path.rsplit('/', 1)[1].split('.')[0].split('_')
+                data = mapbattle_strip(int(fig, 16), int(k), int(sec), int(q.get('a', ['0'])[0]),
+                                       max(1, min(int(q.get('s', ['1'])[0]), 4)))
+            except ValueError:
+                return self._send(404, 'no')
+            return (self._send(200, data, 'image/png', cache='c' in q) if data else self._send(404, 'no'))
         if path.startswith('/gfx/mbsheet/'):
             q = parse_qs(u.query)
             try:
@@ -1702,6 +1722,55 @@ def mapbattle_image(fig, k, army, scale, indexed=False):
     return fe4sprites.rows_png(rows, pal, scale)
 
 
+_mb_player = {}
+
+
+def mapbattle_player(fig, k, s):
+    """(strip rows, motions) for the figure's motions in direction k with weapon section s, drawn from the
+    project's sheet when it has one; cached by sheet version."""
+    rom = rom_data()
+    if rom is None:
+        return None
+    p = project()
+    sheet_k = next((ks[0] for a, ks in fe4mapbattle.sheets(rom, fig) if k in ks), k)
+    data = p.blob(fe4mapbattle.sheet_file(fig, sheet_k)).data if p else None
+    key = (id(rom), len(rom), fig, k, s, zlib.crc32(data) if data is not None else None)
+    if key not in _mb_player:
+        if len(_mb_player) > 64:
+            _mb_player.clear()
+        gfx = fe4mapbattle.bytes_from_rows(mapbattle_rows(fig, sheet_k)) if data is not None else None
+        _mb_player[key] = fe4mapbattle.player(rom, fig, k, s, gfx)
+    return _mb_player[key]
+
+
+def api_mbplayer(b, q):
+    """{fig, k, s} -> which weapon sections the figure has in that direction, and the motions of s."""
+    rom = rom_data()
+    if rom is None:
+        raise ValueError('Choose your FE4 ROM on the Project page first.')
+    fig, k = int(q.get('fig', ['0'])[0]), int(q.get('k', ['4'])[0])
+    s = int(q.get('s', ['-1'])[0])
+    if not 0 <= fig < fe4mapbattle.FIGURES or not 0 <= k < 8:
+        raise ValueError('There is no such figure.')
+    script = fe4mapbattle.script_bytes(rom, fig, k)
+    have = [i for i in range(len(fe4mapbattle.SECTIONS)) if fe4mapbattle.parse_section(script, i)]
+    if s not in have:
+        s = have[0] if have else -1
+    r = mapbattle_player(fig, k, s) if s >= 0 else None
+    return {'sections': [[i, fe4mapbattle.SECTIONS[i]] for i in have], 's': s, 'cell': fe4mapbattle.CELL,
+            'motions': r[1] if r else [], 'cells': len(r[0][0]) // fe4mapbattle.CELL if r else 0}
+
+
+def mapbattle_strip(fig, k, s, army, scale):
+    rom = rom_data()
+    r = mapbattle_player(fig, k, s)
+    if not r:
+        return None
+    offs = dict(fe4sprites.ARMIES)
+    pal = fe4sprites.palette(rom, list(offs.values())[army] if 0 <= army < len(offs) else 0)
+    return fe4sprites.rows_png(r[0], pal, scale)
+
+
 def api_mapbattlesheet(b, q):
     """Replace one of a figure's sheets with a PNG (base64), or {reset: true}."""
     import base64
@@ -1734,6 +1803,123 @@ def api_mapbattlepreview(b, q):
     label = _figure_labels(rom_data()).get(fig, 'figure')
     return _battle_preview(f'Watch a map battle: {label}', lambda r: 0,
                            extra=[('1454E', '%02X' % fig), ('1454F', '00')], timing=MAP_PREVIEW)
+
+
+# ---------------------------------------------------------------- spell effects on the map
+def _mapfx_tables():
+    p = need_project()
+    rom = rom_data()
+    if rom is None:
+        raise ValueError('Choose your FE4 ROM on the Project page first.')
+    ts, tp = p.table('map_spells'), p.table('map_palettes')
+    if ts is None or tp is None:
+        raise KeyError('This project has no map_spells.csv; reopen it with this version to add one.')
+    return p, rom, ts, tp
+
+
+def _mapfx_palette(tp, k):
+    r = next((r for r in tp.rows if r.get('palette', '').strip() == str(k)), None)
+    return [int(x, 16) & 0x7FFF for x in r['colours'].split()] if r else None
+
+
+def mapfx_rows(s):
+    p, rom = project(), rom_data()
+    data = p.blob(fe4mapfx.sheet_file(s)).data if p else None
+    if data is not None:
+        return fe4mapfx.rows_from_png(data, fe4mapfx.STAND_IN)
+    return fe4mapfx.rows_from_bytes(fe4mapfx.sheet_bytes(rom, s))
+
+
+def mapfx_image(s, scale, indexed=False):
+    p, rom, ts, tp = _mapfx_tables()
+    r = next((r for r in ts.rows if r.get('spell', '').strip() == str(s)), None)
+    if r is None:
+        return None
+    pal = [fe4mapfx.rgb(c) for c in _mapfx_palette(tp, int(r['palette']))]
+    rows = mapfx_rows(s)
+    return fe4sprites.indexed_sheet_png(rows, pal) if indexed else fe4sprites.rows_png(rows, pal, scale)
+
+
+def api_mapspells(b, q):
+    p, rom, ts, tp = _mapfx_tables()
+    names = L.item_names(rom)
+    spells = []
+    for i, r in enumerate(ts.rows):
+        s = int(r['spell'])
+        data = p.blob(fe4mapfx.sheet_file(s)).data
+        spells.append({'row': i, 'spell': s, 'item': fe4mapfx.FIRST_ITEM + s,
+                       'name': names[fe4mapfx.FIRST_ITEM + s] if fe4mapfx.FIRST_ITEM + s < len(names) else f'Spell {s}',
+                       'palette': int(r['palette']), 'gamePalette': fe4mapfx.palette_index(fe4mapfx.entry(rom, s)[0]),
+                       'custom': data is not None, 'ver': '%08x' % zlib.crc32(data) if data is not None else 'rom',
+                       'attack': fe4mapfx.FIRST_ITEM + s < 0x58})
+    pals = []
+    for k in range(len(fe4mapfx.PALETTES)):
+        cols = _mapfx_palette(tp, k)
+        pals.append({'p': k, 'colours': cols, 'game': fe4mapfx.colours(rom, k),
+                     'users': [x['name'] for x in spells if x['palette'] == k]})
+    return {'spells': spells, 'palettes': pals}
+
+
+def api_mapspellset(b, q):
+    """{spell, palette} or {palette: k, colours: [16]} or {palette: k, reset: true}."""
+    p, rom, ts, tp = _mapfx_tables()
+    if 'spell' in b:
+        s, k = int(b['spell']), int(b['palette'])
+        if not 0 <= k < len(fe4mapfx.PALETTES):
+            raise ValueError('There is no such palette.')
+        idx = next((i for i, r in enumerate(ts.rows) if r.get('spell', '').strip() == str(s)), None)
+        if idx is None:
+            raise ValueError('That spell has no map effect.')
+        row = dict(ts.rows[idx])
+        row['palette'] = str(k)
+        p.edit([('rows', 'map_spells', idx, [dict(ts.rows[idx])], [row])])
+        return {'ok': True}
+    k = int(b['palette'])
+    idx = next((i for i, r in enumerate(tp.rows) if r.get('palette', '').strip() == str(k)), None)
+    if idx is None:
+        raise ValueError('There is no such palette.')
+    cols = fe4mapfx.colours(rom, k) if b.get('reset') else [int(c) & 0x7FFF for c in b.get('colours') or []]
+    if len(cols) != 16:
+        raise ValueError('A palette has 16 colours.')
+    row = dict(tp.rows[idx])
+    row['colours'] = ' '.join('%04x' % c for c in cols)
+    p.edit([('rows', 'map_palettes', idx, [dict(tp.rows[idx])], [row])])
+    return {'ok': True}
+
+
+def api_mapspellsheet(b, q):
+    """Replace a spell's map sheet with a PNG in its palette's colours (base64), or {reset: true}."""
+    import base64
+    p, rom, ts, tp = _mapfx_tables()
+    s = int(b['spell'])
+    r = next((r for r in ts.rows if r.get('spell', '').strip() == str(s)), None)
+    if r is None:
+        raise ValueError('That spell has no map effect.')
+    rel = fe4mapfx.sheet_file(s)
+    if b.get('reset'):
+        p.set_blob(rel, None)
+        return {'ok': True}
+    pal = [fe4mapfx.rgb(c) for c in _mapfx_palette(tp, int(r['palette']))]
+    try:
+        rows = fe4mapfx.rows_from_png(base64.b64decode(b['png']), pal)
+    except ValueError as e:
+        raise ValueError(str(e))
+    except Exception:          # noqa: BLE001
+        raise ValueError('That file could not be read as a PNG picture.')
+    p.set_blob(rel, fe4mapfx.stand_in_png(rows))
+    return {'ok': True}
+
+
+def api_mapspellpreview(b, q):
+    """Watch a spell on the map: Midir casts it on Gandolf in the Prologue map battle."""
+    s = int(b['spell'])
+    rom = rom_data()
+    if not 0 <= s < fe4mapfx.COUNT or fe4mapfx.entry(rom, s)[0] is None:
+        raise ValueError('That spell has no map effect.')
+    item = fe4mapfx.FIRST_ITEM + s
+    name = L.item_names(rom)[item]
+    return _battle_preview(f'Watch on the map: {name}', lambda r: 0,
+                           extra=[('04EDD', '%02X' % item), ('04EDE', '00')], timing=MAP_PREVIEW)
 
 
 def api_spellrow(b, q):
@@ -1870,6 +2056,7 @@ def _battle_preview(title, change, extra=(), loop_extra=0, timing=None):
         if T.get('map'):
             import fe4mapbattle
             fe4mapbattle.apply(r, p.path, far, 72)
+            fe4mapfx.apply(r, p.path, far)
             a, was, now = MAP_PATCH
             f = fe4spellfx.snes_to_file(a)
             if bytes(r[f:f + 4]) != was:
@@ -3816,7 +4003,7 @@ API = {('GET', 'session'): api_session, ('POST', 'ping'): api_ping, ('GET', 'tab
        ('GET', 'chapters'): api_chapters, ('GET', 'scene'): api_scene, ('POST', 'messages'): api_messages,
        ('POST', 'msg'): api_msg, ('POST', 'evtcmd'): api_evtcmd, ('GET', 'dsearch'): api_dsearch, ('GET', 'villages'): api_villages, ('GET', 'itemuse'): api_itemuse, ('POST', 'newevent'): api_newevent, ('POST', 'talkmenu'): api_talkmenu, ('POST', 'delstep'): api_delstep,
        ('POST', 'addstep'): api_addstep, ('GET', 'eventinfo'): api_eventinfo, ('GET', 'maps'): api_maps, ('GET', 'map'): api_map, ('POST', 'paint'): api_paint,
-       ('GET', 'armies'): api_armies, ('GET', 'portraits'): api_portraits, ('GET', 'mapsprites'): api_mapsprites, ('GET', 'skills'): api_skills, ('POST', 'gen2check'): api_gen2check, ('POST', 'newchild'): api_newchild, ('POST', 'skillcheck'): api_skillcheck, ('POST', 'skilledit'): api_skilledit, ('POST', 'spriteentry'): api_spriteentry, ('GET', 'tileinfo'): api_tileinfo, ('POST', 'tiledraw'): api_tiledraw, ('POST', 'mapsprite'): api_mapsprite, ('POST', 'mapwalk'): api_mapwalk, ('GET', 'mapbattle'): api_mapbattle, ('POST', 'mapbattleset'): api_mapbattleset, ('POST', 'mapbattlesheet'): api_mapbattlesheet, ('POST', 'mapbattlepreview'): api_mapbattlepreview, ('POST', 'portrait'): api_portrait, ('POST', 'aicmd'): api_aicmd, ('POST', 'airecipe'): api_airecipe}
+       ('GET', 'armies'): api_armies, ('GET', 'portraits'): api_portraits, ('GET', 'mapsprites'): api_mapsprites, ('GET', 'skills'): api_skills, ('POST', 'gen2check'): api_gen2check, ('POST', 'newchild'): api_newchild, ('POST', 'skillcheck'): api_skillcheck, ('POST', 'skilledit'): api_skilledit, ('POST', 'spriteentry'): api_spriteentry, ('GET', 'tileinfo'): api_tileinfo, ('POST', 'tiledraw'): api_tiledraw, ('POST', 'mapsprite'): api_mapsprite, ('POST', 'mapwalk'): api_mapwalk, ('GET', 'mapbattle'): api_mapbattle, ('GET', 'mbplayer'): api_mbplayer, ('GET', 'mapspells'): api_mapspells, ('POST', 'mapspellset'): api_mapspellset, ('POST', 'mapspellsheet'): api_mapspellsheet, ('POST', 'mapspellpreview'): api_mapspellpreview, ('POST', 'mapbattleset'): api_mapbattleset, ('POST', 'mapbattlesheet'): api_mapbattlesheet, ('POST', 'mapbattlepreview'): api_mapbattlepreview, ('POST', 'portrait'): api_portrait, ('POST', 'aicmd'): api_aicmd, ('POST', 'airecipe'): api_airecipe}
 
 
 # ---------------------------------------------------------------- window

@@ -82,14 +82,14 @@ static void write_hook(Snes* s, uint32_t adr, uint8_t val) {
     printf("\n");
   }
 }
-static uint32_t rwLo, rwHi;
+static uint32_t rwLo, rwHi; static int rwFrame;
 static void read_hook(Snes* s, uint32_t adr) {
   if(!watching) return;
   uint8_t bank = adr >> 16; uint32_t a = adr & 0xffff, w;
   if(bank == 0x7e || bank == 0x7f) w = ((bank & 1) << 16) | a;
   else if(((bank & 0x7f) < 0x40) && a < 0x2000) w = a; else return;
   if(w >= rwLo && w <= rwHi)
-    printf("R %05X=%02X pc=%02X:%04X a=%04X x=%04X y=%04X db=%02X\n", w, s->ram[w], s->cpu->k, s->cpu->pc, s->cpu->a, s->cpu->x, s->cpu->y, s->cpu->db);
+    printf("R %05X=%02X pc=%02X:%04X a=%04X x=%04X y=%04X db=%02X f=%d\n", w, s->ram[w], s->cpu->k, s->cpu->pc, s->cpu->a, s->cpu->x, s->cpu->y, s->cpu->db, rwFrame);
 }
 static Snes* gSnes; static int retWatch[8], nRetWatch, execOn;
 static uint32_t tracePcs[32]; static int nTracePcs = -1;
@@ -99,7 +99,8 @@ static void exec_hook(Cpu* c) {
   for(int i = 0; i < nTracePcs; i++) if(((uint32_t)c->k << 16 | c->pc) == tracePcs[i]) {
     uint8_t* s = gSnes->ram; uint16_t sp = c->sp;
     printf("PC %02X:%04X A=%04X X=%04X Y=%04X DB=%02X DP:", c->k, c->pc, c->a, c->x, c->y, c->db);
-    for(int k = 0; k < 0x10; k++) printf(" %02X", s[0xC0 + k]);
+    { int b = getenv("TRACEDP") ? (int)strtol(getenv("TRACEDP"), NULL, 16) : 0xC0, n = getenv("TRACEDP") ? 0x30 : 0x10;
+      for(int k = 0; k < n; k++) printf(" %02X", s[(b + k) & 0xffff]); }
     printf(" ret %02X%02X%02X\n", s[(sp + 3) & 0xffff], s[(sp + 2) & 0xffff], s[(sp + 1) & 0xffff]);
   }
   uint8_t op = cart_read(gSnes->cart, c->k, c->pc);
@@ -184,7 +185,7 @@ int main(int argc, char** argv) {
     for(int b = 0; b < 12; b++) snes_setButtonState(snes, 1, b, (m >> b) & 1);
     execOn = fr >= (getenv("EXECFROM") ? atoi(getenv("EXECFROM")) : 0);
     watching = fr >= (getenv("WATCHFROM") ? atoi(getenv("WATCHFROM")) : frames - 10);
-    dmaFrame = fr; dmaOn = fr >= dmaLo && fr <= dmaHi;
+    rwFrame = fr; dmaFrame = fr; dmaOn = fr >= dmaLo && fr <= dmaHi;
     frzOn = fr >= (getenv("FREEZEFROM") ? atoi(getenv("FREEZEFROM")) : 0);
     if(getenv("REGLOG")) { regLine = atoi(getenv("REGLOG")); regFrame = fr; ppu_lineHook = line_hook; }
     if(dumpPrefix && fr == frames - 1) { char p[512]; snprintf(p, sizeof p, "%s.lines", dumpPrefix); lineLog = fopen(p, "w"); ppu_lineHook = line_hook; }

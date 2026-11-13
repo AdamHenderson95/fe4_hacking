@@ -25,7 +25,7 @@ import fe4hack           # noqa: E402
 import fe4rando as R     # noqa: E402
 
 APP = 'Builder of the Holy War (classic editor)'
-VERSION = '43'
+VERSION = '44'
 
 # ---------------------------------------------------------------- what the sidebar shows
 SECTIONS = [

@@ -480,12 +480,43 @@ game shows as a map battle (Midir attacks Gandolf).
   signals (`$7F:4580-4584`, `$7F:5091`, `$7F:4C1B`). A script block starts with 5 word offsets (sections);
   a section starts with the offset of its frame table, then motion offsets; frames are a word count then
   5-byte pieces (x, x high / size flags, y, tile, attribute) as in the map sprite records.
+- **Sections and motions** (v44): the section is the weapon kind (`$7F:454A` / `$454C`, from `$9E:83FD`:
+  0 sword, 1 lance, 2 axe, 3 bow, 4 magic or staff; `$9E:87F0` takes the script base `$7E:EB88` / `$F408` +
+  word [section]). A kind the figure can't use points outside the block. A section: word offset of its frame
+  table, then pairs of motion offsets (body, overlay object; an overlay outside the block = none). Pair 1 is
+  standing (`0B` / `0C` go back to it); the battle picks the others (`$7F:4586`-`$458F`, read by `09` / `0A`).
+  Frame data come right after the header; the table holds one offset per frame. A motion is mostly
+  `03 n` (page) and `0E ticks frame`, with battle signals (`04`-`08`, `0D`) between.
+- **Tiles:** pages are `$140` bytes (small) or `$200` (tall) from graphics + `$1000` ($9E:B4E5 / B4F5), sent to
+  the fighter's slot (`$9E:B4D7`: VRAM `$6200` attacker, `$6280` defender) as OBJ tiles `$20-$27` / `$30-$37`
+  (frame tiles get + 8 for the defender). Graphics + `$400` goes to `$40-$5F` (riders, arms); a tall figure's
+  overlay object adds `$20` to its tile numbers. `$1E`/`$1F` are the shadow (`$DF:FFC0`). The weapon's art goes
+  over `$40-$43` / `$50-$53` (`$9E:8E01`: `$9E:8EC4` word per weapon item = art offset / `$100` in the weapon
+  sheet `$AC:CC17`, colour variant; items `$3A`+ draw none).
 - **Palettes:** OBJ 1 / 4 / 7 are the map palettes `$8C:9520` / `$8C:9580` / `$8C:95E0`; the fighters use
   `$8C:9540` / `$8C:9560` with colours 2-3 replaced; OBJ 5 is the white hit flash (made in code).
 - The kit replaces `$9E:85A4` with a lookup in its own table (men, women per class; class 6 with item
   `$19` still gets `$5D`) when `map_battle.csv` differs from the game, and writes redrawn sheets compressed
   into the free banks (only that figure's pointers change). Verified: Bow Knight given the Knight Lord
   figure loads figure 6's sheet for Midir; a recoloured sheet loads byte for byte.
+
+## Spell effects on the map (v44)
+
+Found by freezing Midir's item (`$7E:4EDD`) to Fire in the Prologue map battle.
+
+- `$7F:5089` = map spell = item - `$3E` (Fire 0 ... Thief staff 40; `$FFFF` for weapons).
+- `$9F:8724`, 5 bytes per spell (`$9F:86BF`): word palette in bank `$9F` (`$FFFF` = no effect), ptr24
+  sprite sheet (compressed, `$400` bytes = 32 tiles) -> `$7F:45D9` -> OBJ tiles `$00-$1F`; the palette's 16
+  colours go to OBJ palette 6. Fire's fireball is the 16x16 object at tile `$04`. 24 spells have one
+  (Forseti, Blizzard, Aura, Naga, Hel, Loptyr and most staves have none).
+- Six palettes: `$9F:8800` (all zero; Return, Restore, Sleep), `8820` (Fire, Thunder, Wind, Warp...),
+  `8840`, `8860` (Meteor), `8880` (Nosferatu), `88A0` (Light, Thief). Bank `$9F` has no free space, so the
+  kit edits them in place and lets a spell point at another one.
+- `$9F:80D9`, 9 bytes per spell: ptr24 x 3 for background pieces (`$7E:CB88`, `$7E:DB88`, `$7E:E388`; Meteor
+  with `$7F:509B` >= `$A0` and Valflame with >= `$C0` use `$D6:1ECF` / `$D6:1D6C`), sent to the BG at
+  `+$3800` / `+$3C00` ($9F:85A3, $9F:85CC). Not edited yet.
+- Verified: a changed colour set reaches OBJ palette 6, and a redrawn Fire sheet is what `$7F:45D9` holds
+  when Midir casts it.
 
 ## Battle animations (v32)
 

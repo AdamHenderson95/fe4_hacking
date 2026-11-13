@@ -235,3 +235,199 @@ def apply(rom, proj, far, n_classes):
                     rom[base + 6 * kk + 3:base + 6 * kk + 6] = a.to_bytes(3, 'little')
             n += 1
     return n
+
+
+# ---------------------------------------------------------------- playing a figure's motions
+# A script block starts with 5 word offsets, one section per weapon kind (sword, lance, axe, bow, magic or
+# staff; a kind the figure can't use points outside the block).  A section starts with the offset of its
+# frame table, then pairs of motion offsets (body, overlay): pair 1 is standing, the others are attacks.
+# A frame is a word count, then 5-byte pieces (x, x high / size flags, y, tile, attribute).  Body tiles
+# $20-$37 come from the page the script loads (command 03 n: graphics + $1000 + n x $140 small, $200 tall);
+# $1E/$1F are the shadow ($DF:FFC0); $40-$5F come from graphics + $400 (a tall figure's overlay object adds $20
+# to its tiles, so its riders and arms are there too); the weapon's art from the shared sheet goes over
+# $40-$43 / $50-$53 ($9E:8E01: $9E:8EC4 word per item, art offset / $100 in $AC:CC17, colour variant).
+SECTIONS = ('sword', 'lance', 'axe', 'bow', 'magic or staff')
+SHADOW = 0xDFFFC0
+ARGS = {0x00: 3, 0x01: 0, 0x02: 2, 0x03: 1, 0x04: 0, 0x05: 0, 0x06: 0, 0x07: 0, 0x08: 0, 0x09: 0, 0x0A: 0,
+        0x0B: 0, 0x0C: 0, 0x0D: 0, 0x0E: 2, 0x0F: 0, 0x10: 0, 0x11: 0, 0x12: 1, 0x13: 1, 0x14: 2, 0x15: 2,
+        0x16: 1, 0x17: 2, 0x18: 3, 0x19: 2, 0x1A: 0, 0x1B: 0, 0x1C: 0, 0x1D: 1, 0x1E: 1}
+STOP = (0x01, 0x02, 0x09, 0x0A, 0x0B, 0x0C, 0x15)
+CELL = 64                 # each rendered step is a 64 x 64 picture with the unit's tile at (24, 32)
+ORIGIN = (32, 40)
+
+
+WEAPON_SHEET = 0xACCC17          # shared weapon art, unpacked to $7E:CB88 for every map battle
+WEAPON_ART = 0x9E8EC4            # word per weapon item ($00-$39): art offset / $100, colour variant
+PREVIEW_ITEMS = (0x00, 0x1C, 0x28, 0x31, None)   # Iron sword, Iron lance, Iron axe, Iron bow, (magic)
+_weapons = {}
+
+
+def weapon_tiles(rom, item):
+    """{tile: 32 bytes} for $40-$43 / $50-$53 with an item's art ($9E:8E01), or {}."""
+    if item is None or not 0 <= item < 0x3A:
+        return {}
+    key = (id(rom), len(rom))
+    if key not in _weapons:
+        _weapons.clear()
+        _weapons[key] = bytes(fe4lz.decompress(rom, WEAPON_SHEET))
+    sheet = _weapons[key]
+    art = rom[_fo(WEAPON_ART) + 2 * item] << 8
+    out = {}
+    for i in range(4):
+        out[0x40 + i] = sheet[art + 32 * i:art + 32 * i + 32]
+        out[0x50 + i] = sheet[art + 0x80 + 32 * i:art + 0x80 + 32 * i + 32]
+    return out
+
+
+def is_tall(rom, fig):
+    return bool(rom[record_at(fig) + 0x30])
+
+
+def script_bytes(rom, fig, k):
+    return bytes(fe4lz.decompress(rom, pointers(rom, fig)[k][0]))
+
+
+def _w(d, o):
+    return d[o] | d[o + 1] << 8 if o + 1 < len(d) else 0xFFFF
+
+
+def parse_section(script, s):
+    """{frames: [[(x, y, tile, big, hflip, vflip)]], pairs: [(body offset or None, overlay offset or None)]}"""
+    base = _w(script, 2 * s)
+    if base + 2 >= len(script):
+        return None
+    ft = base + _w(script, base)
+    if ft + 2 >= len(script):
+        return None
+    nh = (_w(script, ft) - 2) // 2
+    if not 0 < nh < 40:
+        return None
+    mots = [base + _w(script, base + 2 + 2 * j) for j in range(nh)]
+    mots = [m if ft < m < len(script) else None for m in mots]
+    after = [m for m in mots if m]
+    nfr = ((min(after) if after else ft + 2) - ft) // 2
+    frames = []
+    for i in range(nfr):
+        f = base + _w(script, ft + 2 * i)
+        n = _w(script, f)
+        if f + 2 + 5 * n > len(script) or n > 32:
+            frames.append([])
+            continue
+        pieces = []
+        for j in range(n):
+            x, fl, y, t, a = script[f + 2 + 5 * j:f + 7 + 5 * j]
+            pieces.append((x - 256 if fl & 1 else x, y - 256 if y > 127 else y, t | (a & 1) << 8,
+                           bool(fl & 2), bool(a & 0x40), bool(a & 0x80)))
+        frames.append(pieces)
+    pairs = [(mots[j], mots[j + 1] if j + 1 < len(mots) else None) for j in range(0, len(mots), 2)]
+    return {'frames': frames, 'pairs': pairs}
+
+
+def motion_steps(script, o, limit=80):
+    """[(page, frame, ticks, dx, dy)] of a motion, until it ends or jumps."""
+    out, page, dx, dy = [], 0, 0, 0
+    for _ in range(limit):
+        if o is None or o >= len(script):
+            break
+        c = script[o]
+        n = ARGS.get(c)
+        if n is None:
+            break
+        a = script[o + 1:o + 1 + n]
+        if c == 0x03:
+            page = a[0]
+        elif c == 0x0E:
+            out.append((page, a[1], a[0] or 1, dx, dy))
+        elif c == 0x19:
+            dx += a[0] - 256 if a[0] > 127 else a[0]
+            dy += a[1] - 256 if a[1] > 127 else a[1]
+        o += 1 + n
+        if c in STOP:
+            break
+    return out
+
+
+def _page_tiles(gfx, page, tall):
+    """{tile number: 32 bytes}: the body slot ($20-$27 / $30-$37) from the page, and $40-$5F from
+    graphics + $400 (riders, arms, weapons held; the game puts the weapon's own art over $40-$43 / $50-$53)."""
+    size, half = (0x200, 0x100) if tall else (0x140, 0xA0)
+    base = 0x1000 + page * size
+    out = {0x40 + i: gfx[0x400 + 32 * i:0x420 + 32 * i] for i in range(32)}
+    for row, first in ((0, 0x20), (1, 0x30)):
+        for i in range(half // 32):
+            off = base + row * half + 32 * i
+            out[first + i] = gfx[off:off + 32]
+    return out
+
+
+def render(rom, gfx, frame_pieces, page, tall, shadow=None, dx=0, dy=0, weapon=None):
+    """Index rows (CELL x CELL) of one frame drawn with a page's tiles (and a weapon's art)."""
+    tiles = _page_tiles(gfx, page, tall)
+    tiles.update(weapon or {})
+    if shadow is None:
+        f = _fo(SHADOW)
+        shadow = {0x1E: rom[f:f + 32], 0x1F: rom[f + 32:f + 64]}
+    tiles.update(shadow)
+    rows = [[0] * CELL for _ in range(CELL)]
+    for x, y, t, big, hf, vf in reversed(frame_pieces):
+        n = 2 if big else 1
+        for ty in range(n):
+            for tx in range(n):
+                sub = t + (n - 1 - tx if hf else tx) + 16 * (n - 1 - ty if vf else ty)
+                data = tiles.get(sub)
+                if data is None or len(data) < 32:
+                    continue
+                px = SP._decode_tile(data)
+                for yy in range(8):
+                    for xx in range(8):
+                        c = px[7 - yy if vf else yy][7 - xx if hf else xx]
+                        if not c:
+                            continue
+                        X = ORIGIN[0] + x + dx + 8 * tx + xx
+                        Y = ORIGIN[1] + y + dy + 8 * ty + yy
+                        if 0 <= X < CELL and 0 <= Y < CELL:
+                            rows[Y][X] = c
+    return rows
+
+
+def player(rom, fig, k, s, gfx=None):
+    """The figure's motions for direction k and weapon section s, rendered:
+    (rows of a strip CELL high, one CELL per distinct picture, [{name, steps: [(cell, ticks)]}])
+    or None when the figure has no such section."""
+    script = script_bytes(rom, fig, k)
+    sec = parse_section(script, s)
+    if not sec:
+        return None
+    tall = is_tall(rom, fig)
+    if gfx is None:
+        gfx = sheet_bytes(rom, pointers(rom, fig)[k][1])
+    gfx = gfx + bytes(max(0, 0x2000 - len(gfx)))
+    weapon = weapon_tiles(rom, PREVIEW_ITEMS[s])
+    cells, index, motions = [], {}, []
+    for j, (body, over) in enumerate(sec['pairs']):
+        b = motion_steps(script, body) if body else []
+        ov = motion_steps(script, over) if over else []
+        if not b:
+            continue
+        steps = []
+        t_over, oi = 0, 0
+        clock = 0
+        for page, fr, ticks, dx, dy in b:
+            # the overlay step that is showing at this time (drawn with the body's page)
+            while oi + 1 < len(ov) and t_over + ov[oi][2] <= clock:
+                t_over += ov[oi][2]
+                oi += 1
+            key = (page, fr, dx, dy, ov[oi][1] if ov else None)
+            if key not in index:
+                pieces = list(sec['frames'][fr]) if fr < len(sec['frames']) else []
+                if ov and ov[oi][1] < len(sec['frames']):     # the overlay object's tiles are $20 on
+                    pieces = [(x, y, t + 0x20, b, h, v) for x, y, t, b, h, v in sec['frames'][ov[oi][1]]] + pieces
+                index[key] = len(cells)
+                cells.append(render(rom, gfx, pieces, page, tall, dx=dx, dy=dy, weapon=weapon))
+            steps.append((index[key], min(ticks, 60)))
+            clock += ticks
+        motions.append({'name': 'Standing' if j == 1 else f'Motion {j}', 'steps': steps})
+    if not cells:
+        return None
+    strip = [sum((c[y] for c in cells), []) for y in range(CELL)]
+    return strip, motions

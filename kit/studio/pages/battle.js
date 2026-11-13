@@ -33,8 +33,9 @@ export async function battlePage(root) {
   let rosterHint = null;
   const HINTS = { classes: 'What each class looks like in battle, for each weapon it can use.', spells: '', spellgfx: 'The pictures each spell effect is drawn from.',
     skillanims: 'The sparkle each skill shows when it activates in battle.',
-    mapbattle: 'The little figures that fight on the map when battle animations are off.' };
-  const drawViewBar = () => viewBar.replaceChildren(...[['classes', 'Classes'], ['spells', 'Spells'], ['spellgfx', 'Spell pictures'], ['skillanims', 'Skill animations'], ['mapbattle', 'Map battles']].map(([k, t]) =>
+    mapbattle: 'The little figures that fight on the map when battle animations are off.',
+    mapspells: 'What tomes and staves show on the map when battle animations are off.' };
+  const drawViewBar = () => viewBar.replaceChildren(...[['classes', 'Classes'], ['spells', 'Spells'], ['spellgfx', 'Spell pictures'], ['skillanims', 'Skill animations'], ['mapbattle', 'Map battles'], ['mapspells', 'Map spells']].map(([k, t]) =>
     h('button', { class: 'chip', role: 'tab', 'aria-selected': String((st.view || 'classes') === k), onclick: () => { st.view = k; remember(); drawViewBar(); drawList(); drawDetail(); } }, t)));
   drawViewBar();
   root.append(h('div', { class: 'split' },
@@ -54,11 +55,11 @@ export async function battlePage(root) {
   function drawList() {
     const q = find.value.trim().toLowerCase();
     find.hidden = st.view === 'spells' || st.view === 'skillanims';
-    if (st.view === 'mapbattle') find.placeholder = 'Find a class';
-    find.placeholder = st.view === 'spellgfx' ? 'Find a spell' : 'Find a class';
+    find.placeholder = st.view === 'spellgfx' || st.view === 'mapspells' ? 'Find a spell' : 'Find a class';
     rosterHint.textContent = HINTS[st.view || 'classes'] || ''; rosterHint.hidden = !rosterHint.textContent;
     if (st.view === 'skillanims') { drawSkillList(); return; }
     if (st.view === 'mapbattle') { drawMbList(q); return; }
+    if (st.view === 'mapspells') { drawMsList(q); return; }
     if (st.view === 'spellgfx') { drawPicList(q); return; }
     if (st.view === 'spells') { list.replaceChildren(h('p', { class: 'hint baspellhint' }, 'Tomes, staves and magic swords play a spell effect when they attack or heal. Pick which effect each one plays, or give one to another item.')); return; }
     list.replaceChildren(...classes().filter(c => !q || c.name.toLowerCase().includes(q)).map(c =>
@@ -466,6 +467,8 @@ export async function battlePage(root) {
 
   // ------------------------------------------------------------ map battles
   let MB = null;
+  const mbPlayers = new Set();
+  setInterval(() => { for (const cv of mbPlayers) { if (!cv.isConnected) { mbPlayers.delete(cv); continue; } cv._tick(); } }, 1000 / 60);
   const mbKey = Date.now().toString(36);
   async function loadMb() { MB = await api('mapbattle'); }
   async function drawMbList(q) {
@@ -524,6 +527,44 @@ export async function battlePage(root) {
       };
       im.src = u;
     }
+    // the figure's motions, played from its script: pick the way it faces and the weapon it holds
+    const moves = h('div', { class: 'mbmoves' }, h('p', { class: 'hint' }, 'Reading…'));
+    const DIRS = ['left', 'up-left', 'up', 'up-right', 'right', 'down-right', 'down', 'down-left'];
+    (async () => {
+      const fig = c.figure, k = st.mbdir ?? 4;
+      let P;
+      try { P = await api(`mbplayer?fig=${fig}&k=${k}&s=${st.mbsec ?? -1}`); } catch (e) { moves.replaceChildren(h('p', { class: 'hint' }, e.message)); return; }
+      const sh = MB.figures[fig].sheets.find(x => x.dirs.includes(DIRS[k]));
+      const dirSel = h('select', { class: 'in', 'aria-label': 'Foe is' }, DIRS.map((d, i) => h('option', { value: i, selected: i === k }, d)));
+      dirSel.onchange = () => { st.mbdir = Number(dirSel.value); drawMapBattle(); };
+      const secSel = h('select', { class: 'in', 'aria-label': 'Weapon' }, P.sections.map(([i, n]) => h('option', { value: i, selected: i === P.s }, n)));
+      secSel.onchange = () => { st.mbsec = Number(secSel.value); drawMapBattle(); };
+      const img = new Image();
+      img.src = `/gfx/mbplay/${fig.toString(16).padStart(2, '0')}_${k}_${P.s}.png?a=${army}&s=3&c=${sh?.ver || 'rom'}-${mbKey}`;
+      const S3 = P.cell * 3;
+      const cards = P.motions.map(m => {
+        const cv = h('canvas', { class: 'mbplay', width: S3, height: S3, role: 'img', 'aria-label': `${MB.figures[fig].label}: ${m.name}` });
+        const ctx = cv.getContext('2d');
+        let i = 0, left = 0;
+        cv._tick = () => {
+          if (!img.complete || !img.naturalWidth || !cv.isConnected) return;
+          if (left-- > 0) return;
+          const [cell, ticks] = m.steps[i];
+          ctx.clearRect(0, 0, S3, S3);
+          ctx.drawImage(img, cell * S3, 0, S3, S3, 0, 0, S3, S3);
+          left = Math.min(40, Math.max(6, ticks));
+          i = (i + 1) % m.steps.length;
+          if (i === 0) left += 30;
+        };
+        mbPlayers.add(cv);
+        return h('figure', { class: 'mbplayfig' }, cv, h('figcaption', {}, m.name));
+      });
+      moves.replaceChildren(
+        h('div', { class: 'itgrid wide' }, h('label', { class: 'lbl' }, h('span', {}, 'Foe is'), dirSel),
+          P.sections.length ? h('label', { class: 'lbl' }, h('span', {}, 'Weapon'), secSel) : null),
+        P.motions.length ? h('div', { class: 'mbplays' }, cards) : h('p', { class: 'hint' }, 'This figure has no moves for that.'),
+        h('p', { class: 'hint' }, 'Played from the figure\'s own script with an iron weapon of that kind (magic shows no weapon). The game also waits for the other fighter between steps, so its fights run slower. Redrawn sheets show here straight away.'));
+    })();
     const edited = c.figure !== c.gameFigure || c.women !== c.gameWomen;
     detail.replaceChildren(h('div', { class: 'sheet basheet' },
       h('div', { class: 'sheet-head' }, h('h2', {}, c.name), h('p', { class: 'sub' }, `Class ${c.c} · in map battles`)),
@@ -533,6 +574,8 @@ export async function battlePage(root) {
         h('label', { class: 'lbl' }, h('span', {}, 'Figure'), figSel('figure', 'Figure')),
         h('label', { class: 'lbl' }, h('span', {}, 'Women show'), figSel('women', 'Women\'s figure'))),
       h('div', { class: 'sfxbtns' }, watch(c.figure), edited ? h('button', { class: 'btn btn-line', type: 'button', onclick: () => set({ reset: true }, 'Back to the game\'s figures') }, 'Use the game\'s') : null),
+      h('h3', {}, `How ${MB.figures[c.figure].label} moves`),
+      moves,
       h('h3', {}, `Sheets of ${MB.figures[c.figure].label}`),
       h('div', { class: 'spbar' }, h('span', { class: 'sub' }, 'Colours'), armyBar),
       h('p', { class: 'hint' }, 'A figure has a sheet for each way it can face its foe (up-right uses the right sheet, down-left the left one). A sheet is 256 tiles as the game keeps them, 16 across: the figure\'s poses are drawn in 16 × 16 pieces, with weapons and mounts further down. Download one, paint over the pieces in any paint program (same size, the map palette\'s colours) and replace it; Watch a map battle shows the result. A sheet is used by every class that shows this figure.'),
@@ -541,7 +584,77 @@ export async function battlePage(root) {
       c.women !== c.figure ? sheetCards(c.women) : null)));
   }
 
+  // ------------------------------------------------------------ spell effects on the map
+  let MS = null;
+  async function loadMs() { MS = await api('mapspells'); }
+  async function drawMsList(q) {
+    if (!MS) { list.replaceChildren(h('p', { class: 'hint' }, 'Reading…')); try { await loadMs(); } catch (e) { list.replaceChildren(h('p', { class: 'hint' }, e.message)); return; } }
+    if (st.msp == null || !MS.spells.some(x => x.spell === st.msp)) st.msp = MS.spells[0]?.spell;
+    list.replaceChildren(...MS.spells.filter(x => !q || x.name.toLowerCase().includes(q)).map(x =>
+      h('button', { 'aria-pressed': String(x.spell === st.msp), onclick: () => { st.msp = x.spell; drawMsList(find.value.trim().toLowerCase()); drawMapSpell(); } },
+        h('span', {}, x.name), h('span', { class: 'sub' }, `colours ${x.palette + 1}${x.custom || x.palette !== x.gamePalette ? ' ✎' : ''}`))));
+  }
+  async function drawMapSpell() {
+    if (!MS) { try { await loadMs(); } catch (e) { detail.replaceChildren(h('div', { class: 'empty' }, e.message)); return; } }
+    const x = MS.spells.find(k => k.spell === st.msp) || MS.spells[0];
+    if (!x) { detail.replaceChildren(h('div', { class: 'empty' }, 'No spells with a map effect.')); return; }
+    const P = MS.palettes[x.palette];
+    const reload = async msg => { MS = null; await refreshSession(); await loadMs(); drawMsList(find.value.trim().toLowerCase()); drawMapSpell(); if (msg) toast(msg); };
+    const call = async (body, msg) => { try { await api('mapspellset', body); await reload(msg); } catch (e) { toast(e.message, true); } };
+    const ver = `${x.ver}-${P.colours.map(c => c.toString(16)).join('')}-${mbKey}`;
+    const file = h('input', { type: 'file', accept: 'image/png,image/*', hidden: true });
+    file.onchange = () => { const fl = file.files[0]; file.value = ''; if (fl) importFx(fl); };
+    async function importFx(fl) {
+      const u = URL.createObjectURL(fl);
+      const im = new Image();
+      im.onerror = () => { URL.revokeObjectURL(u); toast('That file isn\'t a picture the browser can open.', true); };
+      im.onload = async () => {
+        URL.revokeObjectURL(u);
+        const n = im.width / 128;
+        if (!Number.isInteger(n) || n < 1 || n > 6 || im.height !== 16 * n) { toast(`A map spell sheet is 128 × 16 pixels (or 2×, 3×, 4× that); the picture is ${im.width} × ${im.height}.`, true); return; }
+        const cv = document.createElement('canvas'); cv.width = 128; cv.height = 16;
+        const ctx = cv.getContext('2d'); ctx.imageSmoothingEnabled = false; ctx.drawImage(im, 0, 0, 128, 16);
+        try { await api('mapspellsheet', { spell: x.spell, png: cv.toDataURL('image/png').split(',')[1] }); await reload(`${x.name}: new sheet (Ctrl+Z undoes it)`); } catch (e) { toast(e.message, true); }
+      };
+      im.src = u;
+    }
+    let cols = P.colours.slice(), hue = 0, sat = 1, lit = 0;
+    const shown = () => cols.map((c, i) => i ? shiftColour(c, hue, sat, lit) : c);
+    const sw = h('div', { class: 'sfxrow' });
+    const apply = h('button', { class: 'btn btn-gilt', type: 'button', disabled: true, onclick: () => call({ palette: x.palette, colours: shown() }, 'Colours changed') }, 'Apply colours');
+    const drawSw = () => sw.replaceChildren(...shown().slice(1).map((c, j) => {
+      const pick = h('input', { type: 'color', value: toHex(c), 'aria-label': `Colour ${j + 1}` });
+      pick.onchange = () => { cols = shown(); cols[j + 1] = fromHex(pick.value); hue = 0; sat = 1; lit = 0; call({ palette: x.palette, colours: cols }, 'Colour changed'); };
+      return h('label', { class: 'sfxsw' + (c !== P.game[j + 1] ? ' changed' : ''), style: `--c:${toHex(c)}`, title: `Colour ${j + 1}` }, pick);
+    }));
+    drawSw();
+    const sl = (lab, min, max, val, set) => { const r = h('input', { type: 'range', min, max, value: val, 'aria-label': lab }); r.oninput = () => { set(Number(r.value)); drawSw(); apply.disabled = false; }; return h('label', { class: 'lbl' }, h('span', {}, lab), r); };
+    const palSel = h('select', { class: 'in', 'aria-label': 'Colours' }, MS.palettes.map(pp => h('option', { value: pp.p, selected: pp.p === x.palette }, `Colours ${pp.p + 1}${pp.users.length ? ' — ' + pp.users.slice(0, 4).join(', ') + (pp.users.length > 4 ? '…' : '') : ''}`)));
+    palSel.onchange = () => call({ spell: x.spell, palette: Number(palSel.value) }, `${x.name} uses colours ${Number(palSel.value) + 1}`);
+    const watch = h('button', { class: 'btn btn-gilt', type: 'button', disabled: !x.attack, title: x.attack ? 'Opens the PC port on a copy of your ROM: the Prologue fight as a map battle, with Midir casting this' : 'Staves are used, not fought with, so this preview can\'t show them',
+      onclick: async () => { try { await watchJob(await api('mapspellpreview', { spell: x.spell }), () => toast('The PC port is opening: it plays up to the fight at full speed, then shows the map battle again and again until you close it.')); } catch (e) { toast(e.message, true); } } }, 'Watch on the map');
+    detail.replaceChildren(h('div', { class: 'sheet basheet' },
+      h('div', { class: 'sheet-head' }, h('h2', {}, x.name), h('p', { class: 'sub' }, `Map spell ${x.spell} · item ${x.item}`)),
+      h('div', { class: 'baredraw' },
+        h('p', { class: 'hint' }, `With battle animations off, ${x.name} shows these pieces on the map (the fireball, bolt or sparkle that flies to the target). Each spell has its own sheet; colours are one of six sets that several spells share.`),
+        h('img', { class: 'msheet', src: `/gfx/mapfx/${x.spell}.png?s=4&c=${ver}`, width: 512, height: 64, alt: `${x.name} on the map` }),
+        h('div', { class: 'sfxbtns' },
+          h('button', { class: 'btn btn-line', type: 'button', onclick: () => file.click() }, 'Replace…'),
+          h('a', { class: 'btn btn-line', href: `/gfx/mapfx/${x.spell}.idx.png?c=${ver}`, download: `mapspell_${x.spell}.png` }, 'Download'),
+          x.custom ? h('button', { class: 'btn btn-line danger', type: 'button', onclick: async () => { try { await api('mapspellsheet', { spell: x.spell, reset: true }); await reload('Back to the game\'s sheet'); } catch (e) { toast(e.message, true); } } }, 'Use the original') : null,
+          watch, file),
+        h('p', { class: 'hint' }, 'A sheet is 128 × 16 pixels: 32 tiles as the game keeps them, the pieces in 16 × 16 squares (2× to 4× bigger works too). Paint with the spell\'s colours below; other colours become the nearest one.' + (x.attack ? '' : ' Staves show their effect when used on the map; Watch on the map only works for tomes.')),
+        h('h3', {}, 'Colours'),
+        h('label', { class: 'lbl' }, h('span', {}, 'This spell uses'), palSel),
+        sw,
+        h('div', { class: 'sfxsliders' }, sl('Hue', -180, 180, 0, v => { hue = v; }), sl('Saturation', 0, 200, 100, v => { sat = v / 100; }), sl('Brightness', -50, 50, 0, v => { lit = v / 100; })),
+        h('div', { class: 'sfxbtns' }, apply,
+          P.colours.some((c, i) => c !== P.game[i]) ? h('button', { class: 'btn btn-line', type: 'button', onclick: () => call({ palette: x.palette, reset: true }, 'Back to the game\'s colours') }, 'Use the game\'s colours') : null),
+        h('p', { class: 'hint' }, `Colours ${x.palette + 1} are shared by ${P.users.join(', ')}: changing them changes all of these. Colours 1 (Return, Restore, Sleep) are all black in the ROM; the game fades them in itself.`))));
+  }
+
   function drawDetail() {
+    if (st.view === 'mapspells') { drawMapSpell(); return; }
     if (st.view === 'mapbattle') { drawMapBattle(); return; }
     if (st.view === 'skillanims') { drawSkillAnim(); return; }
     if (st.view === 'spellgfx') { drawPictures(); return; }
@@ -691,7 +804,8 @@ export async function battlePage(root) {
   return {
     async refresh(change) {
       if (!change || change.tables?.includes('map_battle') || change.files?.some(f => f.startsWith('mapbattle/'))) MB = null;
-      if (!change || change.tables?.includes('battle_anims') || change.tables?.includes('spells') || change.tables?.includes('map_battle') || change.files?.length) { D = await api('battleanims'); drawList(); drawDetail(); }
+      if (!change || change.tables?.includes('map_spells') || change.tables?.includes('map_palettes') || change.files?.some(f => f.startsWith('mapfx/'))) MS = null;
+      if (!change || change.tables?.includes('battle_anims') || change.tables?.includes('spells') || change.tables?.includes('map_battle') || change.tables?.includes('map_spells') || change.tables?.includes('map_palettes') || change.files?.length) { D = await api('battleanims'); drawList(); drawDetail(); }
     },
   };
 }

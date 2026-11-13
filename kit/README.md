@@ -344,8 +344,21 @@ default browser). The editor runs on your PC only: nothing is sent anywhere.
    **Download** one, paint over the pieces and **Replace…** it (128 × 128,
    or 2× to 4× that, in the map palette's colours); every class showing the
    figure changes. **Watch a map battle** opens the PC port on the Prologue
-   fight as a map battle, with Midir shown as the class's figure. Saved in
-   `map_battle.csv` and `mapbattle/`.
+   fight as a map battle, with Midir shown as the class's figure. **How it
+   moves** plays the figure's motions (standing and its attacks) for the way
+   it faces and the weapon it holds, drawn from its sheets, so a redrawn
+   sheet shows at once. Saved in `map_battle.csv` and `mapbattle/`.
+
+   **Map spells** (the sixth switch) is what tomes and staves show on the map
+   in those battles: the fireball, bolt, rock or sparkle that flies to the
+   target (Fire, Thunder, Wind, Light, Meteor and the rest, plus Return,
+   Warp, Rescue, Restore, Sleep and Thief). Each spell has a sheet of 32
+   tiles (128 × 16); **Download**, paint and **Replace…** it in the spell's
+   colours. Colours are one of six sets the spells share: pick which one a
+   spell uses, change a colour by clicking it, or shift them all with the
+   sliders (every spell using that set changes). **Watch on the map** opens
+   the PC port on the Prologue fight with Midir casting the tome. Saved in
+   `map_spells.csv`, `map_palettes.csv` and `mapfx/`.
 15. On the Project page, **Add unit stats to the map box** puts the PC port's
    MT / HIT / AS / AVO box into the ROMs and patches you build, so players
    on emulators get it too (the port can still switch it off).
@@ -444,6 +457,9 @@ runs this randomizer from its own menu (Mods → Randomizer).
 | `sprites/sNN.png`, `sprites/tNN.png` | – | Your own drawings for map sprites (48 × 16 or 48 × 24, the map palette's colours); only replaced ones exist |
 | `map_battle.csv` | 72 | Which map battle figure each class shows (`figure`, and `women` for women), figure numbers in hex (00-5D) |
 | `mapbattle/figNN_K.png` | – | Your own sheets for map battle figure NN, direction K (128 × 128, 16 tiles across); only replaced ones exist |
+| `map_spells.csv` | 24 | Which colour set (0-5) each spell's map effect uses |
+| `map_palettes.csv` | 6 | The six colour sets of map spell effects (16 hex colours each) |
+| `mapfx/spellNN.png` | – | Your own map effect sheets (128 × 16; kept in stand-in colours, one per colour number); only replaced ones exist |
 | `sprites/walk_sNN.png`, `sprites/walk_tNN.png` | – | Your own walking pictures for map sprites (96 × 96 or 128 × 128: four steps across; left, right, up, down from the top); only replaced ones exist |
 | `portraits/pNNN.png` | – | Your own pictures for portrait NNN (80 × 64 sheet or 48 × 64 face, 15 colours + transparency); only replaced ones exist |
 | `armies.csv` | 72 | Every army: name, member units, castles it holds |
