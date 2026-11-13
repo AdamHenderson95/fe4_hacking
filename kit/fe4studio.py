@@ -48,7 +48,7 @@ import fe4skillanim                # noqa: E402
 from fe4project import Project, load_settings, save_settings   # noqa: E402
 
 APP = 'Builder of the Holy War'
-VERSION = '45'
+VERSION = '46'
 STATIC = os.path.join(KIT, 'studio')
 
 # ---------------------------------------------------------------- state
@@ -108,6 +108,8 @@ def open_project(d):
             fe4skillanim.export(rom, os.path.join(d, 'skill_anims.csv'), dict(enumerate(fe4skills.NAMES)))
         if not os.path.exists(os.path.join(d, 'map_spells.csv')):   # kits before v44
             fe4mapfx.export(rom, d, L.item_names(rom))
+        elif not os.path.exists(os.path.join(d, fe4mapfx.WORDS_FILE)):   # kits before v46
+            fe4mapfx.export_colours(rom, d, L.item_names(rom))
         if not os.path.exists(os.path.join(d, 'map_battle.csv')):   # kits before v43
             import fe4mapbattle
             fe4mapbattle.export(rom, os.path.join(d, 'map_battle.csv'), L.class_names(rom)[:72])
@@ -184,7 +186,7 @@ def port_exe():
 
 # ---------------------------------------------------------------- data for the pages
 TABLES = {'units_playable', 'units_children', 'units_npc', 'units_generic', 'classes', 'items', 'rings',
-          'item_instances', 'skills', 'names', 'lovers', 'gen2_rules', 'deploy', 'locations', 'arena', 'armies', 'talks', 'map_sprites', 'map_terrain', 'battle_anims', 'spells', 'skill_anims', 'map_battle', 'map_spells', 'map_palettes'}
+          'item_instances', 'skills', 'names', 'lovers', 'gen2_rules', 'deploy', 'locations', 'arena', 'armies', 'talks', 'map_sprites', 'map_terrain', 'battle_anims', 'spells', 'skill_anims', 'map_battle', 'map_spells', 'map_palettes', 'map_colour_words', 'map_spell_block'}
 
 
 def unit_portrait(table, row):
@@ -1847,17 +1849,34 @@ def mapfx_image(s, scale, indexed=False):
     return fe4sprites.indexed_sheet_png(rows, pal) if indexed else fe4sprites.rows_png(rows, pal, scale)
 
 
+def _bg_colour_info(rom, s, words, block, names):
+    if s in fe4mapfx.COLOUR_LISTS:
+        rows = [[{'a': a, 'c': words.get(a, c), 'game': c} for a, c in row] for row in fe4mapfx.colour_rows(rom, s)]
+        shared = sorted({names[fe4mapfx.FIRST_ITEM + o] for o, l in fe4mapfx.COLOUR_LISTS.items()
+                         if o != s and set(l) & set(fe4mapfx.COLOUR_LISTS[s])})
+        return {'kind': 'lists', 'rows': rows, 'shared': shared}
+    if s in fe4mapfx.BLOCK:
+        game = fe4mapfx.block_colours(rom, s)
+        cols = block.get(s, game)
+        return {'kind': 'block', 'rows': [[{'c': cols[i], 'game': game[i]} for i in range(7)],
+                                          [{'c': cols[i], 'game': game[i]} for i in range(7, 14)]]}
+    return {'kind': None}
+
+
 def api_mapspells(b, q):
     p, rom, ts, tp = _mapfx_tables()
     names = L.item_names(rom)
     spells = []
+    words = _colour_word_values()
+    tb = p.table('map_spell_block')
+    block = {int(r['spell']): [int(x, 16) for x in r['colours'].split()] for r in (tb.rows if tb else [])}
     rows = {int(r['spell']): (i, r) for i, r in enumerate(ts.rows)}
     for s in range(fe4mapfx.BG_COUNT):
         it = fe4mapfx.FIRST_ITEM + s
         data = p.blob(fe4mapfx.sheet_file(s)).data
         bg = p.blob(fe4mapfx.bg_file(s)).data
         x = {'spell': s, 'item': it, 'name': names[it] if it < len(names) else f'Spell {s}',
-             'attack': it < 0x58, 'sprite': s in rows,
+             'attack': it < 0x58, 'sprite': s in rows, 'bgColours': _bg_colour_info(rom, s, words, block, names),
              'bgCustom': bg is not None, 'bgVer': '%08x' % zlib.crc32(bg) if bg is not None else 'rom'}
         if s in rows:
             i, r = rows[s]
@@ -1922,15 +1941,93 @@ def api_mapspellsheet(b, q):
     return {'ok': True}
 
 
+def _bg_shown_colours(s):
+    """The 14 colours (palette 6 then 7, colours 9-15) a spell's background shows first, with the project's
+    changes; None when the block's own are right."""
+    p, rom = project(), rom_data()
+    if s in fe4mapfx.BLOCK:
+        t = p.table('map_spell_block') if p else None
+        r = next((r for r in (t.rows if t else []) if r.get('spell', '').strip() == str(s)), None)
+        return [int(x, 16) for x in r['colours'].split()] if r else None
+    if s in fe4mapfx.COLOUR_LISTS:
+        words = _colour_word_values()
+        a, n = fe4mapfx.COLOUR_LISTS[s][0]
+        first = [words.get(a + 2 * i, fe4mapfx.word(rom, a + 2 * i)) for i in range(min(7, n))]
+        if s == 8:      # Mjolnir: colours 9-12 from one list, 13-15 from the other
+            b = fe4mapfx.COLOUR_LISTS[s][1][0]
+            first = first[:4] + [words.get(b + 2 * i, fe4mapfx.word(rom, b + 2 * i)) for i in range(3)]
+        return first + [None] * 7
+    return None
+
+
+def _colour_word_values():
+    p = project()
+    t = p.table('map_colour_words') if p else None
+    return {int(r['address'], 16): int(r['colour'], 16) for r in (t.rows if t else [])}
+
+
 def mapbg_image(s, scale):
     rom = rom_data()
     p = project()
     data = p.blob(fe4mapfx.bg_file(s)).data if p else None
+    t, mp, cols = fe4mapfx.bg_blocks(rom, s)
+    shown = _bg_shown_colours(s)
+    view = list(cols)
+    if shown:
+        for i, c in enumerate(shown):
+            if c is not None:
+                view[105 + i if i < 7 else 121 + i - 7] = c
     if data is not None:
-        t, mp, cols = fe4mapfx.bg_blocks(rom, s)
-        nt, nm = fe4mapfx.bg_from_png(data, mp, cols, t)
-        return fe4mapfx.bg_png(rom, s, nt, nm, cols, scale)
-    return fe4mapfx.bg_png(rom, s, scale=scale)
+        t, mp = fe4mapfx.bg_from_png(data, mp, cols, t)
+    return fe4mapfx.bg_png(rom, s, t, mp, view, scale)
+
+
+def api_mapspellcolour(b, q):
+    """{address, colour} (a word of a spell's colour list), {spell, colours: [14]} (block spells) or
+    {spell, reset: true}."""
+    p = need_project()
+    rom = rom_data()
+    if 'address' in b:
+        a = int(b['address'])
+        t = p.table('map_colour_words')
+        idx = next((i for i, r in enumerate(t.rows) if int(r['address'], 16) == a), None)
+        if idx is None:
+            raise ValueError('That colour is not part of a map spell.')
+        row = dict(t.rows[idx])
+        row['colour'] = '%04x' % (int(b['colour']) & 0x7FFF)
+        p.edit([('rows', 'map_colour_words', idx, [dict(t.rows[idx])], [row])])
+        return {'ok': True}
+    s = int(b['spell'])
+    if b.get('reset'):
+        edits = []
+        t = p.table('map_colour_words')
+        mine = {a + 2 * i for a, n in fe4mapfx.COLOUR_LISTS.get(s, []) for i in range(n)}
+        for i, r in enumerate(t.rows):
+            a = int(r['address'], 16)
+            if a in mine and int(r['colour'], 16) != fe4mapfx.word(rom, a):
+                new = dict(r)
+                new['colour'] = '%04x' % fe4mapfx.word(rom, a)
+                edits.append(('rows', 'map_colour_words', i, [dict(r)], [new]))
+        if s in fe4mapfx.BLOCK:
+            tb = p.table('map_spell_block')
+            i = next(i for i, r in enumerate(tb.rows) if r.get('spell', '').strip() == str(s))
+            new = dict(tb.rows[i])
+            new['colours'] = ' '.join('%04x' % c for c in fe4mapfx.block_colours(rom, s))
+            edits.append(('rows', 'map_spell_block', i, [dict(tb.rows[i])], [new]))
+        if edits:
+            p.edit(edits)
+        return {'ok': True}
+    if s not in fe4mapfx.BLOCK:
+        raise ValueError('That spell cycles its own colours; change them one by one.')
+    cols = [int(c) & 0x7FFF for c in b.get('colours') or []]
+    if len(cols) != 14:
+        raise ValueError('A background has 14 colours here.')
+    tb = p.table('map_spell_block')
+    i = next(i for i, r in enumerate(tb.rows) if r.get('spell', '').strip() == str(s))
+    new = dict(tb.rows[i])
+    new['colours'] = ' '.join('%04x' % c for c in cols)
+    p.edit([('rows', 'map_spell_block', i, [dict(tb.rows[i])], [new])])
+    return {'ok': True}
 
 
 def api_mapspellbg(b, q):
@@ -4049,7 +4146,7 @@ API = {('GET', 'session'): api_session, ('POST', 'ping'): api_ping, ('GET', 'tab
        ('GET', 'chapters'): api_chapters, ('GET', 'scene'): api_scene, ('POST', 'messages'): api_messages,
        ('POST', 'msg'): api_msg, ('POST', 'evtcmd'): api_evtcmd, ('GET', 'dsearch'): api_dsearch, ('GET', 'villages'): api_villages, ('GET', 'itemuse'): api_itemuse, ('POST', 'newevent'): api_newevent, ('POST', 'talkmenu'): api_talkmenu, ('POST', 'delstep'): api_delstep,
        ('POST', 'addstep'): api_addstep, ('GET', 'eventinfo'): api_eventinfo, ('GET', 'maps'): api_maps, ('GET', 'map'): api_map, ('POST', 'paint'): api_paint,
-       ('GET', 'armies'): api_armies, ('GET', 'portraits'): api_portraits, ('GET', 'mapsprites'): api_mapsprites, ('GET', 'skills'): api_skills, ('POST', 'gen2check'): api_gen2check, ('POST', 'newchild'): api_newchild, ('POST', 'skillcheck'): api_skillcheck, ('POST', 'skilledit'): api_skilledit, ('POST', 'spriteentry'): api_spriteentry, ('GET', 'tileinfo'): api_tileinfo, ('POST', 'tiledraw'): api_tiledraw, ('POST', 'mapsprite'): api_mapsprite, ('POST', 'mapwalk'): api_mapwalk, ('GET', 'mapbattle'): api_mapbattle, ('GET', 'mbplayer'): api_mbplayer, ('GET', 'mapspells'): api_mapspells, ('POST', 'mapspellset'): api_mapspellset, ('POST', 'mapspellsheet'): api_mapspellsheet, ('POST', 'mapspellbg'): api_mapspellbg, ('POST', 'mapspellpreview'): api_mapspellpreview, ('POST', 'mapbattleset'): api_mapbattleset, ('POST', 'mapbattlesheet'): api_mapbattlesheet, ('POST', 'mapbattlepreview'): api_mapbattlepreview, ('POST', 'portrait'): api_portrait, ('POST', 'aicmd'): api_aicmd, ('POST', 'airecipe'): api_airecipe}
+       ('GET', 'armies'): api_armies, ('GET', 'portraits'): api_portraits, ('GET', 'mapsprites'): api_mapsprites, ('GET', 'skills'): api_skills, ('POST', 'gen2check'): api_gen2check, ('POST', 'newchild'): api_newchild, ('POST', 'skillcheck'): api_skillcheck, ('POST', 'skilledit'): api_skilledit, ('POST', 'spriteentry'): api_spriteentry, ('GET', 'tileinfo'): api_tileinfo, ('POST', 'tiledraw'): api_tiledraw, ('POST', 'mapsprite'): api_mapsprite, ('POST', 'mapwalk'): api_mapwalk, ('GET', 'mapbattle'): api_mapbattle, ('GET', 'mbplayer'): api_mbplayer, ('GET', 'mapspells'): api_mapspells, ('POST', 'mapspellset'): api_mapspellset, ('POST', 'mapspellsheet'): api_mapspellsheet, ('POST', 'mapspellbg'): api_mapspellbg, ('POST', 'mapspellcolour'): api_mapspellcolour, ('POST', 'mapspellpreview'): api_mapspellpreview, ('POST', 'mapbattleset'): api_mapbattleset, ('POST', 'mapbattlesheet'): api_mapbattlesheet, ('POST', 'mapbattlepreview'): api_mapbattlepreview, ('POST', 'portrait'): api_portrait, ('POST', 'aicmd'): api_aicmd, ('POST', 'airecipe'): api_airecipe}
 
 
 # ---------------------------------------------------------------- window

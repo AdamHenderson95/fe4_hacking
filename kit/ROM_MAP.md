@@ -518,7 +518,15 @@ Found by freezing Midir's item (`$7E:4EDD`) to Fire in the Prologue map battle.
   ptr24 colours (256; `$7E:E388`). Meteor with `$7F:509B` >= `$A0` and Valflame with >= `$C0` use `$D6:1ECF` /
   `$D6:1D6C`. Mode 1 while it plays. The colours on screen (BG palette 6, colours 9-15) come from each spell's
   own code cycling tables in bank `$9F` (Fire `$DF:96D5`, Meteor `$9F:B37D` via `$9F:B33A`), not from the
-  block. Kit v45 replaces the picture (tiles + tilemap, each 8x8 cell keeping its palette, empty cells kept
+  block. Colour lists (v46, found by tracing every tome: each colour = LDA list,X / STA $01D2...): Fire and
+  Elfire `$9F:96D5` (7), Bolganone `$9F:A3DB` + 16 x i (18 groups of 7, `$FFFF` ends), Valflame `$9F:D513` (23,
+  sliding), Meteor `$9F:B37D` (29, sliding, $9F:B33A), Thunder / Elthunder / Bolting `$9F:AB2B` + 16 x i
+  (19 / 12 / 19 groups; the word before each group is not a colour), Thoron `$9F:AFA9` (18), Mjolnir
+  `$9F:BE52` (15, colours 9-12) and `$9F:BEE8` (10, colours 13-15), Forseti `$9F:C0FD` (10 x 7), Light
+  `$9F:AD32` (22), Nosferatu `$9F:C5AF` (18), Aura `$9F:98AA` (12 x 7), Loptyr and the drained tomes
+  `$9F:9B0A` (31). Wind, Elwind, Tornado, Blizzard, Naga, Jormungand, Fenrir and Hel keep the block's
+  colours 9-15 of palettes 6 and 7 (copied by $9F:8645; verified with Wind). Staves not traced.
+  Kit v45 replaces the picture (tiles + tilemap, each 8x8 cell keeping its palette, empty cells kept
   as the game has them); verified: a mirrored Meteor is in VRAM byte for byte and shows mirrored.
 - Verified: a changed colour set reaches OBJ palette 6, and a redrawn Fire sheet is what `$7F:45D9` holds
   when Midir casts it.

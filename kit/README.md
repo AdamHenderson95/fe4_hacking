@@ -363,10 +363,14 @@ default browser). The editor runs on your PC only: nothing is sent anywhere.
    darkened map while it plays (Meteor's falling rock, Fire's flame trail,
    Forseti's storm). **Download** it, paint over it and **Replace…** it
    (256 × 256, up to 128 different 8 × 8 tiles, mirrored ones count once);
-   each 8 × 8 square keeps the colours the game gives it there. The colours
-   shown are close, not exact, because the game cycles each spell's
-   colours itself while it plays. Saved in `map_spells.csv`,
-   `map_palettes.csv` and `mapfx/`.
+   each 8 × 8 square keeps the colours the game gives it there. **Colours
+   while it plays** are the colours the background really shows: most tomes
+   cycle through lists of their own (Meteor's reds, Thunder's flashes), and
+   Wind, Tornado, Blizzard, Fenrir and a few more use two rows of seven.
+   Click any colour to change it; spells that share a list (Thunder,
+   Elthunder and Bolting) change together. Staves aren't covered yet. Saved
+   in `map_spells.csv`, `map_palettes.csv`, `map_colour_words.csv`,
+   `map_spell_block.csv` and `mapfx/`.
 15. On the Project page, **Add unit stats to the map box** puts the PC port's
    MT / HIT / AS / AVO box into the ROMs and patches you build, so players
    on emulators get it too (the port can still switch it off).
@@ -467,6 +471,8 @@ runs this randomizer from its own menu (Mods → Randomizer).
 | `mapbattle/figNN_K.png` | – | Your own sheets for map battle figure NN, direction K (128 × 128, 16 tiles across); only replaced ones exist |
 | `map_spells.csv` | 24 | Which colour set (0-5) each spell's map effect uses |
 | `map_palettes.csv` | 6 | The six colour sets of map spell effects (16 hex colours each) |
+| `map_colour_words.csv` | 586 | The colour lists map spell backgrounds cycle through (address in bank $9F, colour) |
+| `map_spell_block.csv` | 8 | Background colours of the spells that don't cycle (palette 6 then 7, colours 9-15) |
 | `mapfx/bgNN.png` | – | Your own map spell backgrounds (256 × 256); only replaced ones exist |
 | `mapfx/spellNN.png` | – | Your own map effect sheets (128 × 16; kept in stand-in colours, one per colour number); only replaced ones exist |
 | `sprites/walk_sNN.png`, `sprites/walk_tNN.png` | – | Your own walking pictures for map sprites (96 × 96 or 128 × 128: four steps across; left, right, up, down from the top); only replaced ones exist |

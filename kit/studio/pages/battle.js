@@ -649,7 +649,30 @@ export async function battlePage(root) {
       };
       im.src = u;
     }
-    const bgVer = `${x.bgVer}-${mbKey}`;
+    const BC = x.bgColours || { kind: null };
+    const bgVer = `${x.bgVer}-${(BC.rows || []).flat().map(k => k.c.toString(16)).join('').slice(0, 400)}-${mbKey}`;
+    const colourBox = h('div', { class: 'mbcolours' });
+    if (BC.kind) {
+      const rows = BC.rows.map((row, ri) => h('div', { class: 'sfxrow' }, row.map((k, i) => {
+        const pick = h('input', { type: 'color', value: toHex(k.c), 'aria-label': BC.kind === 'block' ? `Palette ${6 + ri} colour ${9 + i}` : `Colour ${i + 1} of list ${ri + 1}` });
+        pick.onchange = async () => {
+          try {
+            if (BC.kind === 'lists') await api('mapspellcolour', { address: k.a, colour: fromHex(pick.value) });
+            else { const all = BC.rows.flat().map(z => z.c); all[ri * 7 + i] = fromHex(pick.value); await api('mapspellcolour', { spell: x.spell, colours: all }); }
+            await reload('Colour changed');
+          } catch (e) { toast(e.message, true); }
+        };
+        return h('label', { class: 'sfxsw' + (k.c !== k.game ? ' changed' : ''), style: `--c:${toHex(k.c)}` }, pick);
+      })));
+      const edited = BC.rows.flat().some(k => k.c !== k.game);
+      colourBox.append(h('h4', {}, 'Colours while it plays'),
+        h('p', { class: 'hint' }, BC.kind === 'block' ? 'The background\'s colours 9-15 (top: palette 6, bottom: palette 7). Click one to change it.' :
+          `${x.name} cycles its background through ${BC.rows.length > 1 ? 'these lists, 7 at a time or a few steps further each frame' : 'this list'}. Click a colour to change it${BC.shared.length ? `; ${BC.shared.join(', ')} use${BC.shared.length === 1 ? 's' : ''} the same colours` : ''}. The picture above shows the first ones.`),
+        ...rows,
+        edited ? h('button', { class: 'btn btn-line', type: 'button', onclick: async () => { try { await api('mapspellcolour', { spell: x.spell, reset: true }); await reload('Back to the game\'s colours'); } catch (e) { toast(e.message, true); } } }, 'Use the game\'s colours') : null);
+    } else {
+      colourBox.append(h('p', { class: 'hint' }, x.attack ? '' : 'Staves\' background colours come from code the kit hasn\'t traced yet; the colours shown are close, not exact.'));
+    }
     const bgSection = [
       h('h3', {}, 'Background'),
       h('p', { class: 'hint' }, `The big picture drawn over the map while ${x.name} plays (the map darkens, then this moves across it).${x.sprite ? '' : ' This spell has no flying piece, only this.'}`),
@@ -659,7 +682,8 @@ export async function battlePage(root) {
         h('a', { class: 'btn btn-line', href: `/gfx/mapbg/${x.spell}.png?c=${bgVer}`, download: `mapspell_bg_${x.spell}.png` }, 'Download'),
         x.bgCustom ? h('button', { class: 'btn btn-line danger', type: 'button', onclick: async () => { try { await api('mapspellbg', { spell: x.spell, reset: true }); await reload('Back to the game\'s background'); } catch (e) { toast(e.message, true); } } }, 'Use the original') : null,
         x.sprite ? null : watch, bgFile),
-      h('p', { class: 'hint' }, 'The picture is 256 × 256 pixels, built from up to 128 different 8 × 8 tiles (mirrored tiles count once). Each 8 × 8 square keeps the colours the game gives it there; paint with the colours in the downloaded picture. The colours shown are close, not exact: while it plays, the game cycles the spell\'s colours itself. Spells that share a background (Wind, Heal, Warp…) each get their own when you replace one.')];
+      h('p', { class: 'hint' }, 'The picture is 256 × 256 pixels, built from up to 128 different 8 × 8 tiles (mirrored tiles count once). Each 8 × 8 square keeps the colours the game gives it there; paint with the colours in the downloaded picture. Spells that share a background (Wind, Heal, Warp…) each get their own when you replace one.'),
+      colourBox];
     detail.replaceChildren(h('div', { class: 'sheet basheet' },
       h('div', { class: 'sheet-head' }, h('h2', {}, x.name), h('p', { class: 'sub' }, `Map spell ${x.spell} · item ${x.item}`)),
       !x.sprite ? h('div', { class: 'baredraw' }, ...bgSection) :
@@ -833,7 +857,7 @@ export async function battlePage(root) {
   return {
     async refresh(change) {
       if (!change || change.tables?.includes('map_battle') || change.files?.some(f => f.startsWith('mapbattle/'))) MB = null;
-      if (!change || change.tables?.includes('map_spells') || change.tables?.includes('map_palettes') || change.files?.some(f => f.startsWith('mapfx/'))) MS = null;
+      if (!change || change.tables?.some(t => t.startsWith('map_spell') || t === 'map_palettes' || t === 'map_colour_words') || change.files?.some(f => f.startsWith('mapfx/'))) MS = null;
       if (!change || change.tables?.includes('battle_anims') || change.tables?.includes('spells') || change.tables?.includes('map_battle') || change.tables?.includes('map_spells') || change.tables?.includes('map_palettes') || change.files?.length) { D = await api('battleanims'); drawList(); drawDetail(); }
     },
   };

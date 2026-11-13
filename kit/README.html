@@ -371,10 +371,14 @@ default browser). The editor runs on your PC only: nothing is sent anywhere.
    darkened map while it plays (Meteor's falling rock, Fire's flame trail,
    Forseti's storm). <strong>Download</strong> it, paint over it and <strong>Replace…</strong> it
    (256 × 256, up to 128 different 8 × 8 tiles, mirrored ones count once);
-   each 8 × 8 square keeps the colours the game gives it there. The colours
-   shown are close, not exact, because the game cycles each spell's
-   colours itself while it plays. Saved in <code>map_spells.csv</code>,
-   <code>map_palettes.csv</code> and <code>mapfx/</code>.
+   each 8 × 8 square keeps the colours the game gives it there. <strong>Colours
+   while it plays</strong> are the colours the background really shows: most tomes
+   cycle through lists of their own (Meteor's reds, Thunder's flashes), and
+   Wind, Tornado, Blizzard, Fenrir and a few more use two rows of seven.
+   Click any colour to change it; spells that share a list (Thunder,
+   Elthunder and Bolting) change together. Staves aren't covered yet. Saved
+   in <code>map_spells.csv</code>, <code>map_palettes.csv</code>, <code>map_colour_words.csv</code>,
+   <code>map_spell_block.csv</code> and <code>mapfx/</code>.
 15. On the Project page, <strong>Add unit stats to the map box</strong> puts the PC port's
    MT / HIT / AS / AVO box into the ROMs and patches you build, so players
    on emulators get it too (the port can still switch it off).</p>
@@ -622,6 +626,16 @@ runs this randomizer from its own menu (Mods → Randomizer).</p>
 <td><code>map_palettes.csv</code></td>
 <td>6</td>
 <td>The six colour sets of map spell effects (16 hex colours each)</td>
+</tr>
+<tr>
+<td><code>map_colour_words.csv</code></td>
+<td>586</td>
+<td>The colour lists map spell backgrounds cycle through (address in bank $9F, colour)</td>
+</tr>
+<tr>
+<td><code>map_spell_block.csv</code></td>
+<td>8</td>
+<td>Background colours of the spells that don't cycle (palette 6 then 7, colours 9-15)</td>
 </tr>
 <tr>
 <td><code>mapfx/bgNN.png</code></td>

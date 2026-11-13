@@ -117,6 +117,7 @@ def export(rom, proj, item_names):
         for s, it in spells(rom):
             w.writerow({'spell': s, '_name': item_names[it] if it < len(item_names) else '',
                         'palette': palette_index(entry(rom, s)[0])})
+    export_colours(rom, proj, item_names)
     with open(os.path.join(proj, PAL_FILE), 'w', newline='', encoding='utf-8') as fh:
         w = csv.DictWriter(fh, fieldnames=PAL_FIELDS)
         w.writeheader()
@@ -176,7 +177,7 @@ def apply(rom, proj, far):
             f = _fo(TABLE) + 5 * s
             rom[f + 2:f + 5] = a.to_bytes(3, 'little')
             n += 1
-    return n + apply_bg(rom, proj, far)
+    return n + apply_bg(rom, proj, far) + apply_colours(rom, proj, far)
 
 
 # ---------------------------------------------------------------- background pieces
@@ -335,4 +336,110 @@ def apply_bg(rom, proj, far):
             rom[a:a + len(data)] = data
             rom[f + j:f + j + 3] = a.to_bytes(3, 'little')
         n += 1
+    return n
+
+
+# ---------------------------------------------------------------- background colours
+# What a spell's background shows in BG palette 6 (and 7), colours 9-15.  $9F:8645 first copies them from
+# the spell's colour block; most tomes' own code then cycles them through lists in bank $9F (found by tracing
+# every tome in the Prologue map battle; each list is (start, number of colours), read 7 at a time or as a
+# sliding window).  The kit changes those lists in place.  The spells marked BLOCK show the block's colours
+# 9-15 of palettes 6 and 7 as they are (verified with Wind).  Staves were not traced.
+COLOUR_LISTS = {
+    0: [(0x9F96D5, 7)], 1: [(0x9F96D5, 7)],                                   # Fire, Elfire
+    2: [(0x9FA3DB + 16 * i, 7) for i in range(18)],                         # Bolganone
+    3: [(0x9FD513, 23)],                                                    # Valflame
+    4: [(0x9FB37D, 29)],                                                    # Meteor
+    5: [(0x9FAB2B + 16 * i, 7) for i in range(19)],                         # Thunder
+    6: [(0x9FAB2B + 16 * i, 7) for i in range(12)],                         # Elthunder
+    9: [(0x9FAB2B + 16 * i, 7) for i in range(19)],                         # Bolting
+    7: [(0x9FAFA9, 18)],                                                    # Thoron
+    8: [(0x9FBE52, 15), (0x9FBEE8, 10)],                                    # Mjolnir (colours 9-12, 13-15)
+    13: [(0x9FC0FD + 14 * i, 7) for i in range(10)],                        # Forseti
+    15: [(0x9FAD32, 22)],                                                   # Light
+    16: [(0x9FC5AF, 18)],                                                   # Nosferatu
+    17: [(0x9F98AA + 14 * i, 7) for i in range(12)],                        # Aura
+    22: [(0x9F9B0A, 31)], 23: [(0x9F9B0A, 31)], 24: [(0x9F9B0A, 31)], 25: [(0x9F9B0A, 31)],   # Loptyr, drained
+}
+BLOCK = (10, 11, 12, 14, 18, 19, 20, 21)   # Wind, Elwind, Tornado, Blizzard, Naga, Jormungand, Fenrir, Hel
+WORDS_FILE = 'map_colour_words.csv'        # address, colour: the lists above
+BLOCK_FILE = 'map_spell_block.csv'         # spell, colours: palette 6 colours 9-15 then palette 7 colours 9-15
+
+
+def colour_words():
+    """{address: [spells]} for every word in the lists."""
+    out = {}
+    for s, lists in COLOUR_LISTS.items():
+        for a, n in lists:
+            for i in range(n):
+                out.setdefault(a + 2 * i, []).append(s)
+    return out
+
+
+def word(rom, a):
+    f = _fo(a)
+    return rom[f] | rom[f + 1] << 8
+
+
+def colour_rows(rom, s):
+    """[[(address, colour)]] - the lists a spell cycles through."""
+    return [[(a + 2 * i, word(rom, a + 2 * i)) for i in range(n)] for a, n in COLOUR_LISTS.get(s, [])]
+
+
+def block_colours(rom, s):
+    cols = bg_blocks(rom, s)[2]
+    return cols[105:112] + cols[121:128]
+
+
+def export_colours(rom, proj, item_names):
+    with open(os.path.join(proj, WORDS_FILE), 'w', newline='', encoding='utf-8') as fh:
+        w = csv.DictWriter(fh, fieldnames=['address', 'colour', '_spells'])
+        w.writeheader()
+        for a, ss in sorted(colour_words().items()):
+            w.writerow({'address': '%06X' % a, 'colour': '%04x' % word(rom, a),
+                        '_spells': ', '.join(item_names[FIRST_ITEM + s] for s in ss)})
+    with open(os.path.join(proj, BLOCK_FILE), 'w', newline='', encoding='utf-8') as fh:
+        w = csv.DictWriter(fh, fieldnames=['spell', '_name', 'colours'])
+        w.writeheader()
+        for s in BLOCK:
+            w.writerow({'spell': s, '_name': item_names[FIRST_ITEM + s],
+                        'colours': ' '.join('%04x' % c for c in block_colours(rom, s))})
+
+
+def apply_colours(rom, proj, far):
+    n = 0
+    known = colour_words()
+    p = os.path.join(proj, WORDS_FILE)
+    if os.path.exists(p):
+        for ln, r in enumerate(csv.DictReader(open(p, newline='', encoding='utf-8')), start=2):
+            try:
+                a, c = int(r['address'], 16), int(r['colour'], 16) & 0x7FFF
+            except (KeyError, ValueError):
+                raise SystemExit(f'{p}:{ln}: address and colour are hex')
+            if a not in known:
+                raise SystemExit(f'{p}:{ln}: {a:06X} is not one of the map spell colour lists')
+            if word(rom, a) != c:
+                f = _fo(a)
+                rom[f:f + 2] = c.to_bytes(2, 'little')
+                n += 1
+    p = os.path.join(proj, BLOCK_FILE)
+    if os.path.exists(p):
+        for ln, r in enumerate(csv.DictReader(open(p, newline='', encoding='utf-8')), start=2):
+            try:
+                s = int(r['spell'])
+                cols = [int(x, 16) & 0x7FFF for x in r['colours'].split()]
+            except (KeyError, ValueError):
+                raise SystemExit(f'{p}:{ln}: spell is a number, colours are 14 hex colours')
+            if s not in BLOCK or len(cols) != 14:
+                raise SystemExit(f'{p}:{ln}: spell {s} takes its colours from its own code, or not 14 colours')
+            if cols == block_colours(rom, s):
+                continue
+            allc = bg_blocks(rom, s)[2]
+            allc = allc[:105] + cols[:7] + allc[112:121] + cols[7:] + allc[128:]
+            data = fe4lz.compress(b''.join(c.to_bytes(2, 'little') for c in allc))
+            a = far.alloc(len(data))
+            rom[a:a + len(data)] = data
+            f = _fo(BG_TABLE) + 9 * s
+            rom[f + 6:f + 9] = a.to_bytes(3, 'little')
+            n += 1
     return n
