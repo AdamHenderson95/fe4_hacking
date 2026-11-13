@@ -345,8 +345,9 @@ default browser). The editor runs on your PC only: nothing is sent anywhere.
    or 2× to 4× that, in the map palette's colours); every class showing the
    figure changes. **Watch a map battle** opens the PC port on the Prologue
    fight as a map battle, with Midir shown as the class's figure. **How it
-   moves** plays the figure's motions (standing and its attacks) for the way
-   it faces and the weapon it holds, drawn from its sheets, so a redrawn
+   moves** plays the figure's motions (standing or being hit, dodging, an
+   attack that misses, an attack that hits) for the way it faces and the
+   weapon it holds, drawn from its sheets, so a redrawn
    sheet shows at once. Saved in `map_battle.csv` and `mapbattle/`.
 
    **Map spells** (the sixth switch) is what tomes and staves show on the map
@@ -357,7 +358,8 @@ default browser). The editor runs on your PC only: nothing is sent anywhere.
    colours. Colours are one of six sets the spells share: pick which one a
    spell uses, change a colour by clicking it, or shift them all with the
    sliders (every spell using that set changes). **Watch on the map** opens
-   the PC port on the Prologue fight with Midir casting the tome. Every
+   the PC port on the Prologue fight with Midir casting the tome (a staff
+   plays its effect as if he attacked with it). Every
    spell (also Forseti, Blizzard, Aura and the healing staves, which have no
    flying piece) has a **Background** too: the big picture drawn over the
    darkened map while it plays (Meteor's falling rock, Fire's flame trail,
@@ -368,7 +370,9 @@ default browser). The editor runs on your PC only: nothing is sent anywhere.
    cycle through lists of their own (Meteor's reds, Thunder's flashes), and
    Wind, Tornado, Blizzard, Fenrir and a few more use two rows of seven.
    Click any colour to change it; spells that share a list (Thunder,
-   Elthunder and Bolting) change together. Staves aren't covered yet. Saved
+   Elthunder and Bolting) change together. Staves have theirs too (Heal,
+   Mend, Recover, Physic and Charm share Loptyr's list); Valkyria leaves the
+   colours alone. Saved
    in `map_spells.csv`, `map_palettes.csv`, `map_colour_words.csv`,
    `map_spell_block.csv` and `mapfx/`.
 15. On the Project page, **Add unit stats to the map box** puts the PC port's
@@ -471,8 +475,8 @@ runs this randomizer from its own menu (Mods → Randomizer).
 | `mapbattle/figNN_K.png` | – | Your own sheets for map battle figure NN, direction K (128 × 128, 16 tiles across); only replaced ones exist |
 | `map_spells.csv` | 24 | Which colour set (0-5) each spell's map effect uses |
 | `map_palettes.csv` | 6 | The six colour sets of map spell effects (16 hex colours each) |
-| `map_colour_words.csv` | 586 | The colour lists map spell backgrounds cycle through (address in bank $9F, colour) |
-| `map_spell_block.csv` | 8 | Background colours of the spells that don't cycle (palette 6 then 7, colours 9-15) |
+| `map_colour_words.csv` | 743 | The colour lists map spell backgrounds cycle through (address in bank $9F, colour) |
+| `map_spell_block.csv` | 12 | Background colours of the spells that don't cycle (palette 6 then 7, colours 9-15) |
 | `mapfx/bgNN.png` | – | Your own map spell backgrounds (256 × 256); only replaced ones exist |
 | `mapfx/spellNN.png` | – | Your own map effect sheets (128 × 16; kept in stand-in colours, one per colour number); only replaced ones exist |
 | `sprites/walk_sNN.png`, `sprites/walk_tNN.png` | – | Your own walking pictures for map sprites (96 × 96 or 128 × 128: four steps across; left, right, up, down from the top); only replaced ones exist |

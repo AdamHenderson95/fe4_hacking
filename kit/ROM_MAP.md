@@ -484,7 +484,11 @@ game shows as a map battle (Midir attacks Gandolf).
   0 sword, 1 lance, 2 axe, 3 bow, 4 magic or staff; `$9E:87F0` takes the script base `$7E:EB88` / `$F408` +
   word [section]). A kind the figure can't use points outside the block. A section: word offset of its frame
   table, then pairs of motion offsets (body, overlay object; an overlay outside the block = none). Pair 1 is
-  standing (`0B` / `0C` go back to it); the battle picks the others (`$7F:4586`-`$458F`, read by `09` / `0A`).
+  standing (`0B` / `0C` go back to it); the battle picks the others (`$7F:4586`-`$458F`, read by `09` / `0A`):
+  `$9E:832C` from each strike's flags (`$7E:4F85` list; bit 0 = the defender strikes): the striker plays pair 4
+  when the strike hits (`$20`) and pair 3 when it misses (and always pair 3 from a diagonal, odd direction);
+  the one struck plays pair 2 when it dodges (`$08`), else pair 1. Pair 0 is not used by map battles.
+  Verified by forcing a miss (`$7E:4F85` = `$1D`): Gandolf plays pair 3, Midir pair 2 (and keeps his HP).
   Frame data come right after the header; the table holds one offset per frame. A motion is mostly
   `03 n` (page) and `0E ticks frame`, with battle signals (`04`-`08`, `0D`) between.
 - **Tiles:** pages are `$140` bytes (small) or `$200` (tall) from graphics + `$1000` ($9E:B4E5 / B4F5), sent to
@@ -525,7 +529,10 @@ Found by freezing Midir's item (`$7E:4EDD`) to Fire in the Prologue map battle.
   `$9F:BE52` (15, colours 9-12) and `$9F:BEE8` (10, colours 13-15), Forseti `$9F:C0FD` (10 x 7), Light
   `$9F:AD32` (22), Nosferatu `$9F:C5AF` (18), Aura `$9F:98AA` (12 x 7), Loptyr and the drained tomes
   `$9F:9B0A` (31). Wind, Elwind, Tornado, Blizzard, Naga, Jormungand, Fenrir and Hel keep the block's
-  colours 9-15 of palettes 6 and 7 (copied by $9F:8645; verified with Wind). Staves not traced.
+  colours 9-15 of palettes 6 and 7 (copied by $9F:8645; verified with Wind). Staves (v47, traced as if
+  attacking): Heal, Mend, Recover, Physic and Charm use Loptyr's `$9F:9B0A`; Fortify `$9F:9B95` (15), Return
+  `$9F:BC8F` (22), Restore `$9F:BBE5` (38), Silence `$9F:C7E0` (38), Sleep `$9F:BB30` (22), Berserk
+  `$9F:9CE0` (22); Warp, Rescue, Thief and Broken staff (A) keep the block's; Valkyria writes none.
   Kit v45 replaces the picture (tiles + tilemap, each 8x8 cell keeping its palette, empty cells kept
   as the game has them); verified: a mirrored Meteor is in VRAM byte for byte and shows mirrored.
 - Verified: a changed colour set reaches OBJ palette 6, and a redrawn Fire sheet is what `$7F:45D9` holds

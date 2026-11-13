@@ -344,7 +344,8 @@ def apply_bg(rom, proj, far):
 # the spell's colour block; most tomes' own code then cycles them through lists in bank $9F (found by tracing
 # every tome in the Prologue map battle; each list is (start, number of colours), read 7 at a time or as a
 # sliding window).  The kit changes those lists in place.  The spells marked BLOCK show the block's colours
-# 9-15 of palettes 6 and 7 as they are (verified with Wind).  Staves were not traced.
+# 9-15 of palettes 6 and 7 as they are (verified with Wind).  Staves were traced the same way (the map battle
+# preview plays a staff's effect as if it attacked).
 COLOUR_LISTS = {
     0: [(0x9F96D5, 7)], 1: [(0x9F96D5, 7)],                                   # Fire, Elfire
     2: [(0x9FA3DB + 16 * i, 7) for i in range(18)],                         # Bolganone
@@ -360,8 +361,18 @@ COLOUR_LISTS = {
     16: [(0x9FC5AF, 18)],                                                   # Nosferatu
     17: [(0x9F98AA + 14 * i, 7) for i in range(12)],                        # Aura
     22: [(0x9F9B0A, 31)], 23: [(0x9F9B0A, 31)], 24: [(0x9F9B0A, 31)], 25: [(0x9F9B0A, 31)],   # Loptyr, drained
+    26: [(0x9F9B0A, 31)], 27: [(0x9F9B0A, 31)], 28: [(0x9F9B0A, 31)], 29: [(0x9F9B0A, 31)],   # Heal - Physic
+    34: [(0x9F9B0A, 31)],                                                   # Charm
+    30: [(0x9F9B95, 15)],                                                   # Fortify
+    31: [(0x9FBC8F, 22)],                                                   # Return
+    35: [(0x9FBBE5, 38)],                                                   # Restore
+    37: [(0x9FC7E0, 38)],                                                   # Silence
+    38: [(0x9FBB30, 22)],                                                   # Sleep
+    39: [(0x9F9CE0, 22)],                                                   # Berserk
 }
-BLOCK = (10, 11, 12, 14, 18, 19, 20, 21)   # Wind, Elwind, Tornado, Blizzard, Naga, Jormungand, Fenrir, Hel
+# Wind, Elwind, Tornado, Blizzard, Naga, Jormungand, Fenrir, Hel, Warp, Rescue, Thief, Broken staff (A)
+BLOCK = (10, 11, 12, 14, 18, 19, 20, 21, 32, 33, 40, 41)
+NO_COLOURS = (36,)                         # Valkyria leaves these colours alone
 WORDS_FILE = 'map_colour_words.csv'        # address, colour: the lists above
 BLOCK_FILE = 'map_spell_block.csv'         # spell, colours: palette 6 colours 9-15 then palette 7 colours 9-15
 
@@ -443,3 +454,35 @@ def apply_colours(rom, proj, far):
             rom[f + 6:f + 9] = a.to_bytes(3, 'little')
             n += 1
     return n
+
+
+def upgrade_colours(rom, proj, item_names):
+    """Add rows a newer kit knows about to map_colour_words.csv / map_spell_block.csv (kept edits stay)."""
+    p = os.path.join(proj, WORDS_FILE)
+    if not os.path.exists(p):
+        export_colours(rom, proj, item_names)
+        return
+    rows = list(csv.DictReader(open(p, newline='', encoding='utf-8')))
+    have = {int(r['address'], 16) for r in rows}
+    words = colour_words()
+    if set(words) - have:
+        for a in sorted(set(words) - have):
+            rows.append({'address': '%06X' % a, 'colour': '%04x' % word(rom, a),
+                         '_spells': ', '.join(item_names[FIRST_ITEM + s] for s in words[a])})
+        rows.sort(key=lambda r: int(r['address'], 16))
+        with open(p, 'w', newline='', encoding='utf-8') as fh:
+            w = csv.DictWriter(fh, fieldnames=['address', 'colour', '_spells'])
+            w.writeheader()
+            w.writerows(rows)
+    p = os.path.join(proj, BLOCK_FILE)
+    rows = list(csv.DictReader(open(p, newline='', encoding='utf-8'))) if os.path.exists(p) else []
+    have = {int(r['spell']) for r in rows}
+    if set(BLOCK) - have:
+        for s in sorted(set(BLOCK) - have):
+            rows.append({'spell': s, '_name': item_names[FIRST_ITEM + s],
+                         'colours': ' '.join('%04x' % c for c in block_colours(rom, s))})
+        rows.sort(key=lambda r: int(r['spell']))
+        with open(p, 'w', newline='', encoding='utf-8') as fh:
+            w = csv.DictWriter(fh, fieldnames=['spell', '_name', 'colours'])
+            w.writeheader()
+            w.writerows(rows)

@@ -563,7 +563,7 @@ export async function battlePage(root) {
         h('div', { class: 'itgrid wide' }, h('label', { class: 'lbl' }, h('span', {}, 'Foe is'), dirSel),
           P.sections.length ? h('label', { class: 'lbl' }, h('span', {}, 'Weapon'), secSel) : null),
         P.motions.length ? h('div', { class: 'mbplays' }, cards) : h('p', { class: 'hint' }, 'This figure has no moves for that.'),
-        h('p', { class: 'hint' }, 'Played from the figure\'s own script with an iron weapon of that kind (magic shows no weapon). The game also waits for the other fighter between steps, so its fights run slower. Redrawn sheets show here straight away.'));
+        h('p', { class: 'hint' }, 'Played from the figure\'s own script with an iron weapon of that kind (magic shows no weapon). The game also waits for the other fighter between steps, so its fights run slower. From a diagonal, every attack uses "Attack that misses". Redrawn sheets show here straight away.'));
     })();
     const edited = c.figure !== c.gameFigure || c.women !== c.gameWomen;
     detail.replaceChildren(h('div', { class: 'sheet basheet' },
@@ -631,7 +631,7 @@ export async function battlePage(root) {
     const sl = (lab, min, max, val, set) => { const r = h('input', { type: 'range', min, max, value: val, 'aria-label': lab }); r.oninput = () => { set(Number(r.value)); drawSw(); apply.disabled = false; }; return h('label', { class: 'lbl' }, h('span', {}, lab), r); };
     const palSel = h('select', { class: 'in', 'aria-label': 'Colours' }, MS.palettes.map(pp => h('option', { value: pp.p, selected: pp.p === x.palette }, `Colours ${pp.p + 1}${pp.users.length ? ' — ' + pp.users.slice(0, 4).join(', ') + (pp.users.length > 4 ? '…' : '') : ''}`)));
     palSel.onchange = () => call({ spell: x.spell, palette: Number(palSel.value) }, `${x.name} uses colours ${Number(palSel.value) + 1}`);
-    const watch = h('button', { class: 'btn btn-gilt', type: 'button', disabled: !x.attack, title: x.attack ? 'Opens the PC port on a copy of your ROM: the Prologue fight as a map battle, with Midir casting this' : 'Staves are used, not fought with, so this preview can\'t show them',
+    const watch = h('button', { class: 'btn btn-gilt', type: 'button', title: x.attack ? 'Opens the PC port on a copy of your ROM: the Prologue fight as a map battle, with Midir casting this' : 'Opens the PC port on a copy of your ROM: the Prologue fight as a map battle, with Midir using this staff on Gandolf as if it were a tome (the effect is the one the game shows for it)',
       onclick: async () => { try { await watchJob(await api('mapspellpreview', { spell: x.spell }), () => toast('The PC port is opening: it plays up to the fight at full speed, then shows the map battle again and again until you close it.')); } catch (e) { toast(e.message, true); } } }, 'Watch on the map');
     const bgFile = h('input', { type: 'file', accept: 'image/png,image/*', hidden: true });
     bgFile.onchange = () => { const fl = bgFile.files[0]; bgFile.value = ''; if (fl) importBg(fl); };
@@ -671,7 +671,7 @@ export async function battlePage(root) {
         ...rows,
         edited ? h('button', { class: 'btn btn-line', type: 'button', onclick: async () => { try { await api('mapspellcolour', { spell: x.spell, reset: true }); await reload('Back to the game\'s colours'); } catch (e) { toast(e.message, true); } } }, 'Use the game\'s colours') : null);
     } else {
-      colourBox.append(h('p', { class: 'hint' }, x.attack ? '' : 'Staves\' background colours come from code the kit hasn\'t traced yet; the colours shown are close, not exact.'));
+      colourBox.append(h('p', { class: 'hint' }, 'This spell doesn\'t change these colours while it plays; the map\'s own show through.'));
     }
     const bgSection = [
       h('h3', {}, 'Background'),
@@ -695,7 +695,7 @@ export async function battlePage(root) {
           h('a', { class: 'btn btn-line', href: `/gfx/mapfx/${x.spell}.idx.png?c=${ver}`, download: `mapspell_${x.spell}.png` }, 'Download'),
           x.custom ? h('button', { class: 'btn btn-line danger', type: 'button', onclick: async () => { try { await api('mapspellsheet', { spell: x.spell, reset: true }); await reload('Back to the game\'s sheet'); } catch (e) { toast(e.message, true); } } }, 'Use the original') : null,
           watch, file),
-        h('p', { class: 'hint' }, 'A sheet is 128 × 16 pixels: 32 tiles as the game keeps them, the pieces in 16 × 16 squares (2× to 4× bigger works too). Paint with the spell\'s colours below; other colours become the nearest one.' + (x.attack ? '' : ' Staves show their effect when used on the map; Watch on the map only works for tomes.')),
+        h('p', { class: 'hint' }, 'A sheet is 128 × 16 pixels: 32 tiles as the game keeps them, the pieces in 16 × 16 squares (2× to 4× bigger works too). Paint with the spell\'s colours below; other colours become the nearest one.' + (x.attack ? '' : ' Watch on the map shows a staff as if Midir attacked with it; the effect is the one the game plays for the staff.')),
         h('h3', {}, 'Colours'),
         h('label', { class: 'lbl' }, h('span', {}, 'This spell uses'), palSel),
         sw,

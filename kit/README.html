@@ -354,8 +354,9 @@ default browser). The editor runs on your PC only: nothing is sent anywhere.
    or 2× to 4× that, in the map palette's colours); every class showing the
    figure changes. <strong>Watch a map battle</strong> opens the PC port on the Prologue
    fight as a map battle, with Midir shown as the class's figure. <strong>How it
-   moves</strong> plays the figure's motions (standing and its attacks) for the way
-   it faces and the weapon it holds, drawn from its sheets, so a redrawn
+   moves</strong> plays the figure's motions (standing or being hit, dodging, an
+   attack that misses, an attack that hits) for the way it faces and the
+   weapon it holds, drawn from its sheets, so a redrawn
    sheet shows at once. Saved in <code>map_battle.csv</code> and <code>mapbattle/</code>.</p>
 <p><strong>Map spells</strong> (the sixth switch) is what tomes and staves show on the map
    in those battles: the fireball, bolt, rock or sparkle that flies to the
@@ -365,7 +366,8 @@ default browser). The editor runs on your PC only: nothing is sent anywhere.
    colours. Colours are one of six sets the spells share: pick which one a
    spell uses, change a colour by clicking it, or shift them all with the
    sliders (every spell using that set changes). <strong>Watch on the map</strong> opens
-   the PC port on the Prologue fight with Midir casting the tome. Every
+   the PC port on the Prologue fight with Midir casting the tome (a staff
+   plays its effect as if he attacked with it). Every
    spell (also Forseti, Blizzard, Aura and the healing staves, which have no
    flying piece) has a <strong>Background</strong> too: the big picture drawn over the
    darkened map while it plays (Meteor's falling rock, Fire's flame trail,
@@ -376,7 +378,9 @@ default browser). The editor runs on your PC only: nothing is sent anywhere.
    cycle through lists of their own (Meteor's reds, Thunder's flashes), and
    Wind, Tornado, Blizzard, Fenrir and a few more use two rows of seven.
    Click any colour to change it; spells that share a list (Thunder,
-   Elthunder and Bolting) change together. Staves aren't covered yet. Saved
+   Elthunder and Bolting) change together. Staves have theirs too (Heal,
+   Mend, Recover, Physic and Charm share Loptyr's list); Valkyria leaves the
+   colours alone. Saved
    in <code>map_spells.csv</code>, <code>map_palettes.csv</code>, <code>map_colour_words.csv</code>,
    <code>map_spell_block.csv</code> and <code>mapfx/</code>.
 15. On the Project page, <strong>Add unit stats to the map box</strong> puts the PC port's
@@ -629,12 +633,12 @@ runs this randomizer from its own menu (Mods → Randomizer).</p>
 </tr>
 <tr>
 <td><code>map_colour_words.csv</code></td>
-<td>586</td>
+<td>743</td>
 <td>The colour lists map spell backgrounds cycle through (address in bank $9F, colour)</td>
 </tr>
 <tr>
 <td><code>map_spell_block.csv</code></td>
-<td>8</td>
+<td>12</td>
 <td>Background colours of the spells that don't cycle (palette 6 then 7, colours 9-15)</td>
 </tr>
 <tr>

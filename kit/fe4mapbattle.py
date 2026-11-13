@@ -247,6 +247,11 @@ def apply(rom, proj, far, n_classes):
 # to its tiles, so its riders and arms are there too); the weapon's art from the shared sheet goes over
 # $40-$43 / $50-$53 ($9E:8E01: $9E:8EC4 word per item, art offset / $100 in $AC:CC17, colour variant).
 SECTIONS = ('sword', 'lance', 'axe', 'bow', 'magic or staff')
+# Which pair plays ($9E:832C, from each strike's flags in the battle's event list $7E:4F85): the fighter who
+# strikes plays pair 4 when the strike hits (flag $20) and pair 3 when it misses - and always pair 3 from a
+# diagonal; the one struck plays pair 2 when it dodges (flag $08), else pair 1, which is also standing.
+# Pair 0 isn't used by map battles.
+MOTION_NAMES = {0: 'Other', 1: 'Standing / being hit', 2: 'Dodging', 3: 'Attack that misses', 4: 'Attack that hits'}
 SHADOW = 0xDFFFC0
 ARGS = {0x00: 3, 0x01: 0, 0x02: 2, 0x03: 1, 0x04: 0, 0x05: 0, 0x06: 0, 0x07: 0, 0x08: 0, 0x09: 0, 0x0A: 0,
         0x0B: 0, 0x0C: 0, 0x0D: 0, 0x0E: 2, 0x0F: 0, 0x10: 0, 0x11: 0, 0x12: 1, 0x13: 1, 0x14: 2, 0x15: 2,
@@ -426,7 +431,7 @@ def player(rom, fig, k, s, gfx=None):
                 cells.append(render(rom, gfx, pieces, page, tall, dx=dx, dy=dy, weapon=weapon))
             steps.append((index[key], min(ticks, 60)))
             clock += ticks
-        motions.append({'name': 'Standing' if j == 1 else f'Motion {j}', 'steps': steps})
+        motions.append({'name': MOTION_NAMES.get(j, f'Motion {j}'), 'steps': steps})
     if not cells:
         return None
     strip = [sum((c[y] for c in cells), []) for y in range(CELL)]

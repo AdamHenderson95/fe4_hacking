@@ -48,7 +48,7 @@ import fe4skillanim                # noqa: E402
 from fe4project import Project, load_settings, save_settings   # noqa: E402
 
 APP = 'Builder of the Holy War'
-VERSION = '46'
+VERSION = '47'
 STATIC = os.path.join(KIT, 'studio')
 
 # ---------------------------------------------------------------- state
@@ -108,8 +108,8 @@ def open_project(d):
             fe4skillanim.export(rom, os.path.join(d, 'skill_anims.csv'), dict(enumerate(fe4skills.NAMES)))
         if not os.path.exists(os.path.join(d, 'map_spells.csv')):   # kits before v44
             fe4mapfx.export(rom, d, L.item_names(rom))
-        elif not os.path.exists(os.path.join(d, fe4mapfx.WORDS_FILE)):   # kits before v46
-            fe4mapfx.export_colours(rom, d, L.item_names(rom))
+        else:                                                        # kits before v46 / v47
+            fe4mapfx.upgrade_colours(rom, d, L.item_names(rom))
         if not os.path.exists(os.path.join(d, 'map_battle.csv')):   # kits before v43
             import fe4mapbattle
             fe4mapbattle.export(rom, os.path.join(d, 'map_battle.csv'), L.class_names(rom)[:72])
@@ -2057,8 +2057,8 @@ def api_mapspellpreview(b, q):
     """Watch a spell on the map: Midir casts it on Gandolf in the Prologue map battle."""
     s = int(b['spell'])
     rom = rom_data()
-    if not 0 <= s < fe4mapfx.BG_COUNT or fe4mapfx.FIRST_ITEM + s >= 0x58:
-        raise ValueError('Only tomes can be watched on the map.')
+    if not 0 <= s < fe4mapfx.BG_COUNT:
+        raise ValueError('There is no such spell.')
     item = fe4mapfx.FIRST_ITEM + s
     name = L.item_names(rom)[item]
     return _battle_preview(f'Watch on the map: {name}', lambda r: 0,
