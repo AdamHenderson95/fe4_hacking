@@ -376,10 +376,19 @@ default browser). The editor runs on your PC only: nothing is sent anywhere.
    in `map_spells.csv`, `map_palettes.csv`, `map_colour_words.csv`,
    `map_spell_block.csv` and `mapfx/`.
 15. **Music** (kit v49), in two tabs:
-   - **Where songs play**: for each chapter, the song when its map first
-     starts and the song in your phase; for each enemy or other army (by the
-     name it shows on the map), the song in its phase. Pick any of the game's
-     160 songs from the list. Saved in `music.csv`.
+   - **Where songs play** (kit v50: everything the game picks a song for):
+     the opening, title screen and Jugdral Chronology; for each chapter the
+     song when it opens, when its map first starts and in your phase; for each
+     enemy or other army (by the name it shows on the map) the song in its
+     phase; **Battles**: the rules that pick a battle's music, from the top
+     (Seliph or Julia against Julius, fighting Julia, fighting Arvis, fighting
+     a boss, two special cases, your army or an ally, other battles), the
+     **Bosses** list (which units count as bosses: pick any unit) and the
+     battles that set their own music (an event battle such as the Prologue's
+     first fight, and others not identified yet); **Story scenes**: every
+     scene that starts a song, by chapter, with its first line of dialogue.
+     Pick any of the game's 160 songs from the list. Saved in `music.csv`,
+     `music_bosses.csv` and the scenes' `PLAY_SONG` steps in `events/scenes.evt`.
    - **Songs & your music**: every song with what it is (map music, battle
      music, other music) and where it plays. **Use a music file…** gives a
      song your own music (.ogg, .flac, .mp3, .wav or an MSU-1 .pcm): the PC
@@ -391,6 +400,13 @@ default browser). The editor runs on your PC only: nothing is sent anywhere.
      LOOPSTART / LOOPLENGTH tags in .ogg files, or a `.txt` with the same name
      (`loop_start = 12.5` in seconds). To find a song's number, play in the PC
      port: its menu (F1) > Audio shows the song playing now.
+   - **MSU-1 music for emulators**: with **Make an MSU-1 music version for
+     emulators** ticked on the Project page, **Build ROM** also adds the
+     MSU-1 music hooks to the ROM and writes `name.msu` and `name-17.pcm` (one
+     per music file) next to it. bsnes, Snes9x and RetroArch's bsnes / Snes9x
+     cores then play your music when they load that ROM; other emulators play
+     the game's own. The tracks are converted by the PC port (0.11 or newer,
+     found as for Test play); `.pcm` files are copied as they are.
 16. On the Project page, **Add unit stats to the map box** puts the PC port's
    MT / HIT / AS / AVO box into the ROMs and patches you build, so players
    on emulators get it too (the port can still switch it off).
@@ -448,6 +464,7 @@ or from your own hack.
 python fe4hack.py extract  "Fire Emblem....smc"  myhack          # once: dump editable CSVs
 python fe4hack.py build    "Fire Emblem....smc"  myhack  myhack.smc  --ips myhack.ips
 python fe4hack.py build    "Fire Emblem....smc"  myhack  myhack.smc  --hover-stats   # with the unit stats box
+python fe4hack.py build    "Fire Emblem....smc"  myhack  myhack.smc  --msu           # with the MSU-1 music hooks
 python fe4hack.py diff     "Fire Emblem....smc"  myhack.smc     # see exactly what changed
 python fe4rando.py "Fire Emblem....smc" rando.smc --seed 42 --preset chaos --opt parents=any_parent
 python fe4rando.py --list                                        # every randomizer option
@@ -493,7 +510,8 @@ runs this randomizer from its own menu (Mods → Randomizer).
 | `map_palettes.csv` | 6 | The six colour sets of map spell effects (16 hex colours each) |
 | `map_colour_words.csv` | 743 | The colour lists map spell backgrounds cycle through (address in bank $9F, colour) |
 | `map_spell_block.csv` | 12 | Background colours of the spells that don't cycle (palette 6 then 7, colours 9-15) |
-| `music.csv` | 77 | Which song (1-160) plays when each chapter's map starts (`first`), in your phase (`phase`), and in each army's phase by its name number (`army`) |
+| `music.csv` | 114 | Which song (1-160) plays: the opening, title and chronology (`fixed`), when each chapter opens (`opening`, 0 = none), when its map starts (`first`), in your phase (`phase`), in each army's phase by its name number (`army`), the battle music rules (`battle`) and other battles (`battle_more`) |
+| `music_bosses.csv` | 20 | The units whose battles play the boss music (unit numbers) |
 | `music/NNN.ogg` (.flac, .mp3, .wav, .pcm) | – | Your own music for song NNN, played by the PC port (0.10+) instead of the game's |
 | `mapfx/bgNN.png` | – | Your own map spell backgrounds (256 × 256); only replaced ones exist |
 | `mapfx/spellNN.png` | – | Your own map effect sheets (128 × 16; kept in stand-in colours, one per colour number); only replaced ones exist |

@@ -2,7 +2,7 @@
 """FE4 hack builder.
 
   python fe4hack.py extract <clean.smc> <project_dir>   ROM -> editable CSVs
-  python fe4hack.py build   <clean.smc> <project_dir> <out.smc> [--ips out.ips] [--hover-stats]
+  python fe4hack.py build   <clean.smc> <project_dir> <out.smc> [--ips out.ips] [--hover-stats] [--msu]
   python fe4hack.py diff    <a.smc> <b.smc>             list changed table fields
 
 Edit the CSVs in a spreadsheet or text editor, then build.  The build always
@@ -367,7 +367,7 @@ def _read_file(proj, rel):
     return open(p, 'rb').read() if os.path.exists(p) else None
 
 
-def build(rom_path, proj, out_path, ips=None, hover=False):
+def build(rom_path, proj, out_path, ips=None, hover=False, msu=False):
     copier, rom = L.load_rom(rom_path)
     clean = bytes(rom)
     if hover:   # unit stats in the map box; first, so the project's own data goes around it
@@ -400,6 +400,8 @@ def build(rom_path, proj, out_path, ips=None, hover=False):
     n += LOC.apply_talks(rom, os.path.join(proj, 'talks.csv'), space)
     n += AR.apply(rom, proj, space)
     _check_names(rom)
+    if msu:     # MSU-1 music for emulators: the same song hooks the PC port adds
+        print('added MSU-1 music hooks' if MU.apply_msu(rom) else 'MSU-1 music: this ROM\'s sound code is different; left out')
     L.save_rom(out_path, copier, rom)
     print(f'{n} record(s) changed -> {out_path}')
     if ips:
@@ -443,7 +445,7 @@ if __name__ == '__main__':
         extract(args[1], args[2])
     elif len(args) >= 4 and args[0] == 'build':
         ips = args[args.index('--ips') + 1] if '--ips' in args else None
-        build(args[1], args[2], args[3], ips, '--hover-stats' in args)
+        build(args[1], args[2], args[3], ips, '--hover-stats' in args, msu='--msu' in args)
     elif len(args) == 3 and args[0] == 'diff':
         diff(args[1], args[2])
     else:

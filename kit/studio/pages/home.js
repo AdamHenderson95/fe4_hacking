@@ -44,8 +44,12 @@ export async function homePage(root) {
     // settings
     const hover = h('input', { type: 'checkbox', id: 'hoverOpt', checked: s.hoverStats });
     hover.onchange = async () => { await api('settings', { hoverStats: hover.checked }); await refreshSession(); toast(hover.checked ? 'Builds include unit stats' : 'Builds without unit stats'); };
+    const msu = h('input', { type: 'checkbox', id: 'msuOpt', checked: s.msu });
+    msu.onchange = async () => { await api('settings', { msu: msu.checked }); await refreshSession(); toast(msu.checked ? 'Builds make MSU-1 music for emulators' : 'Builds without MSU-1 music'); };
     page.append(h('section', {}, h('h2', {}, 'Building'),
       h('p', {}, h('label', {}, hover, ' Add unit stats (MT, HIT, AS, AVO) to the map box in the ROMs you build, for players on emulators.')),
+      h('p', {}, h('label', {}, msu, ' Make an MSU-1 music version for emulators: Build ROM also writes your music files (Music page) next to the ROM ',
+        'as MSU-1 tracks, for bsnes, Snes9x and RetroArch (bsnes / Snes9x cores), which play them like the PC port does.')),
       h('div', { class: 'field-row' },
         h('span', {}, 'FE4 PC port'),
         h('div', { class: 'row' }, h('span', { class: 'path' }, s.port || 'Not found yet'),

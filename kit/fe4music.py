@@ -11,7 +11,9 @@ Found for the editor (kit v49) by tracing the Prologue (ROM_MAP "Music"):
   $81:AB0E  12 words: the song when a chapter's map first starts (your first phase)
   $81:AA4D  12 words: your phase's song for each chapter
   $81:AA65  53 words: an army's phase song, by the army's name (its castle name number, army record +0)
-            (an army allied to you plays $1D, ... $2A: set in code at $81:AA40 / $81:AA45)
+            (some armies play $1D or $2A instead: set in code at $81:AA40 / $81:AA45)
+Kit v50: $91:F7B7 chapter openings, songs fixed in code (opening, title, chronology), the battle music
+rules at $84:D694 and the boss list they check, and scene command $0E (PLAY_SONG) in scenes.evt.
 """
 import csv
 import os
@@ -81,10 +83,39 @@ def same_as(rom, n):
     return None
 
 
+# every place a song number lives: table -> [(SNES address of the word, label)]
+OPENING = 0x91F7B7         # 12 words: the song when a chapter opens (0 = none)
+FIXED = [(0x9BFB8B, 'Opening (the story pictures before the title)'), (0x9BFBAA, 'Title screen'),
+         (0x91E70A, 'The Jugdral Chronology (a new game)')]
+# $84:D694 picks a battle's music: the first rule that fits wins
+BATTLE = [(0x84D6EC, 'Seliph or Julia fights Julius'), (0x84D6E7, 'Someone fights Julia'),
+          (0x84D6E2, 'Someone fights Arvis'), (0x84D6DD, 'Someone fights a boss (the list below)'),
+          (0x84D6D3, 'A special case for your side, chosen in the game\'s code'),
+          (0x84D6D8, 'Another special case for your side, chosen in the game\'s code'),
+          (0x84D6CE, 'Your army or an ally fights'), (0x84D6C9, 'Other battles')]
+# battles that set their music elsewhere (LDA #song / STA $4EB3)
+BATTLE_MORE = [(0x84E024, 'A battle started by an event (like the Prologue\'s first fight)')] + [
+    (a, 'Set at $%02X:%04X (not identified yet)' % (a >> 16, (a - 1) & 0xFFFF))
+    for a in (0x84AC16, 0x84B543, 0x84E1BE, 0x84E997, 0x84E9DC, 0x84EA30, 0x84EAD1, 0x84EB68, 0x84EBCE,
+              0x84EC79, 0x84EDA7, 0x84EE2B, 0x84EEAA)]
+BOSSES = [0x84D742 + 5 * i for i in range(20)]   # CMP #unit operands: who plays the boss music
+BOSS_FILE = 'music_bosses.csv'
+
+
+def places():
+    return {'first': [(FIRST_PHASE + 2 * i, CHAPTER_NAMES[i]) for i in range(CHAPTERS)],
+            'phase': [(YOUR_PHASE + 2 * i, CHAPTER_NAMES[i]) for i in range(CHAPTERS)],
+            'army': [(ARMY_PHASE + 2 * i, None) for i in range(ARMY_NAMES)],
+            'opening': [(OPENING + 2 * i, CHAPTER_NAMES[i]) for i in range(CHAPTERS)],
+            'fixed': FIXED, 'battle': BATTLE, 'battle_more': BATTLE_MORE}
+
+
 def tables(rom):
-    return {'first': [_w(rom, snes_to_file(FIRST_PHASE) + 2 * i) for i in range(CHAPTERS)],
-            'phase': [_w(rom, snes_to_file(YOUR_PHASE) + 2 * i) for i in range(CHAPTERS)],
-            'army': [_w(rom, snes_to_file(ARMY_PHASE) + 2 * i) for i in range(ARMY_NAMES)]}
+    return {k: [_w(rom, snes_to_file(a)) for a, _ in v] for k, v in places().items()}
+
+
+def bosses(rom):
+    return [_w(rom, snes_to_file(a)) for a in BOSSES]
 
 
 def export(rom, path, chapter_titles, castle_name):
@@ -92,44 +123,113 @@ def export(rom, path, chapter_titles, castle_name):
     with open(path, 'w', newline='') as f:
         w = csv.writer(f)
         w.writerow(['table', 'index', 'song', '_name'])
-        for i in range(CHAPTERS):
-            w.writerow(['first', i, t['first'][i], chapter_titles[i] if i < len(chapter_titles) else ''])
-        for i in range(CHAPTERS):
-            w.writerow(['phase', i, t['phase'][i], chapter_titles[i] if i < len(chapter_titles) else ''])
-        for i in range(ARMY_NAMES):
-            w.writerow(['army', i, t['army'][i], castle_name(i)])
+        for k, v in places().items():
+            for i, (a, label) in enumerate(v):
+                if k == 'army':
+                    label = castle_name(i)
+                elif k in ('first', 'phase', 'opening'):
+                    label = chapter_titles[i] if i < len(chapter_titles) else label
+                w.writerow([k, i, t[k][i], label])
+    export_bosses(rom, os.path.join(os.path.dirname(path), BOSS_FILE))
+
+
+def project_unit_names(proj):
+    """{unit number: name} from the project's unit tables."""
+    out = {}
+    for t in ('units_generic', 'units_npc', 'units_children', 'units_playable'):
+        p = os.path.join(proj, t + '.csv')
+        if os.path.exists(p):
+            with open(p, newline='') as f:
+                for r in csv.DictReader(f):
+                    try:
+                        out[int(r['index'])] = r.get('_name') or out.get(int(r['index']), '')
+                    except (KeyError, ValueError):
+                        pass
+    return out
+
+
+def export_bosses(rom, path, unit_name=None):
+    if unit_name is None:
+        names = project_unit_names(os.path.dirname(path))
+        unit_name = lambda u: names.get(u, '')  # noqa: E731
+    with open(path, 'w', newline='') as f:
+        w = csv.writer(f)
+        w.writerow(['index', 'unit', '_name'])
+        for i, u in enumerate(bosses(rom)):
+            w.writerow([i, u, unit_name(u) if unit_name else ''])
+
+
+def upgrade(rom, proj, chapter_titles, castle_name):
+    """Projects from kit v49 have only the map tables: add the rest."""
+    p = os.path.join(proj, FILE)
+    have = set()
+    if os.path.exists(p):
+        with open(p, newline='') as f:
+            have = {r['table'] for r in csv.DictReader(f)}
+    if not os.path.exists(p) or not set(places()) <= have:
+        old = read(proj) if os.path.exists(p) else None
+        export(rom, p, chapter_titles, castle_name)
+        if old:                                    # keep what the project changed
+            rows = list(csv.reader(open(p, newline='')))
+            for r in rows[1:]:
+                if r[0] in old and int(r[1]) in old[r[0]]:
+                    r[2] = str(old[r[0]][int(r[1])])
+            with open(p, 'w', newline='') as f:
+                csv.writer(f).writerows(rows)
+        return True
+    if not os.path.exists(os.path.join(proj, BOSS_FILE)):
+        export_bosses(rom, os.path.join(proj, BOSS_FILE))
+        return True
+    return False
 
 
 def read(proj):
     p = os.path.join(proj, FILE)
     if not os.path.exists(p):
         return None
-    out = {'first': {}, 'phase': {}, 'army': {}}
+    out = {}
     with open(p, newline='') as f:
         for r in csv.DictReader(f):
-            if r.get('table') in out:
-                out[r['table']][int(r['index'])] = int(r['song'])
+            out.setdefault(r.get('table'), {})[int(r['index'])] = int(r['song'])
     return out
 
 
 def apply(rom, proj):
     t = read(proj)
-    if not t:
-        return 0
     n = 0
-    for name, base, count in (('first', FIRST_PHASE, CHAPTERS), ('phase', YOUR_PHASE, CHAPTERS),
-                              ('army', ARMY_PHASE, ARMY_NAMES)):
-        for i, song in t[name].items():
-            if not 0 <= i < count:
+    if t:
+        P = places()
+        for name, vals in t.items():
+            if name not in P:
                 continue
-            if not 1 <= song <= SONGS:
-                raise SystemExit(f'{FILE}: {name} {i}: song {song} (songs are 1-{SONGS})')
-            fo = snes_to_file(base) + 2 * i
-            if _w(rom, fo) != song:
-                rom[fo] = song & 0xFF
-                rom[fo + 1] = song >> 8
-                n += 1
+            for i, song in vals.items():
+                if not 0 <= i < len(P[name]):
+                    continue
+                if not (1 <= song <= SONGS or (name == 'opening' and song == 0)):
+                    raise SystemExit(f'{FILE}: {name} {i}: song {song} (songs are 1-{SONGS})')
+                fo = snes_to_file(P[name][i][0])
+                if _w(rom, fo) != song:
+                    rom[fo] = song & 0xFF
+                    rom[fo + 1] = song >> 8
+                    n += 1
+    bp = os.path.join(proj, BOSS_FILE)
+    if os.path.exists(bp):
+        with open(bp, newline='') as f:
+            for r in csv.DictReader(f):
+                i, u = int(r['index']), int(r['unit'], 0)
+                if not 0 <= i < len(BOSSES):
+                    continue
+                if not 0 <= u <= 0x3FF:
+                    raise SystemExit(f'{BOSS_FILE}: row {i}: unit {u}')
+                fo = snes_to_file(BOSSES[i])
+                if _w(rom, fo) != u:
+                    rom[fo], rom[fo + 1] = u & 0xFF, u >> 8
+                    n += 1
     return n
+
+
+NAMED = {1: 'Opening (story pictures)', 3: 'Title screen', 4: 'The Jugdral Chronology',
+         94: 'Opening narration (the map of Jugdral)'}
 
 
 def uses(rom, chapter_titles, castle_name):
@@ -144,7 +244,6 @@ def uses(rom, chapter_titles, castle_name):
         nm = castle_name(i)
         if nm:
             out.setdefault(s, []).append('%s army phase' % nm)
-    out.setdefault(0x1D, []).append('allied army phase')
     return out
 
 

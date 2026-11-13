@@ -1349,6 +1349,18 @@ Prologue (lsrun `--apu`, `--dsp`, `--wav`).
   `$81:AA65` + 2 x name: an army's phase song, by its name (army record +0, the castle name number;
   `$84:BD78`). `$81:AACF` picks song 32 instead of yours in some cases; `$84:C15F` gives some armies
   29 (`$1D`) or 42 (`$2A`). Verified: Prologue first song 17 -> 52 and Evans (name 34) 33 -> 60 play.
+- Kit v50, also verified by changing them: `$91:F7B7` 12 words, the song when a chapter opens (its first
+  scene, after an E2 fade at `$91:F7A1`; 0 = none, the final chapter); songs fixed in code: `$9B:FB8B`
+  opening (1), `$9B:FBAA` title screen (3), `$91:E70A` the Jugdral Chronology (4) (operands of `LDA #`);
+  scene command **`$0E nn` PLAY_SONG** (handler `$91:BF17`, writes `$04BA`; 379 in the scenes), `$0F` /
+  `$10 nn` sound (`$80:8FAD`), `$11 nn` port-2 sound (`$80:900D`), `$12 nn nn` sound command (`$80:8FA3`,
+  e.g. E0 fade). The opening narration (song 94) runs from a script at `$8D:FC70`, outside the scene table.
+- Battle music: `$84:D694` sets `$7E:4EB3` (then `$96:95F5` plays it): the first rule that fits wins:
+  attacker `$4EBD` Seliph (`$19`) or Julia (`$2B`) against `$4F1D` Julius (`$18E`/`$1C6`) 53; defender
+  Julia 80; Arvis (`$190`) 52; a boss 54 (20 `CMP #unit` at `$84:D741-$84:D7A0`); a case at `$84:D6F2`
+  62; one at `$84:D721` 51; attacker side (`$438B,X & 3` = 1 or 3) 50, else 49 (operands `$84:D6C9`-`D6EC`).
+  Other battles store their own: `$84:E023` 51 (event battles, the Prologue's first fight), and `$84:AC15`,
+  `B542`, `E1BD`, `E996`, `E9DB`, `EA2F`, `EAD0`, `EB67`, `EBCD`, `EC78`, `EDA6`, `EE2A`, `EEA9` (not identified).
 - **MSU-1 hooks** (the PC port 0.10 adds them; `port/tools/music_patch.py`, kit `fe4msu_data.py`):
   `$80:968A` (`STA $04C6,X / AND #$00FF` -> `JSL $80:FD00`): for slot 0, if `$2002-$2007` read
   "S-MSU1", the track is chosen (`$2004/$2005`) and, when present, played (`$2006` = FF, `$2007` = 3),
@@ -1357,7 +1369,9 @@ Prologue (lsrun `--apu`, `--dsp`, `--wav`).
   joining the queue also set the MSU-1 volume to 0 (a fade). Code at `$80:FD00-$80:FDAF` (bank `$80`'s
   empty end). Verified in lsrun and in FE4.exe under Wine (recompiled): OGG / FLAC / MP3 tracks play
   for songs 17, 51 and 107, the game's music stops and the sound effects stay; without the chip the
-  patched ROM plays as before.
+  patched ROM plays as before. Kit v50 `build --msu` adds the same hooks; the PC port 0.11 writes MSU-1
+  tracks (`FE4.exe --make-pcm in out`: 44.1 kHz stereo, "MSU1" + loop point); verified the built ROM plays
+  `name-17.pcm` and `name-51.pcm` through lsrun's MSU-1 chip.
 
 ## Engine routines found so far
 

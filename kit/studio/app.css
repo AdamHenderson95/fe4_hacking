@@ -747,3 +747,11 @@ textarea.fe4box.bad { border-color: #E1606F; }
 .muaudio { display: block; width: 280px; height: 32px; margin: 6px 0; }
 .muacts { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px; }
 .muwarn { color: var(--blood); }
+.muh3 { font-size: 15px; margin: 18px 0 4px; }
+.mubosses { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 6px; }
+.mubosses .musel { min-width: 0; width: 100%; }
+.mufold { border-top: 1px solid var(--line); padding: 6px 0; }
+.mufold summary { cursor: pointer; font-weight: 600; padding: 4px 0; }
+.mutext { font-size: 14px; color: var(--muted); max-width: 60ch; }
+.muscenes .munum { white-space: nowrap; }
+.muname { font-weight: 600; }

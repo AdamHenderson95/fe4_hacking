@@ -28,4 +28,6 @@ int  music_state_size(void);
 void music_state_save(uint8_t* d);
 void music_state_load(const uint8_t* d, int n);
 void music_stop(void);
+// write an MSU-1 track (44.1 kHz .pcm with its loop point) from any file the port can play
+int  music_convert(const char* in, const char* out, char* err, int errn);
 #endif

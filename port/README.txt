@@ -1,4 +1,4 @@
-Fire Emblem: Genealogy of the Holy War - PC port (fe4port) 0.10
+Fire Emblem: Genealogy of the Holy War - PC port (fe4port) 0.11
 ===============================================================
 
 This is a native Windows build of FE4. It runs from YOUR OWN ROM: the
@@ -89,6 +89,10 @@ adding files, click "Look for new files" there (or restart).
   * The music works with hacks and randomized games as well. Builder of the
     Holy War's Music page keeps a hack's music files with the project and its
     Test play uses them.
+  * For emulators: FE4.exe --make-pcm in.ogg out-17.pcm writes an MSU-1 track
+    (44.1 kHz, with the loop point) from any of these files. Builder of the
+    Holy War's Build ROM does this for you with its MSU-1 option, so bsnes,
+    Snes9x and RetroArch play your music too.
 How it works: the port adds an MSU-1 sound chip (the standard way SNES games
 play CD-quality music) and a small patch where FE4 starts a song: if the chip
 has a file for that song number, it plays it and stops the game's music.

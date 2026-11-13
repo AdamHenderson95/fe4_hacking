@@ -49,7 +49,7 @@ import fe4skillanim                # noqa: E402
 from fe4project import Project, load_settings, save_settings   # noqa: E402
 
 APP = 'Builder of the Holy War'
-VERSION = '49'
+VERSION = '50'
 STATIC = os.path.join(KIT, 'studio')
 
 # ---------------------------------------------------------------- state
@@ -111,9 +111,7 @@ def open_project(d):
             fe4mapfx.export(rom, d, L.item_names(rom))
         else:                                                        # kits before v46 / v47
             fe4mapfx.upgrade_colours(rom, d, L.item_names(rom))
-        if not os.path.exists(os.path.join(d, fe4music.FILE)):   # kits before v49
-            fe4music.export(rom, os.path.join(d, fe4music.FILE), fe4music.CHAPTER_NAMES,
-                            lambda i: fe4locations.castle_name(rom, i))
+        fe4music.upgrade(rom, d, fe4music.CHAPTER_NAMES, lambda i: fe4locations.castle_name(rom, i))   # kits before v50
         if not os.path.exists(os.path.join(d, 'map_battle.csv')):   # kits before v43
             import fe4mapbattle
             fe4mapbattle.export(rom, os.path.join(d, 'map_battle.csv'), L.class_names(rom)[:72])
@@ -190,7 +188,7 @@ def port_exe():
 
 # ---------------------------------------------------------------- data for the pages
 TABLES = {'units_playable', 'units_children', 'units_npc', 'units_generic', 'classes', 'items', 'rings',
-          'item_instances', 'skills', 'names', 'lovers', 'gen2_rules', 'deploy', 'locations', 'arena', 'armies', 'talks', 'map_sprites', 'map_terrain', 'battle_anims', 'spells', 'skill_anims', 'map_battle', 'map_spells', 'map_palettes', 'map_colour_words', 'map_spell_block', 'music'}
+          'item_instances', 'skills', 'names', 'lovers', 'gen2_rules', 'deploy', 'locations', 'arena', 'armies', 'talks', 'map_sprites', 'map_terrain', 'battle_anims', 'spells', 'skill_anims', 'map_battle', 'map_spells', 'map_palettes', 'map_colour_words', 'map_spell_block', 'music', 'music_bosses'}
 
 
 def unit_portrait(table, row):
@@ -343,8 +341,12 @@ def check_value(table, field, value):
     """Returns (value, warning) or raises ValueError with a message for the person."""
     v = value.strip() if isinstance(value, str) else str(value)
     if table == 'music':
-        if field != 'song' or not v.isdigit() or not 1 <= int(v) <= fe4music.SONGS:
+        if field != 'song' or not v.isdigit() or not 0 <= int(v) <= fe4music.SONGS:
             raise ValueError(f'Songs are 1 to {fe4music.SONGS}.')
+        return str(int(v)), None
+    if table == 'music_bosses':
+        if field != 'unit' or not v.isdigit() or not 0 <= int(v) <= 0x3FF:
+            raise ValueError('Pick a unit.')
         return str(int(v)), None
     if table == 'locations' and field == 'gold':
         if v == '':
@@ -661,7 +663,7 @@ def api_session(b, q):
             'projectName': os.path.basename(os.path.normpath(p.path)) if p else None,
             'rom': rp, 'romIsNaga': rom_ok, 'recent': [r for r in settings.get('recent', []) if os.path.isdir(r)],
             'dirty': bool(p and p.dirty()), 'canUndo': bool(p and p.undo_stack), 'canRedo': bool(p and p.redo_stack),
-            'port': port_exe(), 'hoverStats': bool(settings.get('hover_stats', False)),
+            'port': port_exe(), 'hoverStats': bool(settings.get('hover_stats', False)), 'msu': bool(settings.get('msu', False)),
             'job': job_json()}
 
 
@@ -693,6 +695,8 @@ def api_set(b, q):
     if table not in TABLES:
         raise ValueError('That table can\'t be edited here.')
     value, warn = check_value(table, field, b.get('value', ''))
+    if table == 'music' and value == '0' and p.table('music').rows[row].get('table') != 'opening':
+        raise ValueError(f'Songs are 1 to {fe4music.SONGS}.')
     p.set(table, row, field, value)
     out = {'ok': True, 'value': value, 'warning': warn}
     if table.startswith('units_') and field in ('portrait', 'char_id'):
@@ -795,7 +799,43 @@ def api_build(b, q):
     p.save()
     ips = os.path.splitext(out)[0] + '.ips'
     hover = bool(settings.get('hover_stats', False))
-    return job_json_of(run_job(f'Building {os.path.basename(out)}', lambda: (fe4hack.build(rom, p.path, out, ips, hover), out)[1]))
+    msu = bool(settings.get('msu', False))
+
+    def go():
+        fe4hack.build(rom, p.path, out, ips, hover, msu=msu)
+        if msu:
+            write_msu_tracks(p.path, out)
+        return out
+    return job_json_of(run_job(f'Building {os.path.basename(out)}', go))
+
+
+def write_msu_tracks(proj, out):
+    """name.msu and name-N.pcm next to the built ROM, from the project's music files (the PC port converts)."""
+    base = os.path.splitext(out)[0]
+    files = fe4music.music_files(proj)
+    open(base + '.msu', 'wb').close()
+    exe = port_exe()
+    can = bool(exe and port_knows(exe, b'--make-pcm'))
+    done, skipped = 0, []
+    for song, f in sorted(files.items()):
+        src = os.path.join(proj, fe4music.FOLDER, f)
+        dst = '%s-%d.pcm' % (base, song)
+        if f.lower().endswith('.pcm'):
+            shutil.copyfile(src, dst)
+            done += 1
+            continue
+        if not can:
+            skipped.append(f)
+            continue
+        flags = 0x08000000 if sys.platform.startswith('win') else 0      # CREATE_NO_WINDOW
+        r = subprocess.run([exe, '--make-pcm', src, dst], capture_output=True, creationflags=flags, timeout=600)
+        if r.returncode == 0 and os.path.exists(dst):
+            done += 1
+        else:
+            skipped.append(f)
+    print(f'MSU-1: {os.path.basename(base)}.msu and {done} track(s) next to the ROM')
+    if skipped:
+        print('MSU-1: not converted (needs the PC port 0.11 or newer, from FE4Port.zip): ' + ', '.join(skipped))
 
 
 def _patch_name(s):
@@ -2280,6 +2320,8 @@ def api_skillpreview(b, q):
 def api_settings(b, q):
     if 'hoverStats' in b:
         settings['hover_stats'] = bool(b['hoverStats'])
+    if 'msu' in b:
+        settings['msu'] = bool(b['msu'])
     if 'port' in b:
         settings['port'] = b['port']
     save_settings(settings)
@@ -3719,35 +3761,104 @@ def music_audio(song):
     return data, AUDIO_TYPES.get(os.path.splitext(rel)[1].lower(), 'application/octet-stream')
 
 
+def _plain(text, n=90):
+    t = re.sub(r'\{[^}]*\}', ' ', text or '')
+    t = re.sub(r'\s+', ' ', t).strip()
+    return t[:n] + ('…' if len(t) > n else '')
+
+
+def music_scenes(p):
+    """[{scene, file, line, song, chapters, text}] for every PLAY_SONG in scenes.evt."""
+    f = p.evt('scenes.evt')
+    if f is None:
+        return []
+    idx = story_index()
+    d = p.dialogue()
+    out = []
+    for blk in f.blocks():
+        m = re.match(r'scene\s+(\d+)', blk['label'])
+        if not m:
+            continue
+        sid = int(m.group(1))
+        sc = idx['scenes'].get(sid) or {}
+        text = ''
+        if d is not None:
+            for k in sc.get('messages', []):
+                if k in d.text:
+                    text = _plain(d.text[k])
+                    break
+        chs = sorted(int(c[2:4]) for c in idx['chapter_scenes'].get(sid, ()) if c.startswith('ch') and c[2:4].isdigit())
+        for c in blk['cmds']:
+            b = cmd_bytes(c)
+            if len(b) == 2 and b[0] == 0x0E:
+                out.append({'scene': sid, 'file': 'scenes.evt', 'line': c['line'], 'song': b[1], 'chapters': chs, 'text': text})
+    return out
+
+
 def api_music(b, q):
     p = need_project()
     rom = rom_data()
     if rom is None:
         raise ValueError('Choose your FE4 ROM first.')
     t = p.table('music')
-    rows = {'first': {}, 'phase': {}, 'army': {}}
+    rows = {k: {} for k in fe4music.places()}
     for i, r in enumerate(t.rows):
         if r.get('table') in rows:
             rows[r['table']][int(r['index'])] = {'row': i, 'song': int(r['song'] or 0), 'name': r.get('_name', '')}
+    P = fe4music.places()
+    for k in ('fixed', 'battle', 'battle_more'):          # labels come from the kit (the CSV keeps the old ones)
+        for i, r in rows[k].items():
+            if i < len(P[k]):
+                r['name'] = P[k][i][1]
     files = music_folder_files(p)
     uses = {}
+    chap = lambda i: CHAPTER_TITLES[i].split(':')[0] if i < len(CHAPTER_TITLES) else str(i)  # noqa: E731
+    for i, r in rows['opening'].items():
+        uses.setdefault(r['song'], []).append('%s opens' % chap(i))
     for name, label in (('first', 'map starts'), ('phase', 'your phase')):
         for i, r in rows[name].items():
-            uses.setdefault(r['song'], []).append('%s: %s' % (CHAPTER_TITLES[i].split(':')[0] if i < len(CHAPTER_TITLES) else i, label))
+            uses.setdefault(r['song'], []).append('%s: %s' % (chap(i), label))
     for i, r in rows['army'].items():
         if r['name']:
             uses.setdefault(r['song'], []).append('%s army\'s phase' % r['name'])
+    for k in ('fixed', 'battle', 'battle_more'):
+        for i, r in rows[k].items():
+            if k != 'battle_more' or i == 0:
+                uses.setdefault(r['song'], []).append(('Battle: ' if k != 'fixed' else '') + r['name'])
+    scenes = music_scenes(p)
+    by_song = {}
+    for sc in scenes:
+        by_song.setdefault(sc['song'], set()).add(sc['scene'])
+    for s_, sids in by_song.items():
+        uses.setdefault(s_, []).append('scene%s %s' % ('s' if len(sids) > 1 else '', ', '.join(str(x) for x in sorted(sids)[:8])
+                                                       + (' and %d more' % (len(sids) - 8) if len(sids) > 8 else '')))
     songs = []
     for n in range(1, fe4music.SONGS + 1):
         rel = files.get(n)
         songs.append({'n': n, 'kind': fe4music.song_kind(rom, n), 'sameAs': fe4music.same_as(rom, n),
+                      'name': fe4music.NAMED.get(n, ''),
                       'uses': uses.get(n, []), 'file': rel.split('/', 1)[1] if rel else None,
                       'size': len(p.blob(rel).data or b'') if rel else 0})
+    bt = p.table('music_bosses')
+    names = {}
+    for tn in ('units_playable', 'units_children', 'units_npc', 'units_generic'):
+        tt = p.table(tn)
+        for r in (tt.rows if tt else []):
+            try:
+                if r.get('_name'):
+                    names.setdefault(int(r['index']), r['_name'])
+            except (KeyError, ValueError):
+                pass
+    bosses = [{'row': i, 'unit': int(r['unit'], 0)} for i, r in enumerate(bt.rows)] if bt else []
     exe = port_exe()
-    return {'songs': songs, 'chapters': [{'title': CHAPTER_TITLES[i] if i < len(CHAPTER_TITLES) else str(i),
-                                          'first': rows['first'].get(i), 'phase': rows['phase'].get(i)}
-                                         for i in range(fe4music.CHAPTERS)],
-            'armies': [dict(r, index=i) for i, r in sorted(rows['army'].items()) if r['name']],
+    lst = lambda k: [dict(r, index=i) for i, r in sorted(rows[k].items())]  # noqa: E731
+    return {'songs': songs,
+            'chapters': [{'title': CHAPTER_TITLES[i] if i < len(CHAPTER_TITLES) else str(i), 'opening': rows['opening'].get(i),
+                          'first': rows['first'].get(i), 'phase': rows['phase'].get(i)} for i in range(fe4music.CHAPTERS)],
+            'armies': [r for r in lst('army') if r['name']], 'fixed': lst('fixed'), 'battle': lst('battle'),
+            'battleMore': lst('battle_more'), 'bosses': bosses,
+            'units': sorted(({'n': k, 'name': v} for k, v in names.items()), key=lambda x: (x['name'], x['n'])),
+            'scenes': scenes,
             'portMusic': bool(exe and port_knows(exe, b'--music')), 'folder': os.path.join(p.path, fe4music.FOLDER)}
 
 

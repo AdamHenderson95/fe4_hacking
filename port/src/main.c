@@ -40,7 +40,7 @@
 #include "music.h"
 #include "fe4music_patch.h"
 
-#define PORT_VERSION "0.10"
+#define PORT_VERSION "0.11"
 #define GAME_TITLE "Fire Emblem: Genealogy of the Holy War"
 #define NAGA_SHA1 "2b6eb74646a527ba293b0e004db3e0134a28dc6c"
 
@@ -484,10 +484,18 @@ static void usage(void) {
     "  --freeze ADDR VAL FROM from frame FROM, writes to RAM ADDR (hex) store VAL (hex)\n"
     "  --title TEXT           text for the window title\n"
     "  --music DIR            custom music from DIR instead of the music folder\n"
+    "  --make-pcm IN OUT      write an MSU-1 track (.pcm) for emulators from a music file, then quit\n"
     "  --state-cache FILE     with --turbo-until: start from FILE if it holds that frame, else save it there\n", PORT_VERSION);
 }
 
 int main(int argc, char** argv) {
+  // FE4.exe --make-pcm IN OUT: an MSU-1 track for emulators from any music file the port plays (used by the kit)
+  if(argc >= 4 && !strcmp(argv[1], "--make-pcm")) {
+    char err[600] = "";
+    int ok = music_convert(argv[2], argv[3], err, sizeof err);
+    if(!ok) fprintf(stderr, "%s\n", err);
+    return ok ? 0 : 1;
+  }
   const char* romArg = NULL; int forceInterp = 0, maxFrames = 0, fast = 0, forceSpeed = 0;
   const char* movieArg = NULL; const char* shotArg = NULL; const char* wavArg = NULL; const char* musicArg = NULL;
   int turboUntil = 0, loopAt = 0; const char* titleArg = NULL; const char* stateCache = NULL;

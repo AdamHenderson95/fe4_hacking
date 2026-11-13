@@ -64,7 +64,11 @@ SC_NAMES = {
     0x01: 'STOP', 0x02: 'GOTO', 0x03: 'IF_TRUE_GOTO', 0x04: 'IF_FALSE_GOTO',
     0x05: 'IF_TRUE_JR', 0x06: 'IF_FALSE_JR', 0x07: 'TEST_FLAG?', 0x0C: 'TEXT',
     0x14: 'TEXT_WINDOW', 0x45: 'CALL_ASM', 0x4A: 'EVENT', 0x4D: 'EVENT_ASYNC?',
+    0x0E: 'PLAY_SONG', 0x0F: 'SOUND', 0x10: 'SOUND', 0x11: 'SOUND_2', 0x12: 'SOUND_CMD',
 }
+# sound commands (SOUND_CMD): what the music does ($80:8FA3; ROM_MAP "Music")
+SOUND_CMDS = {0xE0: 'fade the music out (fast)', 0xE1: 'fade the music out', 0xE2: 'fade the music out (slow)',
+              0xC0: 'stop the music', 0xF8: 'stop the music', 0xC2: 'stop all sound'}
 
 STATS = ['HP', 'Str', 'Mag', 'Skl', 'Spd', 'Def', 'Res', 'Lck']
 _EV_FIXED = {0x34: 2, 0x67: 3}   # skip-path bugs in the original handlers
@@ -386,6 +390,11 @@ class Commenter:
             arg = b[1] | b[2] << 8
             t = arg if op <= 4 else (a + 1 + arg) & 0xFFFF
             return name, '-> %06X' % ((a & 0xFF0000) | t)
+        if op == 0x0E and len(b) == 2:
+            return name, 'song %d' % b[1]
+        if op == 0x12 and len(b) == 3:
+            w = b[1] | b[2] << 8
+            return name, SOUND_CMDS.get(w, '%04X' % w)
         if op in (0x4A, 0x4D):
             sub = EV_NAMES.get(b[1], 'OP_%02X' % b[1])
             c = self.ev(b[1:])

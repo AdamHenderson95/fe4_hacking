@@ -132,9 +132,13 @@ static void read_sidecar(Src* s, const char* path) {
   }
   fclose(f);
 }
+static int src_open_path(Src* s, const char* path, const char* name);
 static int src_open(Src* s, const char* name) {
-  memset(s, 0, sizeof *s);
   char path[1200]; snprintf(path, sizeof path, "%s%s", dir, name);
+  return src_open_path(s, path, name);
+}
+static int src_open_path(Src* s, const char* path, const char* name) {
+  memset(s, 0, sizeof *s);
   const char* e = strrchr(name, '.'); char x[8] = { 0 };
   for(int i = 0; i < 7 && e && e[i + 1]; i++) x[i] = (char)tolower((unsigned char)e[i + 1]);
   if(!strcmp(x, "ogg")) {
@@ -304,4 +308,41 @@ void music_state_load(const uint8_t* d, int n) {
     track = m.track; missing = 0; src_seek(&src, m.pos); frac = 0; next_frame(cur); next_frame(nxt);
     playing = m.playing; curVol = vol / 255.0f;
   }
+}
+
+// ---------------------------------------------------------------- MSU-1 .pcm for emulators
+// any track the port can play -> 44.1 kHz stereo 16-bit with the "MSU1" header and its loop point
+int music_convert(const char* in, const char* out, char* err, int errn) {
+  Src s;
+  const char* base = strrchr(in, '/'); const char* b2 = strrchr(in, '\\');
+  if(b2 > base) base = b2;
+  base = base ? base + 1 : in;
+  if(!src_open_path(&s, in, base)) { snprintf(err, errn, "can't read %s (ogg, flac, mp3, wav or pcm)", in); return 0; }
+  FILE* f = fopen(out, "wb");
+  if(!f) { snprintf(err, errn, "can't write %s", out); src_close(&s); return 0; }
+  double step = s.rate / 44100.0;
+  uint64_t end = s.loopEnd ? s.loopEnd : s.len;
+  uint32_t loop = (uint32_t)(s.loopStart / step);
+  unsigned char hd[8] = { 'M', 'S', 'U', '1', loop & 255, loop >> 8 & 255, loop >> 16 & 255, loop >> 24 & 255 };
+  fwrite(hd, 1, 8, f);
+  static int16_t ib[2 * 4096];
+  int n = 0, k = 0; uint64_t got = 0;
+  #define NEXT_FRAME(fr) ( (k < n || (got < end && (n = src_read(&s, ib, (int)(end - got < 4096 ? end - got : 4096)), k = 0, n > 0))) \
+      ? ((fr)[0] = ib[2 * k], (fr)[1] = ib[2 * k + 1], k++, got++, 1) : 0 )
+  int16_t cur[2], nxt[2];
+  if(NEXT_FRAME(cur)) {
+    if(!NEXT_FRAME(nxt)) { nxt[0] = cur[0]; nxt[1] = cur[1]; }
+    double frac = 0; int more = 1;
+    static int16_t ob[2 * 4096]; int m = 0;
+    while(more) {
+      ob[m++] = (int16_t)(cur[0] + (nxt[0] - cur[0]) * frac); ob[m++] = (int16_t)(cur[1] + (nxt[1] - cur[1]) * frac);
+      if(m == 2 * 4096) { fwrite(ob, 2, m, f); m = 0; }
+      frac += step;
+      while(frac >= 1.0) { frac -= 1.0; cur[0] = nxt[0]; cur[1] = nxt[1]; if(!NEXT_FRAME(nxt)) { more = 0; break; } }
+    }
+    fwrite(ob, 2, m, f);
+  }
+  #undef NEXT_FRAME
+  fclose(f); src_close(&s);
+  return 1;
 }
