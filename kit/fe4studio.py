@@ -48,7 +48,7 @@ import fe4skillanim                # noqa: E402
 from fe4project import Project, load_settings, save_settings   # noqa: E402
 
 APP = 'Builder of the Holy War'
-VERSION = '44'
+VERSION = '45'
 STATIC = os.path.join(KIT, 'studio')
 
 # ---------------------------------------------------------------- state
@@ -479,6 +479,13 @@ class Handler(BaseHTTPRequestHandler):
             # ?c=<version> URLs (the Portraits page) change whenever the picture does, so they can be cached
             return (self._send(200, data, 'image/png', cache='c' in parse_qs(u.query)) if data
                     else self._send(404, 'no'))
+        if path.startswith('/gfx/mapbg/'):
+            q = parse_qs(u.query)
+            try:
+                data = mapbg_image(int(path.rsplit('/', 1)[1].split('.')[0]), max(1, min(int(q.get('s', ['1'])[0]), 3)))
+            except (ValueError, KeyError):
+                return self._send(404, 'no')
+            return (self._send(200, data, 'image/png', cache='c' in q) if data else self._send(404, 'no'))
         if path.startswith('/gfx/mapfx/'):
             q = parse_qs(u.query)
             try:
@@ -1844,19 +1851,24 @@ def api_mapspells(b, q):
     p, rom, ts, tp = _mapfx_tables()
     names = L.item_names(rom)
     spells = []
-    for i, r in enumerate(ts.rows):
-        s = int(r['spell'])
+    rows = {int(r['spell']): (i, r) for i, r in enumerate(ts.rows)}
+    for s in range(fe4mapfx.BG_COUNT):
+        it = fe4mapfx.FIRST_ITEM + s
         data = p.blob(fe4mapfx.sheet_file(s)).data
-        spells.append({'row': i, 'spell': s, 'item': fe4mapfx.FIRST_ITEM + s,
-                       'name': names[fe4mapfx.FIRST_ITEM + s] if fe4mapfx.FIRST_ITEM + s < len(names) else f'Spell {s}',
-                       'palette': int(r['palette']), 'gamePalette': fe4mapfx.palette_index(fe4mapfx.entry(rom, s)[0]),
-                       'custom': data is not None, 'ver': '%08x' % zlib.crc32(data) if data is not None else 'rom',
-                       'attack': fe4mapfx.FIRST_ITEM + s < 0x58})
+        bg = p.blob(fe4mapfx.bg_file(s)).data
+        x = {'spell': s, 'item': it, 'name': names[it] if it < len(names) else f'Spell {s}',
+             'attack': it < 0x58, 'sprite': s in rows,
+             'bgCustom': bg is not None, 'bgVer': '%08x' % zlib.crc32(bg) if bg is not None else 'rom'}
+        if s in rows:
+            i, r = rows[s]
+            x.update({'row': i, 'palette': int(r['palette']), 'gamePalette': fe4mapfx.palette_index(fe4mapfx.entry(rom, s)[0]),
+                      'custom': data is not None, 'ver': '%08x' % zlib.crc32(data) if data is not None else 'rom'})
+        spells.append(x)
     pals = []
     for k in range(len(fe4mapfx.PALETTES)):
         cols = _mapfx_palette(tp, k)
         pals.append({'p': k, 'colours': cols, 'game': fe4mapfx.colours(rom, k),
-                     'users': [x['name'] for x in spells if x['palette'] == k]})
+                     'users': [x['name'] for x in spells if x.get('palette') == k]})
     return {'spells': spells, 'palettes': pals}
 
 
@@ -1910,12 +1922,46 @@ def api_mapspellsheet(b, q):
     return {'ok': True}
 
 
+def mapbg_image(s, scale):
+    rom = rom_data()
+    p = project()
+    data = p.blob(fe4mapfx.bg_file(s)).data if p else None
+    if data is not None:
+        t, mp, cols = fe4mapfx.bg_blocks(rom, s)
+        nt, nm = fe4mapfx.bg_from_png(data, mp, cols, t)
+        return fe4mapfx.bg_png(rom, s, nt, nm, cols, scale)
+    return fe4mapfx.bg_png(rom, s, scale=scale)
+
+
+def api_mapspellbg(b, q):
+    """Replace a spell's background picture with a PNG (base64, 256 x 256), or {reset: true}."""
+    import base64
+    p = need_project()
+    rom = rom_data()
+    s = int(b['spell'])
+    if not 0 <= s < fe4mapfx.BG_COUNT:
+        raise ValueError('There is no such spell.')
+    rel = fe4mapfx.bg_file(s)
+    if b.get('reset'):
+        p.set_blob(rel, None)
+        return {'ok': True}
+    t, mp, cols = fe4mapfx.bg_blocks(rom, s)
+    try:
+        nt, nm = fe4mapfx.bg_from_png(base64.b64decode(b['png']), mp, cols, t)
+    except ValueError as e:
+        raise ValueError(str(e))
+    except Exception:          # noqa: BLE001
+        raise ValueError('That file could not be read as a PNG picture.')
+    p.set_blob(rel, fe4mapfx.bg_png(rom, s, nt, nm, cols))
+    return {'ok': True}
+
+
 def api_mapspellpreview(b, q):
     """Watch a spell on the map: Midir casts it on Gandolf in the Prologue map battle."""
     s = int(b['spell'])
     rom = rom_data()
-    if not 0 <= s < fe4mapfx.COUNT or fe4mapfx.entry(rom, s)[0] is None:
-        raise ValueError('That spell has no map effect.')
+    if not 0 <= s < fe4mapfx.BG_COUNT or fe4mapfx.FIRST_ITEM + s >= 0x58:
+        raise ValueError('Only tomes can be watched on the map.')
     item = fe4mapfx.FIRST_ITEM + s
     name = L.item_names(rom)[item]
     return _battle_preview(f'Watch on the map: {name}', lambda r: 0,
@@ -4003,7 +4049,7 @@ API = {('GET', 'session'): api_session, ('POST', 'ping'): api_ping, ('GET', 'tab
        ('GET', 'chapters'): api_chapters, ('GET', 'scene'): api_scene, ('POST', 'messages'): api_messages,
        ('POST', 'msg'): api_msg, ('POST', 'evtcmd'): api_evtcmd, ('GET', 'dsearch'): api_dsearch, ('GET', 'villages'): api_villages, ('GET', 'itemuse'): api_itemuse, ('POST', 'newevent'): api_newevent, ('POST', 'talkmenu'): api_talkmenu, ('POST', 'delstep'): api_delstep,
        ('POST', 'addstep'): api_addstep, ('GET', 'eventinfo'): api_eventinfo, ('GET', 'maps'): api_maps, ('GET', 'map'): api_map, ('POST', 'paint'): api_paint,
-       ('GET', 'armies'): api_armies, ('GET', 'portraits'): api_portraits, ('GET', 'mapsprites'): api_mapsprites, ('GET', 'skills'): api_skills, ('POST', 'gen2check'): api_gen2check, ('POST', 'newchild'): api_newchild, ('POST', 'skillcheck'): api_skillcheck, ('POST', 'skilledit'): api_skilledit, ('POST', 'spriteentry'): api_spriteentry, ('GET', 'tileinfo'): api_tileinfo, ('POST', 'tiledraw'): api_tiledraw, ('POST', 'mapsprite'): api_mapsprite, ('POST', 'mapwalk'): api_mapwalk, ('GET', 'mapbattle'): api_mapbattle, ('GET', 'mbplayer'): api_mbplayer, ('GET', 'mapspells'): api_mapspells, ('POST', 'mapspellset'): api_mapspellset, ('POST', 'mapspellsheet'): api_mapspellsheet, ('POST', 'mapspellpreview'): api_mapspellpreview, ('POST', 'mapbattleset'): api_mapbattleset, ('POST', 'mapbattlesheet'): api_mapbattlesheet, ('POST', 'mapbattlepreview'): api_mapbattlepreview, ('POST', 'portrait'): api_portrait, ('POST', 'aicmd'): api_aicmd, ('POST', 'airecipe'): api_airecipe}
+       ('GET', 'armies'): api_armies, ('GET', 'portraits'): api_portraits, ('GET', 'mapsprites'): api_mapsprites, ('GET', 'skills'): api_skills, ('POST', 'gen2check'): api_gen2check, ('POST', 'newchild'): api_newchild, ('POST', 'skillcheck'): api_skillcheck, ('POST', 'skilledit'): api_skilledit, ('POST', 'spriteentry'): api_spriteentry, ('GET', 'tileinfo'): api_tileinfo, ('POST', 'tiledraw'): api_tiledraw, ('POST', 'mapsprite'): api_mapsprite, ('POST', 'mapwalk'): api_mapwalk, ('GET', 'mapbattle'): api_mapbattle, ('GET', 'mbplayer'): api_mbplayer, ('GET', 'mapspells'): api_mapspells, ('POST', 'mapspellset'): api_mapspellset, ('POST', 'mapspellsheet'): api_mapspellsheet, ('POST', 'mapspellbg'): api_mapspellbg, ('POST', 'mapspellpreview'): api_mapspellpreview, ('POST', 'mapbattleset'): api_mapbattleset, ('POST', 'mapbattlesheet'): api_mapbattlesheet, ('POST', 'mapbattlepreview'): api_mapbattlepreview, ('POST', 'portrait'): api_portrait, ('POST', 'aicmd'): api_aicmd, ('POST', 'airecipe'): api_airecipe}
 
 
 # ---------------------------------------------------------------- window

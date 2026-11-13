@@ -512,9 +512,14 @@ Found by freezing Midir's item (`$7E:4EDD`) to Fire in the Prologue map battle.
 - Six palettes: `$9F:8800` (all zero; Return, Restore, Sleep), `8820` (Fire, Thunder, Wind, Warp...),
   `8840`, `8860` (Meteor), `8880` (Nosferatu), `88A0` (Light, Thief). Bank `$9F` has no free space, so the
   kit edits them in place and lets a spell point at another one.
-- `$9F:80D9`, 9 bytes per spell: ptr24 x 3 for background pieces (`$7E:CB88`, `$7E:DB88`, `$7E:E388`; Meteor
-  with `$7F:509B` >= `$A0` and Valflame with >= `$C0` use `$D6:1ECF` / `$D6:1D6C`), sent to the BG at
-  `+$3800` / `+$3C00` ($9F:85A3, $9F:85CC). Not edited yet.
+- `$9F:80D9`, 9 bytes per spell (Fire to Broken staff (A), 42; many shared): ptr24 tiles (4 KB = 128 4bpp
+  tiles, numbers `$380-$3FF`, unpacked to `$7E:CB88` and sent to BG2 at `+$3800` / `+$3C00`, $9F:85A3 /
+  $9F:85CC), ptr24 tilemap (32 x 32 words, palette 6 or 7; `$7E:DB88` -> BG2 map `$5C00`; moved by BG2 scroll),
+  ptr24 colours (256; `$7E:E388`). Meteor with `$7F:509B` >= `$A0` and Valflame with >= `$C0` use `$D6:1ECF` /
+  `$D6:1D6C`. Mode 1 while it plays. The colours on screen (BG palette 6, colours 9-15) come from each spell's
+  own code cycling tables in bank `$9F` (Fire `$DF:96D5`, Meteor `$9F:B37D` via `$9F:B33A`), not from the
+  block. Kit v45 replaces the picture (tiles + tilemap, each 8x8 cell keeping its palette, empty cells kept
+  as the game has them); verified: a mirrored Meteor is in VRAM byte for byte and shows mirrored.
 - Verified: a changed colour set reaches OBJ palette 6, and a redrawn Fire sheet is what `$7F:45D9` holds
   when Midir casts it.
 

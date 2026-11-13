@@ -592,13 +592,13 @@ export async function battlePage(root) {
     if (st.msp == null || !MS.spells.some(x => x.spell === st.msp)) st.msp = MS.spells[0]?.spell;
     list.replaceChildren(...MS.spells.filter(x => !q || x.name.toLowerCase().includes(q)).map(x =>
       h('button', { 'aria-pressed': String(x.spell === st.msp), onclick: () => { st.msp = x.spell; drawMsList(find.value.trim().toLowerCase()); drawMapSpell(); } },
-        h('span', {}, x.name), h('span', { class: 'sub' }, `colours ${x.palette + 1}${x.custom || x.palette !== x.gamePalette ? ' ✎' : ''}`))));
+        h('span', {}, x.name), h('span', { class: 'sub' }, (x.sprite ? `colours ${x.palette + 1}` : 'background only') + (x.custom || x.bgCustom || (x.sprite && x.palette !== x.gamePalette) ? ' ✎' : '')))));
   }
   async function drawMapSpell() {
     if (!MS) { try { await loadMs(); } catch (e) { detail.replaceChildren(h('div', { class: 'empty' }, e.message)); return; } }
     const x = MS.spells.find(k => k.spell === st.msp) || MS.spells[0];
     if (!x) { detail.replaceChildren(h('div', { class: 'empty' }, 'No spells with a map effect.')); return; }
-    const P = MS.palettes[x.palette];
+    const P = x.sprite ? MS.palettes[x.palette] : { colours: [], game: [], users: [] };
     const reload = async msg => { MS = null; await refreshSession(); await loadMs(); drawMsList(find.value.trim().toLowerCase()); drawMapSpell(); if (msg) toast(msg); };
     const call = async (body, msg) => { try { await api('mapspellset', body); await reload(msg); } catch (e) { toast(e.message, true); } };
     const ver = `${x.ver}-${P.colours.map(c => c.toString(16)).join('')}-${mbKey}`;
@@ -633,8 +633,36 @@ export async function battlePage(root) {
     palSel.onchange = () => call({ spell: x.spell, palette: Number(palSel.value) }, `${x.name} uses colours ${Number(palSel.value) + 1}`);
     const watch = h('button', { class: 'btn btn-gilt', type: 'button', disabled: !x.attack, title: x.attack ? 'Opens the PC port on a copy of your ROM: the Prologue fight as a map battle, with Midir casting this' : 'Staves are used, not fought with, so this preview can\'t show them',
       onclick: async () => { try { await watchJob(await api('mapspellpreview', { spell: x.spell }), () => toast('The PC port is opening: it plays up to the fight at full speed, then shows the map battle again and again until you close it.')); } catch (e) { toast(e.message, true); } } }, 'Watch on the map');
+    const bgFile = h('input', { type: 'file', accept: 'image/png,image/*', hidden: true });
+    bgFile.onchange = () => { const fl = bgFile.files[0]; bgFile.value = ''; if (fl) importBg(fl); };
+    async function importBg(fl) {
+      const u = URL.createObjectURL(fl);
+      const im = new Image();
+      im.onerror = () => { URL.revokeObjectURL(u); toast('That file isn\'t a picture the browser can open.', true); };
+      im.onload = async () => {
+        URL.revokeObjectURL(u);
+        const n = im.width / 256;
+        if (!Number.isInteger(n) || n < 1 || n > 4 || im.height !== 256 * n) { toast(`A background is 256 × 256 pixels (or 2×, 3× that); the picture is ${im.width} × ${im.height}.`, true); return; }
+        const cv = document.createElement('canvas'); cv.width = 256; cv.height = 256;
+        const ctx = cv.getContext('2d'); ctx.imageSmoothingEnabled = false; ctx.drawImage(im, 0, 0, 256, 256);
+        try { await api('mapspellbg', { spell: x.spell, png: cv.toDataURL('image/png').split(',')[1] }); await reload(`${x.name}: new background (Ctrl+Z undoes it)`); } catch (e) { toast(e.message, true); }
+      };
+      im.src = u;
+    }
+    const bgVer = `${x.bgVer}-${mbKey}`;
+    const bgSection = [
+      h('h3', {}, 'Background'),
+      h('p', { class: 'hint' }, `The big picture drawn over the map while ${x.name} plays (the map darkens, then this moves across it).${x.sprite ? '' : ' This spell has no flying piece, only this.'}`),
+      h('img', { class: 'mbg', src: `/gfx/mapbg/${x.spell}.png?s=2&c=${bgVer}`, width: 512, height: 512, alt: `${x.name}: background effect` }),
+      h('div', { class: 'sfxbtns' },
+        h('button', { class: 'btn btn-line', type: 'button', onclick: () => bgFile.click() }, 'Replace…'),
+        h('a', { class: 'btn btn-line', href: `/gfx/mapbg/${x.spell}.png?c=${bgVer}`, download: `mapspell_bg_${x.spell}.png` }, 'Download'),
+        x.bgCustom ? h('button', { class: 'btn btn-line danger', type: 'button', onclick: async () => { try { await api('mapspellbg', { spell: x.spell, reset: true }); await reload('Back to the game\'s background'); } catch (e) { toast(e.message, true); } } }, 'Use the original') : null,
+        x.sprite ? null : watch, bgFile),
+      h('p', { class: 'hint' }, 'The picture is 256 × 256 pixels, built from up to 128 different 8 × 8 tiles (mirrored tiles count once). Each 8 × 8 square keeps the colours the game gives it there; paint with the colours in the downloaded picture. The colours shown are close, not exact: while it plays, the game cycles the spell\'s colours itself. Spells that share a background (Wind, Heal, Warp…) each get their own when you replace one.')];
     detail.replaceChildren(h('div', { class: 'sheet basheet' },
       h('div', { class: 'sheet-head' }, h('h2', {}, x.name), h('p', { class: 'sub' }, `Map spell ${x.spell} · item ${x.item}`)),
+      !x.sprite ? h('div', { class: 'baredraw' }, ...bgSection) :
       h('div', { class: 'baredraw' },
         h('p', { class: 'hint' }, `With battle animations off, ${x.name} shows these pieces on the map (the fireball, bolt or sparkle that flies to the target). Each spell has its own sheet; colours are one of six sets that several spells share.`),
         h('img', { class: 'msheet', src: `/gfx/mapfx/${x.spell}.png?s=4&c=${ver}`, width: 512, height: 64, alt: `${x.name} on the map` }),
@@ -650,7 +678,8 @@ export async function battlePage(root) {
         h('div', { class: 'sfxsliders' }, sl('Hue', -180, 180, 0, v => { hue = v; }), sl('Saturation', 0, 200, 100, v => { sat = v / 100; }), sl('Brightness', -50, 50, 0, v => { lit = v / 100; })),
         h('div', { class: 'sfxbtns' }, apply,
           P.colours.some((c, i) => c !== P.game[i]) ? h('button', { class: 'btn btn-line', type: 'button', onclick: () => call({ palette: x.palette, reset: true }, 'Back to the game\'s colours') }, 'Use the game\'s colours') : null),
-        h('p', { class: 'hint' }, `Colours ${x.palette + 1} are shared by ${P.users.join(', ')}: changing them changes all of these. Colours 1 (Return, Restore, Sleep) are all black in the ROM; the game fades them in itself.`))));
+        h('p', { class: 'hint' }, `Colours ${x.palette + 1} are shared by ${P.users.join(', ')}: changing them changes all of these. Colours 1 (Return, Restore, Sleep) are all black in the ROM; the game fades them in itself.`),
+        ...bgSection)));
   }
 
   function drawDetail() {

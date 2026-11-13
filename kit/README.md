@@ -357,8 +357,16 @@ default browser). The editor runs on your PC only: nothing is sent anywhere.
    colours. Colours are one of six sets the spells share: pick which one a
    spell uses, change a colour by clicking it, or shift them all with the
    sliders (every spell using that set changes). **Watch on the map** opens
-   the PC port on the Prologue fight with Midir casting the tome. Saved in
-   `map_spells.csv`, `map_palettes.csv` and `mapfx/`.
+   the PC port on the Prologue fight with Midir casting the tome. Every
+   spell (also Forseti, Blizzard, Aura and the healing staves, which have no
+   flying piece) has a **Background** too: the big picture drawn over the
+   darkened map while it plays (Meteor's falling rock, Fire's flame trail,
+   Forseti's storm). **Download** it, paint over it and **Replace…** it
+   (256 × 256, up to 128 different 8 × 8 tiles, mirrored ones count once);
+   each 8 × 8 square keeps the colours the game gives it there. The colours
+   shown are close, not exact, because the game cycles each spell's
+   colours itself while it plays. Saved in `map_spells.csv`,
+   `map_palettes.csv` and `mapfx/`.
 15. On the Project page, **Add unit stats to the map box** puts the PC port's
    MT / HIT / AS / AVO box into the ROMs and patches you build, so players
    on emulators get it too (the port can still switch it off).
@@ -459,6 +467,7 @@ runs this randomizer from its own menu (Mods → Randomizer).
 | `mapbattle/figNN_K.png` | – | Your own sheets for map battle figure NN, direction K (128 × 128, 16 tiles across); only replaced ones exist |
 | `map_spells.csv` | 24 | Which colour set (0-5) each spell's map effect uses |
 | `map_palettes.csv` | 6 | The six colour sets of map spell effects (16 hex colours each) |
+| `mapfx/bgNN.png` | – | Your own map spell backgrounds (256 × 256); only replaced ones exist |
 | `mapfx/spellNN.png` | – | Your own map effect sheets (128 × 16; kept in stand-in colours, one per colour number); only replaced ones exist |
 | `sprites/walk_sNN.png`, `sprites/walk_tNN.png` | – | Your own walking pictures for map sprites (96 × 96 or 128 × 128: four steps across; left, right, up, down from the top); only replaced ones exist |
 | `portraits/pNNN.png` | – | Your own pictures for portrait NNN (80 × 64 sheet or 48 × 64 face, 15 colours + transparency); only replaced ones exist |

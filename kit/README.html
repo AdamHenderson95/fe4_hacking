@@ -365,8 +365,16 @@ default browser). The editor runs on your PC only: nothing is sent anywhere.
    colours. Colours are one of six sets the spells share: pick which one a
    spell uses, change a colour by clicking it, or shift them all with the
    sliders (every spell using that set changes). <strong>Watch on the map</strong> opens
-   the PC port on the Prologue fight with Midir casting the tome. Saved in
-   <code>map_spells.csv</code>, <code>map_palettes.csv</code> and <code>mapfx/</code>.
+   the PC port on the Prologue fight with Midir casting the tome. Every
+   spell (also Forseti, Blizzard, Aura and the healing staves, which have no
+   flying piece) has a <strong>Background</strong> too: the big picture drawn over the
+   darkened map while it plays (Meteor's falling rock, Fire's flame trail,
+   Forseti's storm). <strong>Download</strong> it, paint over it and <strong>Replace…</strong> it
+   (256 × 256, up to 128 different 8 × 8 tiles, mirrored ones count once);
+   each 8 × 8 square keeps the colours the game gives it there. The colours
+   shown are close, not exact, because the game cycles each spell's
+   colours itself while it plays. Saved in <code>map_spells.csv</code>,
+   <code>map_palettes.csv</code> and <code>mapfx/</code>.
 15. On the Project page, <strong>Add unit stats to the map box</strong> puts the PC port's
    MT / HIT / AS / AVO box into the ROMs and patches you build, so players
    on emulators get it too (the port can still switch it off).</p>
@@ -614,6 +622,11 @@ runs this randomizer from its own menu (Mods → Randomizer).</p>
 <td><code>map_palettes.csv</code></td>
 <td>6</td>
 <td>The six colour sets of map spell effects (16 hex colours each)</td>
+</tr>
+<tr>
+<td><code>mapfx/bgNN.png</code></td>
+<td>–</td>
+<td>Your own map spell backgrounds (256 × 256); only replaced ones exist</td>
 </tr>
 <tr>
 <td><code>mapfx/spellNN.png</code></td>

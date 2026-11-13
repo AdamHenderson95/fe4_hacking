@@ -553,6 +553,7 @@ textarea.fe4box.bad { border-color: #E1606F; }
 .mbplayfig { margin: 0; background: #5E8F4A; border-radius: var(--r-sm); padding: 4px; display: flex; flex-direction: column; align-items: center; }
 .mbplayfig figcaption { font-size: 12px; color: #fff; padding-bottom: 2px; }
 .mbplay { image-rendering: pixelated; display: block; }
+.mbg { image-rendering: pixelated; background: #2a3a2a; border-radius: var(--r-sm); max-width: 100%; height: auto; display: block; margin: 8px 0; }
 .msheet { image-rendering: pixelated; background: #5E8F4A; border-radius: var(--r-sm); max-width: 100%; height: auto; display: block; margin: 8px 0; }
 .spmodal { width: min(980px, 100%); max-height: 90vh; overflow: auto; }
 .spmodal h4 { margin: 14px 0 6px; font-size: 14px; }
