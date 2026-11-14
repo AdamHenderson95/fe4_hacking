@@ -40,7 +40,7 @@
 #include "music.h"
 #include "fe4music_patch.h"
 
-#define PORT_VERSION "0.12"
+#define PORT_VERSION "0.13"
 #define GAME_TITLE "Fire Emblem: Genealogy of the Holy War"
 #define NAGA_SHA1 "2b6eb74646a527ba293b0e004db3e0134a28dc6c"
 

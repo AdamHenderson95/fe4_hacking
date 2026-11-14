@@ -1,4 +1,4 @@
-Fire Emblem: Genealogy of the Holy War - PC port (fe4port) 0.12
+Fire Emblem: Genealogy of the Holy War - PC port (fe4port) 0.13
 ===============================================================
 
 This is a native Windows build of FE4. It runs from YOUR OWN ROM: the
@@ -331,7 +331,15 @@ generation-2 save from the title screen ("Start Chapter") and playing on for
 60,000 frames: about 4 billion more instructions, with zero differences.
 fe4port.cov now also covers what those runs reached (5,200 more places), so
 later chapters run less code in the interpreter on a first launch.
-Not checked yet: chapters 9-11 (the test copy can't open them yet).
+Port 0.13 adds chapters 9, 10 and the Final Chapter, and the ending. The
+test copies now get there the game's own way: chapters 6 to 8 (and on) end
+right after their opening scenes, and the game's chapter end carries the
+army on. Random-input runs of 100,000 frames for chapter 9, the Final
+Chapter and the ending (the farewells, the epilogue and the chapter
+records), and 80,100 frames for chapter 10 (where the game itself stops on
+one of its own error checks: an enemy army found no route, which the test
+copy's shortcuts may cause): about 5.3 billion more instructions, with
+zero differences. fe4port.cov now covers those runs too (34,413 places).
 
 Tested on: Linux, and the Windows build under Wine. It has not yet been run
 on a real Windows PC.

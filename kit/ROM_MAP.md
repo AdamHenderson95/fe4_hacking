@@ -1301,9 +1301,26 @@ defender `$4F15`, `$60` bytes each.
   at chapter 6; save and reload with 18 children.
 - **Later chapters (v51):** `ch6start.py --chapter N` keeps the chapter number as data after its code
   (`LDA long`), so its code is identical for every chapter. Chapters 7 and 8 open and play (their own
-  recruits only). Chapters 9-11 stop in their opening scenes: the player list `$7E:46EB` is empty, so
-  the list `$7F:832D` (count `$7F:82CD` = 0) is sorted by `$8B:CCFA` / `$8B:CD20` with a bad index and
-  the rotation at `$8B:CD3C` overwrites RAM. They need the units a chapter end carries over.
+  recruits only). Opening chapter 9-11 directly stops in their opening scenes: the player list
+  `$7F:832D` (count `$7F:82CD` = 0) is sorted by `$8B:CCFA` / `$8B:CD20` with a bad index and the
+  rotation at `$8B:CD3C` overwrites RAM. They need the army a chapter end carries over.
+- **Chapter end (v52):** event `$78` (scenes call it as `4A 78`; handler `$86:99CF`) runs `$81:B2AA`:
+  turns taken to `$0D93` + chapter x 2, `$0D79` |= `$0400` (cleared), kills two tasks (`$85:9B94`),
+  then `$0D81` = 6 (outside the Final Chapter), which brings up the Save Game screen. That screen's end
+  (`$91:D921`) tests `$0D79` bit `$0400` and calls `$81:B301`: fade (`E0`), `INC $0D6A`, `STZ $0D79`,
+  and the task `$82:82D3` opens the next chapter with the army as it stands (no SRAM involved).
+  Starting a map sets `$0D79` again and `$0508` = 1 (`$81:A97F`, cleared at `$81:A9A6`); song start
+  commands (`$80:9846`) wait while `$0508` is set, and the Save Game screen ignores input while a
+  song request (`$04BA`) is waiting, so a song asked for while no map runs blocks it.
+  `ch6start.py --chapter 9-11` (v52) starts at chapter 6 and ends chapters 6 .. N-1 at once: each
+  opening script is copied with `78` after its opening scene, its map-start song (`$81:AB0E`) is set to 0,
+  and a hook at `$91:D921` treats those chapters as cleared (and clears `$0508`). `--ending` also turns
+  the Final Chapter's turn-2 scene into scene 412 (`4A 78`, then the ending's scenes and songs 126/145).
+- **The game's own error stop at `$91:A852`:** an army's move order (`$81:8FA1`, from the army AI at
+  `$91:C2BA`; state in `$181E`-`$1830`, army in `$0574`) asks `$87:B01D` for a route to a location
+  (`$1820`, from the chapter's table at `$83:8000`); if none is found (carry set) the next byte is
+  `BRK` and the game stops. A random-input run of the chapter 10 test copy hit it (army `$36`,
+  location 3) on frame 80,123; the interpreter and the translated code agree there.
 - **Saves in generation 2:** each player phase can start with the "Save Game" screen (slots at
   `$30:6000` + slot x `$800`; written by `$91:ED47` and friends); the title then offers "Start Chapter",
   which resumes on the map.

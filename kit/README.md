@@ -983,9 +983,23 @@ weaker than in a full playthrough.
 
 `--chapter 7` or `--chapter 8` opens that chapter instead (kit v51), to test a
 hack's later maps, events and AI. The army is then only the units that chapter
-adds itself, since the earlier chapters didn't run. Chapters 9-11 can't be
-opened this way yet: they need units carried over from the chapters before
-them, and the game stops during their opening scenes.
+adds itself, since the earlier chapters didn't run.
+
+`--chapter 9`, `10` or `11` (kit v52) gets there the game's own way: New Game
+opens chapter 6, and every chapter before the one you asked for ends right after
+its opening scene. Save in any slot at each Save Game screen and the
+next chapter opens with the army carried over, as at a real chapter end. That
+army is chapter 6's (Seliph, Oifey, Shannan and the children placed there),
+since the recruits of chapters 6-10 never had their turns.
+
+```
+python dev/ch6start.py myhack.smc test10.smc --chapter 10
+python dev/ch6start.py myhack.smc testend.smc --ending
+```
+
+`--ending` goes on through the Final Chapter too: its opening scene runs straight
+into the ending (scene 412: Belhalla taken, the farewells, the epilogue and the
+chapter records), to check a hack's ending, its text and its music.
 
 ## Names
 

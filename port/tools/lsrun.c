@@ -110,8 +110,14 @@ static void read_hook(Snes* s, uint32_t adr) {
 }
 static Snes* gSnes; static int retWatch[8], nRetWatch, execOn;
 static uint32_t tracePcs[32]; static int nTracePcs = -1;
+static uint32_t pcRing[256]; static int pcRingPos; static long ringStop = -1;
 static void exec_hook(Cpu* c) {
   if(!execOn) return;
+  if(ringStop >= 0) {   // RINGSTOP=hex: print the last 256 PCs when execution reaches that address
+    uint32_t a = (uint32_t)c->k << 16 | c->pc;
+    pcRing[pcRingPos++ & 255] = a;
+    if(a == (uint32_t)ringStop) { for(int i = 0; i < 256; i++) printf("RING %06X\n", pcRing[(pcRingPos + i) & 255] & 0xffffff); ringStop = -2; }
+  }
   if(nTracePcs < 0) { nTracePcs = 0; const char* t = getenv("TRACEPC"); while(t && *t && nTracePcs < 32) { char* e; tracePcs[nTracePcs++] = strtol(t, &e, 16); t = *e ? e + 1 : e; } }
   for(int i = 0; i < nTracePcs; i++) if(((uint32_t)c->k << 16 | c->pc) == tracePcs[i]) {
     uint8_t* s = gSnes->ram; uint16_t sp = c->sp;
@@ -205,6 +211,7 @@ int main(int argc, char** argv) {
   }
   if(sramIn) { FILE* sf = fopen(sramIn, "rb"); if(sf) { fread(snes->cart->ram, 1, snes->cart->ramSize, sf); fclose(sf); } }
   if(getenv("TRACEPC")) cpu_execHook = exec_hook;
+  if(getenv("RINGSTOP")) { ringStop = strtol(getenv("RINGSTOP"), NULL, 16); cpu_execHook = exec_hook; }
   for(int fr = startFrame; fr < frames; fr++) {
     uint16_t m = movie_mask(fr);
     for(int b = 0; b < 12; b++) snes_setButtonState(snes, 1, b, (m >> b) & 1);
