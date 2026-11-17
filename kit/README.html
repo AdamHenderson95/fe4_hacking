@@ -415,7 +415,29 @@ default browser). The editor runs on your PC only: nothing is sent anywhere.
      cores then play your music when they load that ROM; other emulators play
      the game's own. The tracks are converted by the PC port (0.11 or newer,
      found as for Test play); <code>.pcm</code> files are copied as they are.
-16. On the Project page, <strong>Add unit stats to the map box</strong> puts the PC port's
+16. <strong>Title screen</strong> (kit v53): the title is three layers, and each can be
+   replaced with any picture: <strong>Background</strong> (the knights), <strong>Logo</strong> (the
+   title text, subtitle box and copyright line, in front of everything) and
+   <strong>Emblem</strong> (the sword and book, in between). <strong>Replace with a picture…</strong>
+   fits the picture to 256 × 224 (as is, inside the screen, or filling it) and
+   the editor reduces it to what the SNES allows, telling you how it fits:
+   - background: two palettes of 15 colours (pure black is free), up to 512
+     different 8 × 8 tiles; similar tiles are merged when a picture has more;
+   - logo: transparent around it; three palettes (15, 15 and 8 colours), up
+     to 270 different tiles. When the opening runs into the title, the logo
+     flies in with only its top part showing (down to y = 168); keep the main
+     title text there and put the subtitle below;
+   - emblem: transparent around it; two palettes of 15 colours, at most 128
+     sprites (16 × 16 squares) and 356 sprite tiles, about the size of the
+     original emblem. <strong>Hide it</strong> removes the sword and book.
+   <strong>Download PNG</strong> gives the layer as it is now, to edit and put back; <strong>Use
+   the original</strong> goes back to the game's. The preview switches between your
+   title and the game's. The pictures are kept as <code>title/background.png</code>,
+   <code>title/logo.png</code> and <code>title/emblem.png</code> (256 × 224, any colours), so you
+   can also draw them in any paint program. The menu and the Jugdral
+   Chronology keep the game's knights; the logo's moving shine works with any
+   logo, and the old logo's drop shadow is removed with it.
+17. On the Project page, <strong>Add unit stats to the map box</strong> puts the PC port's
    MT / HIT / AS / AVO box into the ROMs and patches you build, so players
    on emulators get it too (the port can still switch it off).</p>
 <p>The <strong>classic editor</strong> (link on the Project page, or run

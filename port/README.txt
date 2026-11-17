@@ -53,7 +53,8 @@ and is saved in fe4port.ini.
   Audio ....... volume, mute, custom music (on/off, its volume, the song
                 playing now, open the music folder, look for new files)
   Enhancements  unit stats in the map box, fast-forward on/off and speed,
-                automatic speed-ups, pause while the menu is open
+                automatic speed-ups, the rank tracker, pause while the menu
+                is open
   Controls .... click a box, then press the key or gamepad button you want
   Cheats ...... restore HP, gold, EXP for the unit under the cursor or the
                 whole army
@@ -226,6 +227,26 @@ so at high speeds they can trail behind the action or cut each other off.
 Set the speed (2x-8x, default 4x) in the menu (Enhancements). Frames
 that are skipped aren't drawn, which keeps fast-forward cheap to run.
 
+Rank tracker
+------------
+F9 (or Menu > Enhancements > Rank tracker) shows a small box over the game
+with what FE4's end-of-game ranking counts, so you can follow a ranked run:
+
+  Turns ........ every chapter's turns so far plus this one (Tactics)
+  Level-ups .... level-ups of the whole army (Experience)
+  Deaths ....... your units defeated in battle (Combat; the arena doesn't
+                 count)
+
+Next to each is the grade it would get if the game ended now (A-E), from
+the game's own grade tables, so a hack that changes them shows its own.
+Castles an enemy takes are listed under it: each lowers Tactics a grade.
+Survival (units alive and recruited) is only counted by the game at the end
+of each generation; after chapter 5 the box shows how many survived it.
+The numbers come from the game's RAM, so they follow saves, save states and
+chapter restarts exactly as the game's ranking does. Pick the corner in the
+menu.
+
+
 Other keys
   Tab (hold) ....... fast-forward (gamepad: hold the right trigger)
   F3 ............... fast-forward on/off (handy for long enemy phases)
@@ -233,6 +254,7 @@ Other keys
   F11 / Alt+Enter .. fullscreen
   F2 ............... switch between square pixels (8:7) and 4:3
   F4 ............... widescreen on/off
+  F9 ............... rank tracker on/off
   P / Pause ........ pause
   F5 / F7 .......... save state / load state
   F6 / F8 .......... previous / next state slot (1-9)
@@ -258,6 +280,8 @@ Settings (fe4port.ini, created on first launch)
   mute=0
   pause_in_menu=1  pause the game while the F1 menu is open
   show_fps=0       FPS counter in the corner
+  rank_tracker=0   rank tracker box (F9); rank_corner=0-3 (top left, top
+                   right, bottom left, bottom right)
   fast_forward=4   fast-forward speed, 2-8
   faster_text=1    automatic speed-ups, 1 = off, 2-8 = speed
   faster_battles=1
@@ -340,6 +364,10 @@ records), and 80,100 frames for chapter 10 (where the game itself stops on
 one of its own error checks: an enemy army found no route, which the test
 copy's shortcuts may cause): about 5.3 billion more instructions, with
 zero differences. fe4port.cov now covers those runs too (34,413 places).
+Port 0.14 adds the rank tracker (it only reads the game's RAM) and was run
+with a ROM built with a new title screen from the kit (v53): the title, the
+opening's logo fly-in, the menu and the chronology showed as in the
+emulator.
 
 Tested on: Linux, and the Windows build under Wine. It has not yet been run
 on a real Windows PC.

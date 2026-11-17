@@ -3,6 +3,7 @@
 #define FE4_MENU_H
 #include <SDL.h>
 #include "cheats.h"
+#include "rank.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -39,6 +40,8 @@ typedef struct MenuState {
   int musicNow;  const char* musicNowFile;   // track playing from a file (0 = none)
   int musicReq;  const char* musicReqFile;   // the song the game asked for last
   const char* musicDir;
+  // rank tracker overlay
+  int* rankTracker; int* rankCorner; RankInfo rank;
 } MenuState;
 
 enum {

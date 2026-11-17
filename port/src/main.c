@@ -40,7 +40,7 @@
 #include "music.h"
 #include "fe4music_patch.h"
 
-#define PORT_VERSION "0.13"
+#define PORT_VERSION "0.14"
 #define GAME_TITLE "Fire Emblem: Genealogy of the Holy War"
 #define NAGA_SHA1 "2b6eb74646a527ba293b0e004db3e0134a28dc6c"
 
@@ -51,6 +51,7 @@ static const char* BTN_DEFKEYS[12] = { "Z", "A", "Right Shift", "Return", "Up", 
 typedef struct {
   char rom[1024];
   int scale, fullscreen, aspect43, recompiled, volume, learn, vsync, linear, turbo, widescreen, hoverstats, mute, pauseInMenu, showFps;
+  int rankTracker, rankCorner;
   int customMusic, musicVolume;   // music folder tracks on/off, their volume 0-100
   int ffText, ffBattle, ffEnemy, ffCursor;  // automatic speed-ups (1 = off)
   SDL_Keycode keys[12];
@@ -83,6 +84,7 @@ static void config_save(void) {
   fprintf(f, "# volume 0-100\nvolume=%d\nmute=%d\n", cfg.volume, cfg.mute);
   fprintf(f, "# custom music from the music folder (1 = on) and its volume 0-100\ncustom_music=%d\nmusic_volume=%d\n", cfg.customMusic, cfg.musicVolume);
   fprintf(f, "# in-game menu (F1): pause the game while it is open; FPS counter\npause_in_menu=%d\nshow_fps=%d\n", cfg.pauseInMenu, cfg.showFps);
+  fprintf(f, "# rank tracker overlay (F9): on/off; corner 0 top left, 1 top right, 2 bottom left, 3 bottom right\nrank_tracker=%d\nrank_corner=%d\n", cfg.rankTracker, cfg.rankCorner);
   fprintf(f, "# fast-forward speed (2-8). Hold Tab (or the right trigger), or press F3 to toggle. Music stays at normal speed.\nfast_forward=%d\n", cfg.turbo);
   fprintf(f, "# automatic speed-ups (1 = off, 2-8 = speed): while text is being written, in battle scenes,\n# during other armies' phases, while moving the cursor on the map. Music stays at normal speed.\nfaster_text=%d\nfaster_battles=%d\nfaster_enemy_phase=%d\nfaster_cursor=%d\n", cfg.ffText, cfg.ffBattle, cfg.ffEnemy, cfg.ffCursor);
   fprintf(f, "# recompiled=1 runs the translated C code; 0 runs the game in the interpreter\nrecompiled=%d\n", cfg.recompiled);
@@ -115,6 +117,8 @@ static void config_load(void) {
     else if(!strcmp(line, "mute")) cfg.mute = atoi(v);
     else if(!strcmp(line, "pause_in_menu")) cfg.pauseInMenu = atoi(v);
     else if(!strcmp(line, "show_fps")) cfg.showFps = atoi(v);
+    else if(!strcmp(line, "rank_tracker")) cfg.rankTracker = atoi(v) != 0;
+    else if(!strcmp(line, "rank_corner")) cfg.rankCorner = atoi(v) & 3;
     else if(!strcmp(line, "volume")) cfg.volume = atoi(v);
     else if(!strcmp(line, "custom_music")) cfg.customMusic = atoi(v);
     else if(!strcmp(line, "music_volume")) cfg.musicVolume = atoi(v);
@@ -673,6 +677,7 @@ int main(int argc, char** argv) {
   ms.customMusic = &cfg.customMusic; ms.musicVolume = &cfg.musicVolume; ms.musicAvail = musicPatched; ms.musicDir = music_dir();
   ms.turbo = &cfg.turbo; ms.ffToggle = &turboToggle; ms.hoverstats = &cfg.hoverstats; ms.pauseInMenu = &cfg.pauseInMenu;
   ms.showFps = &cfg.showFps; ms.paused = &paused; ms.slot = &slot; ms.keys = cfg.keys;
+  ms.rankTracker = &cfg.rankTracker; ms.rankCorner = &cfg.rankCorner;
   ms.version = PORT_VERSION; ms.romName = romBase; ms.recompiled = recompiled; ms.hoverActive = hoverPatched;
   static char romInfo[160];
   snprintf(romInfo, sizeof romInfo, "SHA-1 %s%s", romSha, strcmp(romSha, NAGA_SHA1) ? " (not the Project Naga 1.0 image)" : " (Project Naga 1.0)");
@@ -725,6 +730,7 @@ int main(int argc, char** argv) {
           if(k == SDLK_PAUSE || k == SDLK_p) { paused = !paused; menu_notify(paused ? "Paused" : "Resumed"); }
           if(k == SDLK_F3) { turboToggle = !turboToggle; char t[64]; snprintf(t, sizeof t, "Fast-forward x%d", cfg.turbo); menu_notify(turboToggle ? t : "Normal speed"); }
           if(k == SDLK_F2) { cfg.aspect43 = !cfg.aspect43; APPLY_VIDEO(); config_save(); menu_notify(cfg.aspect43 ? "TV shape (4:3)" : "Square pixels"); }
+          if(k == SDLK_F9) { cfg.rankTracker = !cfg.rankTracker; config_save(); menu_notify(cfg.rankTracker ? "Rank tracker on" : "Rank tracker off"); }
           if(k == SDLK_F4) { cfg.widescreen = !cfg.widescreen; APPLY_VIDEO(); config_save(); menu_notify(cfg.widescreen ? "Widescreen on" : "Widescreen off"); }
           break;
         }
@@ -855,6 +861,7 @@ int main(int argc, char** argv) {
         ms.armyHurt = 0; for(int i = 0; i < ms.armyCount; i++) if(army[i].hp < army[i].maxHp) ms.armyHurt++;
         ms.selOk = cheat_selected(snes->ram, snes->cart->rom, romLen, &ms.sel);
       }
+      if(cfg.rankTracker) rank_read(snes->ram, snes->cart->rom, romLen, &ms.rank);
       ms.padCount = 0; for(int i = 0; i < 4; i++) if(pads[i]) ms.padCount++;
       ms.fps = fps; ms.speed = speed; ms.compiledBlocks = rc_stats.blocks; ms.interpOps = rc_stats.interp; ms.wideActive = wideOn;
       ms.musicTracks = music_count(); ms.musicNow = music_playing(); ms.musicReq = music_last_request();

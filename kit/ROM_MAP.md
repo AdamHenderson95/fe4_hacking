@@ -1428,6 +1428,17 @@ main screen BG1 + BG2 + OBJ, colour math adds the sub screen (BG3) to BG1 only.
   y byte (signed), tile/attribute word. The routine writes the OAM buffer `$1C00` with `STA $1C00,X`
   through DB, so metasprites must be in a bank that mirrors RAM ($80-$BF).
 
+## Ranking (port 0.14)
+The end-of-game grades (A-E) come from four counts; `$84:8ED7` picks the first of five (low, high)
+ranges in a table that a value fits (`lo-1 < v` signed, `v <= hi`), else E.
+
+| Grade | Count | Kept at | Grade code / table |
+|---|---|---|---|
+| Tactics | turns: sum of `$0D93` + 2 x chapter (12 words, written at a chapter clear from `$0D8F`, the current turn, by `$81:B2D1`), + `$0D73` castles lost (`INC` at `$84:CE89`), capped at E | `$0D93`, `$0D8F`, `$0D73` | `$84:8CFE`, table `$84:8D2F` (1-399, 400-549, 550-799, 800-1099) |
+| Experience | level-ups of the army (`INC` at `$84:AADB`, after the new level is stored) | `$7E:3D83` | `$84:8D97`, table `$84:8DB1` (1000-1440, 800-999, 600-799, 400-599; above 1440 falls to E) |
+| Combat | battle losses per character (48 bytes, `INC` at `$91:EB27`, capped at $FF) | `$7E:7358` | `$84:8D65` (sum via `$91:EBBE`), table `$84:8D8B` (0-3, 4-10, 11-30, 31-50) |
+| Survival | living units of army 0 (`$84:BE6F`: status word bit `$0200` clear), added at the end of chapters 5 and 11 (`$81:B2BC`) | `$7E:3D85` | `$84:8D41`, table `$84:8D55` (44-48, 43, 42, 41) |
+
 ## Engine routines found so far
 
 | Routine | Purpose |

@@ -50,7 +50,7 @@ import fe4skillanim                # noqa: E402
 from fe4project import Project, load_settings, save_settings   # noqa: E402
 
 APP = 'Builder of the Holy War'
-VERSION = '52'
+VERSION = '53'
 STATIC = os.path.join(KIT, 'studio')
 
 # ---------------------------------------------------------------- state

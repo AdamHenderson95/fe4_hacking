@@ -269,6 +269,43 @@ static int rando_window(MenuState* st) {
   return act;
 }
 
+// Rank tracker overlay: the numbers FE4's ranking counts and the grade each would get now
+static void rank_overlay(MenuState* st) {
+  const RankInfo& r = st->rank;
+  ImVec2 ds = ImGui::GetIO().DisplaySize;
+  float m = baseFont * 0.6f;
+  int c = *st->rankCorner & 3;
+  ImVec2 pos(c & 1 ? ds.x - m : m, c & 2 ? ds.y - m : m);
+  if(c == 1 && (*st->showFps || st->speed > 1)) pos.y += baseFont * 2.0f;   // under the FPS / speed box
+  if(c == 2) pos.y -= baseFont * 2.6f;                                      // over the corner messages
+  ImGui::SetNextWindowPos(pos, ImGuiCond_Always, ImVec2(c & 1 ? 1.0f : 0.0f, c & 2 ? 1.0f : 0.0f));
+  ImGui::SetNextWindowBgAlpha(0.62f);
+  ImGui::Begin("rank", NULL, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoInputs |
+               ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoSavedSettings);
+  if(!r.inGame) { ImGui::TextDisabled("Rank tracker: starts with the first chapter"); ImGui::End(); return; }
+  char ch[32];
+  if(r.chapter == 0) snprintf(ch, sizeof ch, "Prologue");
+  else if(r.chapter >= 11) snprintf(ch, sizeof ch, "Final Chapter");
+  else snprintf(ch, sizeof ch, "Chapter %d", r.chapter);
+  ImGui::Text("%s, turn %d", ch, r.turnsThis);
+  static const ImVec4 gradeCol[5] = { ImVec4(0.45f, 0.9f, 0.45f, 1), ImVec4(0.55f, 0.85f, 0.95f, 1), ImVec4(0.95f, 0.88f, 0.4f, 1),
+                                      ImVec4(0.98f, 0.62f, 0.3f, 1), ImVec4(0.98f, 0.42f, 0.42f, 1) };
+  if(ImGui::BeginTable("rk", 3, ImGuiTableFlags_SizingFixedFit)) {
+    struct { const char* label; int value; int k; } rows[3] = {
+      { "Turns", r.turns, RANK_TACTICS }, { "Level-ups", r.levelUps, RANK_EXPERIENCE }, { "Deaths", r.deaths, RANK_COMBAT } };
+    for(auto& row : rows) {
+      ImGui::TableNextRow();
+      ImGui::TableNextColumn(); ImGui::TextUnformatted(row.label);
+      ImGui::TableNextColumn(); ImGui::Text("%6d", row.value);
+      ImGui::TableNextColumn(); ImGui::TextColored(gradeCol[r.grade[row.k]], "%c", "ABCDE"[r.grade[row.k]]);
+    }
+    ImGui::EndTable();
+  }
+  if(r.castlesLost) ImGui::TextColored(gradeCol[3], "%d castle%s lost (Tactics -%d)", r.castlesLost, r.castlesLost > 1 ? "s" : "", r.castlesLost);
+  if(r.gen1Survivors) ImGui::TextDisabled("Generation 1 survivors: %d", r.gen1Survivors);
+  ImGui::End();
+}
+
 extern "C" int menu_frame(MenuState* st) {
   int act = 0;
   ImGui_ImplSDLRenderer2_NewFrame();
@@ -375,6 +412,22 @@ extern "C" int menu_frame(MenuState* st) {
         help_marker(su[i].help);
       }
       ImGui::TextDisabled("Music always plays at its normal speed.");
+      ImGui::SeparatorText("Overlays");
+      if(check("Rank tracker", st->rankTracker, "F9")) { act |= MA_SAVE_CONFIG; menu_notify(*st->rankTracker ? "Rank tracker on" : "Rank tracker off"); }
+      help_marker("A small box over the game with what FE4's end-of-game ranking counts: total turns (Tactics), "
+                  "level-ups of the whole army (Experience) and units defeated in battle (Combat), with the grade "
+                  "each would get if the game ended now. Castles an enemy takes lower Tactics one grade each. "
+                  "Survival (units alive and recruited) is only counted at the end of each generation.");
+      if(!*st->rankTracker) ImGui::BeginDisabled();
+      {
+        static const char* corners[4] = { "Top left", "Top right", "Bottom left", "Bottom right" };
+        ImGui::SetNextItemWidth(baseFont * 10);
+        if(ImGui::BeginCombo("Rank tracker corner", corners[*st->rankCorner & 3])) {
+          for(int i = 0; i < 4; i++) if(ImGui::Selectable(corners[i], (*st->rankCorner & 3) == i)) { *st->rankCorner = i; act |= MA_SAVE_CONFIG; }
+          ImGui::EndCombo();
+        }
+      }
+      if(!*st->rankTracker) ImGui::EndDisabled();
       ImGui::SeparatorText("Menu");
       if(check("Pause the game while this menu is open", st->pauseInMenu)) act |= MA_SAVE_CONFIG;
       ImGui::EndMenu();
@@ -471,7 +524,7 @@ extern "C" int menu_frame(MenuState* st) {
         static const char* rows[][2] = {
           { "F1 / Esc / right stick click", "open or close this menu" },
           { "F5 / F7", "save / load state" }, { "F6 / F8", "previous / next state slot" },
-          { "Tab (hold), right trigger", "fast-forward" }, { "F3", "fast-forward on/off" },
+          { "Tab (hold), right trigger", "fast-forward" }, { "F3", "fast-forward on/off" }, { "F9", "rank tracker on/off" },
           { "F4", "widescreen on/off" }, { "F2", "square pixels / TV shape" },
           { "F11, Alt+Enter", "fullscreen" }, { "P", "pause" },
           { "Gamepad buttons", "by default by position, as on a SNES pad:" }, { "", "right = A, bottom = B, top = X, left = Y" }, { "", "(change them under Controls)" },
@@ -505,6 +558,7 @@ extern "C" int menu_frame(MenuState* st) {
     ImGui::End();
   }
 
+  if(st->rankTracker && *st->rankTracker) rank_overlay(st);
   // FPS overlay (top right) when the menu is closed
   if(*st->showFps && !visible) {
     ImGui::SetNextWindowPos(ImVec2(ImGui::GetIO().DisplaySize.x - baseFont * 0.6f, baseFont * 0.6f), ImGuiCond_Always, ImVec2(1, 0));
