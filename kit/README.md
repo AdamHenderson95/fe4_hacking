@@ -92,6 +92,32 @@ default browser). The editor runs on your PC only: nothing is sent anywhere.
        or walls fit best. Redrawing a tile the map doesn't use frees
        its quarters. Tiles 256–1023 are shared by every chapter and can't be
        redrawn.
+   - **Map picture & tile set…** (kit v55) gives a chapter a whole new look:
+     - **Draw the whole map**: **Download map picture** saves the map as one
+       1024 × 1024 picture (16 pixels a cell). Paint over it, or draw a new
+       map from scratch in any program, and **Import a map picture…**: the
+       editor makes the chapter's own set of tiles from it and places them.
+       A map can have up to 989 different 16 × 16 tiles and 639 different
+       8 × 8 pieces (a map built from 16 × 16 tiles, the way FE4's own are,
+       stays far under that); where a picture has more, the pieces that
+       matter least are shown with the most alike ones instead. Each cell's
+       terrain comes **from the tile in the same place now**, or **from the
+       game's tile it looks most like** (draw a forest and it is a forest);
+       change any tile's terrain afterwards with **Edit tile…**.
+     - **The tile set**: all 1024 tiles of the chapter as one 512 × 512
+       picture (32 to a row). Redraw any of them and import it; the map keeps
+       its tile numbers. With a set of its own, **Edit tile…** can redraw any
+       of the 1024 tiles.
+     - Any colours: they become 5 palettes of 15 (pure black is free). A
+       picture in the game's own colours keeps them exactly, and its water
+       keeps animating.
+     - About 35 tiles are ones the game itself puts on the map during play (a
+       village as raiders damage and destroy it, castle and village
+       footprints, the chapter's scripted changes such as a bridge). They keep
+       their numbers and pictures; redraw them in the tile set to change how
+       those look.
+     - **Use the game's tiles** goes back to the game's tiles, map and terrain
+       for the chapter. Ctrl+Z undoes an import.
    - Units come onto the map in groups (deploy lists) as the chapter goes on;
      the **Units** panel shows or hides each group.
    - **Event areas** outlines each area event of the chapter (*Sigurd
@@ -524,6 +550,7 @@ runs this randomizer from its own menu (Mods → Randomizer).
 | `talks.csv` | 42 | Each chapter's Talk menu: which unit can Talk to which, until which event flag is set |
 | `map_terrain.csv` | 12,288 | The terrain type of each chapter's 1024 tiles |
 | `maps/tiles/<map>/tNNN.png` | – | Your own drawings for a chapter's tile NNN (0–255), 16 × 16 or bigger pixel art; only redrawn ones exist |
+| `maps/tilesets/<map>.png` | – | A chapter's own whole tile set (kit v55): 512 × 512, its 1024 tiles of 16 × 16, 32 to a row; only chapters that have one. Drawings in `maps/tiles/` don't apply to such a chapter |
 | `map_sprites.csv` | 119 | Which map sprite each class uses (`S0`–`S62` on foot, `T0`–`T30` mounted/flying), with the per-gender and per-character rows; a class's last row is `default`, and a class can have up to 30 rows |
 | `sprites/sNN.png`, `sprites/tNN.png` | – | Your own drawings for map sprites (48 × 16 or 48 × 24, the map palette's colours); only replaced ones exist |
 | `map_battle.csv` | 72 | Which map battle figure each class shows (`figure`, and `women` for women), figure numbers in hex (00-5D) |
@@ -632,6 +659,10 @@ Same-army talks need both; the editor's **+ New event** writes both.
   - The bits above the tile number (`value >> 10`) are per-cell area flags; keep them.
   - Terrain follows the tile, so water tiles block walking.
   - Edited maps are recompressed and stored in free ROM space automatically.
+- **A whole new map:** give the chapter its own tile set
+  (`maps/tilesets/<map>.png`, 512 × 512, tile k at column k % 32, row k ÷ 32)
+  and point the CSV's cells at its tiles. The Maps page's **Map picture & tile
+  set…** makes both from one picture of the whole map.
 - **Previews:** PNGs need Pillow (`pip install pillow`). Everything else needs only Python.
 
 ## Castles and villages

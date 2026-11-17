@@ -830,6 +830,41 @@ Map headers are 12 records of 27 bytes. The pointer table is at `$88:9FC3` (file
   colour matching) shows on all 50 cells; its terrain set to Peak (0) takes those cells out of
   Sigurd's move range. The kit recompresses the chapter's +3, +6 and +24 data into free space.
 
+### Whole tile sets (kit v55)
+
+- **Loading:** two places load a map's shared graphics with the same 32 bytes: `$88:80C9` (chapter
+  start, and the title demo's maps) and `$88:8252` (a loaded game):
+  `JSL $80A4BD` + `02 00 00 D9 00 50 80 00 00` (queue a DMA, mode 2: `$D9:0000`, `$5000` bytes, VRAM 0),
+  `JSL $889305`, then `LDX #$17FE / LDA $D95000,X / STA $7F0800,X / DEX / DEX / BPL` (shared
+  metatiles 256–1023). They go on at `$88:80E9` / `$88:8272`.
+- **DMA queue** (`$80:A4BD`): reads the bytes after its JSL with DB = the caller's bank and writes the
+  queue (`$0343` index, entries at `$0346`: mode, then 8 bytes; `$0345` = 1) **through DB**, so a caller
+  must run in a bank where `$0000–$1FFF` is RAM (`$80–$BF`, not the far banks `$40–$7D`). The queue
+  runs at once when `$70` is negative (`JSL $80A34F`), else in the next NMI; mode 2 is a DMA on
+  channel 1 to `$2118`.
+- **The kit's loader:** both places get a `JML` to a routine in a bank `$80–$BF` (`$B3` first):
+  `LDA $000D6A`, a table of 13 words (12 chapters + the game's own), `JSR ($table,X)` to the chapter's
+  copy of the 32 bytes (with its own DMA source and metatile source), `JML` back. A chapter's block in
+  the far banks: its 8×8 tiles 0–639 (`$5000`, tiles 128–255 copied from the game's: the water
+  animation keeps writing 160–191) then its metatiles 256–1023 (`$1800`). Its metatiles 0–255, tiles
+  640–767, palettes (rows 1–5 replaced, 6–7 kept) and terrain go through the chapter header.
+- **Tiles the game writes to the map during play** (`$7F:2400`, writers `$86:C721`, `$87:F000`,
+  `$88:B3CB`, `$88:B3D9`):
+  - `$86:C6E8` pastes a block `[width][height][words]` (`$FFFF`/negative = leave the cell) at x, y.
+    Its callers: the chapter's scripted changes (chapter info block +2: 7-byte records
+    `[chapter][?][flag][x][y][block ptr16]`, `$FFFF` at the end, block in the same bank; 0–7 per
+    chapter: bridges, walls, gates), village damage (`$87:F0A4`: 4 kinds × 9 blocks, by damage stage),
+    the per-kind footprint at `$87:F453` + 8 (castle `$87:F4A7`, village `$87:F4C1`), `$87:EF38`, `$87:F096`.
+  - `$87:EFD8`: a tile `$50`, `$53` or `$56` beside a raided village becomes one of 4 by damage
+    (`$87:F007`: X = tile − `$50` indexes overlapping words; it writes only the low byte).
+  - `$88:B3C2` writes tile 0.
+  - Together (clean ROM): 0–7, 10–15, `$20–$22`, 42–47, `$50`, `$53`, `$56`, `$72`, `$75`, `$78`, 159, 177,
+    179, 191, plus each chapter's scripted ones: 28–64 tiles per chapter.
+- **Verified** (emulator, from power-on to the Prologue's first player phase): a recoloured whole set
+  shows right; a whole-map picture import (a 5 × 5 forest and a 6 × 4 lake painted in, terrain from
+  the look-alike game tile) builds 296 tiles, 421 8×8 pieces, colours exact, 271 water pieces
+  animating; the terrain window shows Forest and Sea there.
+
 ### Compression
 
 The decompressor is `$80:AA02`. `$80:A9F2` is a second entry that sets `$D2` = 1 and starts the

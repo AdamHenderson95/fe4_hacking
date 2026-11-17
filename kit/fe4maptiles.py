@@ -325,10 +325,22 @@ def project_terrain(proj):
 
 
 def apply(rom, proj, far):
+    import fe4mapset as MS
     terr = project_terrain(proj)
-    drawings = {ch: project_drawings(proj, ch) for ch in range(M.MAP_COUNT)}
+    sets = MS.project_chapters(proj)       # chapters with their own whole tile set: drawings don't apply
+    drawings = {ch: project_drawings(proj, ch) if ch not in sets else {} for ch in range(M.MAP_COUNT)}
+    clean = bytes(rom)
     try:
-        gfx = load_chapters(bytes(rom), terr, drawings)
+        gfx = load_chapters(clean, {ch: t for ch, t in terr.items() if ch not in sets}, drawings)
     except ValueError as e:
         raise SystemExit(f'maps/tiles/{M.MAP_NAMES[getattr(e, "ch", 0)]}: {e}')
+    for ch, data in sets.items():
+        try:
+            tset, _ = MS.converted(proj, ch, data, clean, MS.project_words(proj, clean, ch))
+        except ValueError as e:
+            raise SystemExit(f'{MS.atlas_file(ch)}: {e}')
+        g = MS.chapter_gfx(clean, ch, tset)
+        for k, t in terr.get(ch, {}).items():
+            g.terrain[k] = t
+        gfx[ch] = g
     return sum(g.write(rom, far) for g in gfx.values())

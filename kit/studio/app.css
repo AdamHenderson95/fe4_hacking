@@ -779,3 +779,11 @@ textarea.fe4box.bad { border-color: #E1606F; }
 .skiconrow { display: flex; align-items: center; gap: 12px; margin: 4px 0 10px; }
 .skiconrow .hint { flex: 1; }
 .skicon { image-rendering: pixelated; background: #3B3424; border-radius: 4px; padding: 4px; box-sizing: content-box; }
+
+/* map picture & tile set (kit v55) */
+.mtileset { margin-left: auto; padding: 4px 12px; font-size: 13px; }
+.mts-sec { border-top: 1px solid var(--line); padding-top: 12px; margin-top: 12px; }
+.mts-sec h3 { margin: 0 0 6px; font-size: 15px; }
+.mts-sec p { margin: 0 0 10px; }
+.mtileset-dlg.loading .modal-box { cursor: progress; }
+.mtileset-dlg.loading .btn { pointer-events: none; opacity: .55; }

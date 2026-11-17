@@ -61,7 +61,8 @@ export async function mapsPage(root) {
       h('button', { class: 'mtool', title: 'Zoom in (+)', 'aria-label': 'Zoom in', onclick: () => zoomBy(1) }, '+')),
     h('div', { class: 'mlayers', role: 'group', 'aria-label': 'Show' },
       [['grid', 'Grid'], ['terrain', 'Terrain'], ['areas', 'Area flags'], ['sites', 'Castles & villages'], ['units', 'Units'], ['events', 'Event areas']].map(([k, label]) =>
-        h('button', { class: 'chip', 'aria-pressed': String(st.layers[k]), onclick: e => { st.layers[k] = !st.layers[k]; e.currentTarget.setAttribute('aria-pressed', String(st.layers[k])); drawOverlay(); drawObjects(); } }, label))));
+        h('button', { class: 'chip', 'aria-pressed': String(st.layers[k]), onclick: e => { st.layers[k] = !st.layers[k]; e.currentTarget.setAttribute('aria-pressed', String(st.layers[k])); drawOverlay(); drawObjects(); } }, label))),
+    h('button', { class: 'btn btn-line mtileset', title: 'Draw the whole map as one picture, or give the chapter a whole new set of tiles', onclick: () => tilesetDialog() }, 'Map picture & tile set…'));
 
   const base = h('canvas', { class: 'mbase' });
   const over = h('canvas', { class: 'mover' });
@@ -377,13 +378,90 @@ export async function mapsPage(root) {
             h('div', { class: 'ptactions' },
               h('button', { class: 'btn btn-gilt', onclick: () => file.click() }, 'Replace drawing…'),
               h('a', { class: 'btn btn-line', href: `/gfx/tile/${st.ch}/${k}.png?s=1&c=${T.ver}`, download: `${M.title.split(':')[0].replace(/\W+/g, '_')}_tile_${k}.png` }, 'Download PNG'),
-              T.custom ? h('button', { class: 'btn btn-line danger', onclick: () => send({ reset: true }, `Tile ${k} is the game's drawing again`) }, 'Use the original') : null, file),
+              T.custom || T.tileset ? h('button', { class: 'btn btn-line danger', onclick: () => send({ reset: true }, `Tile ${k} is the game's drawing again`) }, T.tileset ? 'Use the game\'s drawing' : 'Use the original') : null, file),
+            T.tileset ? h('p', { class: 'hint' }, `A tile is 16 × 16 pixels (2× to 8× pixel art works too); it is drawn into this chapter's own tile set. `,
+              T.reserved ? 'The game puts this tile on the map during play. ' : '',
+              `${T.free} of the set's 8 × 8 pieces are free${T.merged ? ` (${T.merged} are merged with similar ones now)` : ''}.`) :
             h('p', { class: 'hint' }, `A tile is 16 × 16 pixels (2× to 8× pixel art works too). Colours become the nearest of the chapter's map palettes. `,
               `Each 8 × 8 quarter that doesn't match one already in the chapter takes a free 8 × 8 tile: ${T.free} left${T.freeShared ? ` (${T.freeShared} of them from a pool shared by all chapters, handed out from the Prologue on)` : ''}. Redrawing a tile that isn't on the map frees its quarters.`))
           : h('p', { class: 'hint' }, 'This tile is shared by every chapter, so its drawing can\'t be changed here; its terrain above is this chapter\'s own. To draw a new tile, redraw one of tiles 0–255 that this map doesn\'t use.'),
         h('div', { class: 'modal-actions' }, h('button', { class: 'btn btn-line', onclick: () => modal.remove() }, 'Close'))));
     modal.addEventListener('keydown', e => { if (e.key === 'Escape') modal.remove(); });
     document.body.append(modal);
+    modal.querySelector('.modal-actions .btn:last-child').focus();
+  }
+
+  // ------------------------------------------------------------ whole map picture and tile set (kit v55)
+  async function tilesetDialog() {
+    let T;
+    try { T = await api('tileset?ch=' + st.ch); } catch (e) { toast(e.message, true); return; }
+    document.querySelector('.modal.mtileset-dlg')?.remove();
+    const slug = M.title.split(':')[0].replace(/\W+/g, '_');
+    const n = T.note;
+    const state = T.custom
+      ? (n?.error ? h('p', { class: 'tinote bad' }, n.error)
+        : h('p', { class: 'tinote' }, `This chapter has its own tile set: ${n.tiles} of ${n.tile_limit} 8 × 8 pieces`,
+          n.merged ? ` (${n.merged} more didn't fit and show the most alike piece instead)` : '',
+          `, ${n.colours} colours${n.exact ? '' : ' (reduced)'}${n.animated ? '; its water animates' : ''}.`))
+      : h('p', { class: 'hint' }, 'This chapter uses the game\'s own tiles.');
+    const terrainSel = h('select', { class: 'in', style: 'width:auto', 'aria-label': 'Terrain of each cell' },
+      h('option', { value: 'place' }, 'From the tile in the same place now'),
+      h('option', { value: 'look' }, 'From the game\'s tile it looks most like'));
+    const pick = (kind) => {
+      const file = h('input', { type: 'file', accept: 'image/png', hidden: true });
+      file.onchange = () => { const f = file.files[0]; if (f) send(kind, f); };
+      document.body.append(file); file.click(); setTimeout(() => file.remove(), 60000);
+    };
+    async function send(kind, f) {
+      const want = kind === 'map' ? [T.w, T.h] : [512, 512];
+      const u = URL.createObjectURL(f), im = new Image();
+      try {
+        await new Promise((ok, bad) => { im.onload = ok; im.onerror = () => bad(new Error('That file isn\'t a picture the browser can open.')); im.src = u; });
+      } catch (e) { toast(e.message, true); return; } finally { URL.revokeObjectURL(u); }
+      if (im.width !== want[0] || im.height !== want[1]) {
+        toast(`${kind === 'map' ? 'The map picture' : 'A tile set picture'} is ${want[0]} × ${want[1]} pixels; this one is ${im.width} × ${im.height}.`, true);
+        return;
+      }
+      const buf = new Uint8Array(await f.arrayBuffer());
+      let bin = ''; for (let i = 0; i < buf.length; i += 0x8000) bin += String.fromCharCode(...buf.subarray(i, i + 0x8000));
+      busy.textContent = kind === 'map' ? 'Making the tiles and the map…' : 'Converting the tile set…';
+      modal.classList.add('loading');
+      try {
+        const r = await api('tilesetset', { ch: st.ch, kind, png: btoa(bin), terrain: terrainSel.value });
+        await refreshSession(); modal.remove(); await load();
+        const c = r.conv || {};
+        toast(kind === 'map'
+          ? `Map imported: ${r.note.kept} different tiles${r.note.merged ? ` (${r.note.merged} merged)` : ''}, ${c.tiles} of ${c.tile_limit} 8 × 8 pieces. Ctrl+Z undoes it.`
+          : `Tile set replaced: ${c.tiles} of ${c.tile_limit} 8 × 8 pieces. Ctrl+Z undoes it.`);
+      } catch (e) { modal.classList.remove('loading'); busy.textContent = ''; toast(e.message, true); }
+    }
+    async function reset() {
+      if (!confirm('Use the game\'s own tiles for this chapter again? This also puts back the game\'s map and terrain for it (Ctrl+Z undoes it).')) return;
+      try { await api('tilesetset', { ch: st.ch, reset: true }); await refreshSession(); modal.remove(); await load(); toast('The chapter uses the game\'s tiles again'); }
+      catch (e) { toast(e.message, true); }
+    }
+    const busy = h('p', { class: 'hint', 'aria-live': 'polite' });
+    const modal = h('div', { class: 'modal mtileset-dlg', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Map picture and tile set' },
+      h('div', { class: 'modal-box' }, h('h2', {}, 'Map picture & tile set'), state,
+        h('section', { class: 'mts-sec' }, h('h3', {}, 'Draw the whole map'),
+          h('p', {}, `Download the map as one ${T.w} × ${T.h} picture (16 pixels a cell), paint over it or draw a new one in any program, and import it: the editor makes this chapter's tiles from it and places them. Up to ${1024 - T.reserved.length} different 16 × 16 tiles and ${T.tileLimit} different 8 × 8 pieces; where there are more, the most alike are merged. Castles and villages stay where the Castles & villages layer has them.`),
+          h('div', { class: 'itgrid wide' }, h('label', { class: 'lbl' }, h('span', {}, 'Terrain of each cell'), terrainSel)),
+          h('div', { class: 'ptactions' },
+            h('a', { class: 'btn btn-line', href: `/gfx/mappicture/${st.ch}.png?c=${T.ver}`, download: `${slug}_map.png` }, 'Download map picture'),
+            h('button', { class: 'btn btn-gilt', onclick: () => pick('map') }, 'Import a map picture…'))),
+        h('section', { class: 'mts-sec' }, h('h3', {}, 'The tile set'),
+          h('p', {}, 'All 1024 tiles of the chapter as one 512 × 512 picture, 32 to a row (tile k at column k % 32, row k ÷ 32). Redraw any of them and import it; the map keeps its tile numbers. Any colours: they become 5 palettes of 15 (pure black is free).'),
+          h('div', { class: 'ptactions' },
+            h('a', { class: 'btn btn-line', href: `/gfx/tiles/${st.ch}.png?c=${T.ver}`, download: `${slug}_tiles.png` }, 'Download tile set'),
+            h('button', { class: 'btn btn-gilt', onclick: () => pick('tiles') }, 'Import a tile set…'))),
+        h('p', { class: 'hint' }, `${T.reserved.length} tiles are ones the game itself puts on the map during play (a village being raided and destroyed, castle and village footprints, this chapter's scripted changes): they keep their numbers and pictures, so redraw them in the tile set to change how those look. Terrain is per tile: use Edit tile… to change it.`),
+        busy,
+        h('div', { class: 'modal-actions' },
+          T.custom ? h('button', { class: 'btn btn-line danger', onclick: reset }, 'Use the game\'s tiles') : null,
+          h('button', { class: 'btn btn-line', onclick: () => modal.remove() }, 'Close'))));
+    modal.addEventListener('keydown', e => { if (e.key === 'Escape') modal.remove(); });
+    document.body.append(modal);
+    modal.querySelector('.modal-actions .btn:last-child').focus();
   }
 
   // ------------------------------------------------------------ edits
@@ -625,7 +703,7 @@ export async function mapsPage(root) {
   return {
     async refresh(change) {
       if (!M) return;
-      if (change?.files?.some(f => f.startsWith('maps/tiles/'))) { await load(); return; }
+      if (change?.files?.some(f => f.startsWith('maps/tiles/') || f.startsWith('maps/tilesets/'))) { await load(); return; }
       if (!change || change.maps?.includes(M.ch) || change.tables?.some(t => t === 'deploy' || t === 'locations' || t === 'map_terrain')) await reloadData();
     },
   };

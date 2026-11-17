@@ -29,6 +29,7 @@ import fe4battle as BA
 import fe4spellfx as SFX
 import fe4skillanim as SA
 import fe4maptiles as MT
+import fe4mapset as MS
 import fe4armies as AR
 import fe4names as NM
 import fe4skills as SK
@@ -384,6 +385,7 @@ def build(rom_path, proj, out_path, ips=None, hover=False, msu=False):
     n += G2.apply_scenes(rom, proj, space, far)     # after the project's own scripts
     n += MP.apply_maps(rom, os.path.join(proj, 'maps'), far)
     n += MT.apply(rom, proj, far)
+    n += MS.apply(rom, proj, far, space)              # after MT: custom tile sets (palettes, raw blocks, loader)
     n += GFX.apply_portraits(rom, os.path.join(proj, 'portraits'), far)
     n += TITLE.apply(rom, proj, far, space)
     n += SPR.apply(rom, proj, space)

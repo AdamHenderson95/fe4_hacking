@@ -101,6 +101,34 @@ default browser). The editor runs on your PC only: nothing is sent anywhere.
    redrawn.</li>
 </ul>
 </li>
+<li><strong>Map picture &amp; tile set…</strong> (kit v55) gives a chapter a whole new look:<ul>
+<li><strong>Draw the whole map</strong>: <strong>Download map picture</strong> saves the map as one
+   1024 × 1024 picture (16 pixels a cell). Paint over it, or draw a new
+   map from scratch in any program, and <strong>Import a map picture…</strong>: the
+   editor makes the chapter's own set of tiles from it and places them.
+   A map can have up to 989 different 16 × 16 tiles and 639 different
+   8 × 8 pieces (a map built from 16 × 16 tiles, the way FE4's own are,
+   stays far under that); where a picture has more, the pieces that
+   matter least are shown with the most alike ones instead. Each cell's
+   terrain comes <strong>from the tile in the same place now</strong>, or <strong>from the
+   game's tile it looks most like</strong> (draw a forest and it is a forest);
+   change any tile's terrain afterwards with <strong>Edit tile…</strong>.</li>
+<li><strong>The tile set</strong>: all 1024 tiles of the chapter as one 512 × 512
+   picture (32 to a row). Redraw any of them and import it; the map keeps
+   its tile numbers. With a set of its own, <strong>Edit tile…</strong> can redraw any
+   of the 1024 tiles.</li>
+<li>Any colours: they become 5 palettes of 15 (pure black is free). A
+   picture in the game's own colours keeps them exactly, and its water
+   keeps animating.</li>
+<li>About 35 tiles are ones the game itself puts on the map during play (a
+   village as raiders damage and destroy it, castle and village
+   footprints, the chapter's scripted changes such as a bridge). They keep
+   their numbers and pictures; redraw them in the tile set to change how
+   those look.</li>
+<li><strong>Use the game's tiles</strong> goes back to the game's tiles, map and terrain
+   for the chapter. Ctrl+Z undoes an import.</li>
+</ul>
+</li>
 <li>Units come onto the map in groups (deploy lists) as the chapter goes on;
      the <strong>Units</strong> panel shows or hides each group.</li>
 <li><strong>Event areas</strong> outlines each area event of the chapter (<em>Sigurd
@@ -657,6 +685,11 @@ runs this randomizer from its own menu (Mods → Randomizer).</p>
 <td>Your own drawings for a chapter's tile NNN (0–255), 16 × 16 or bigger pixel art; only redrawn ones exist</td>
 </tr>
 <tr>
+<td><code>maps/tilesets/&lt;map&gt;.png</code></td>
+<td>–</td>
+<td>A chapter's own whole tile set (kit v55): 512 × 512, its 1024 tiles of 16 × 16, 32 to a row; only chapters that have one. Drawings in <code>maps/tiles/</code> don't apply to such a chapter</td>
+</tr>
+<tr>
 <td><code>map_sprites.csv</code></td>
 <td>119</td>
 <td>Which map sprite each class uses (<code>S0</code>–<code>S62</code> on foot, <code>T0</code>–<code>T30</code> mounted/flying), with the per-gender and per-character rows; a class's last row is <code>default</code>, and a class can have up to 30 rows</td>
@@ -863,6 +896,10 @@ Same-army talks need both; the editor's <strong>+ New event</strong> writes both
 <li>The bits above the tile number (<code>value &gt;&gt; 10</code>) are per-cell area flags; keep them.</li>
 <li>Terrain follows the tile, so water tiles block walking.</li>
 <li>Edited maps are recompressed and stored in free ROM space automatically.</li>
+<li><strong>A whole new map:</strong> give the chapter its own tile set
+  (<code>maps/tilesets/&lt;map&gt;.png</code>, 512 × 512, tile k at column k % 32, row k ÷ 32)
+  and point the CSV's cells at its tiles. The Maps page's <strong>Map picture &amp; tile
+  set…</strong> makes both from one picture of the whole map.</li>
 <li><strong>Previews:</strong> PNGs need Pillow (<code>pip install pillow</code>). Everything else needs only Python.</li>
 </ul>
 <h2>Castles and villages</h2>

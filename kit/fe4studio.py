@@ -42,6 +42,7 @@ import fe4walk                     # noqa: E402
 import fe4mapbattle                # noqa: E402
 import fe4mapfx                    # noqa: E402
 import fe4maptiles                 # noqa: E402
+import fe4mapset                  # noqa: E402
 import fe4title                    # noqa: E402
 import fe4skillmenu                # noqa: E402
 import fe4music                    # noqa: E402
@@ -51,7 +52,7 @@ import fe4skillanim                # noqa: E402
 from fe4project import Project, load_settings, save_settings   # noqa: E402
 
 APP = 'Builder of the Holy War'
-VERSION = '54'
+VERSION = '55'
 STATIC = os.path.join(KIT, 'studio')
 
 # ---------------------------------------------------------------- state
@@ -745,6 +746,16 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(200, fe4gfx.map_atlas(rom, ch)[0], 'image/png', cache=True)
             g = chapter_gfx(ch)
             return self._send(200, g.atlas_png(), 'image/png', cache='c' in parse_qs(u.query))
+        if path.startswith('/gfx/mappicture/'):
+            try:
+                ch = int(path.rsplit('/', 1)[1].split('.')[0])
+            except ValueError:
+                return self._send(404, 'no')
+            p = project()
+            m = p.map(ch) if p and rom_data() is not None and 0 <= ch < fe4maps.MAP_COUNT else None
+            if m is None:
+                return self._send(404, 'no')
+            return self._send(200, fe4mapset.map_png(chapter_gfx(ch), m.words), 'image/png')
         if path.startswith('/gfx/tile/'):
             q = parse_qs(u.query)
             try:
@@ -4145,6 +4156,11 @@ def chapter_drawings(ch):
 
 
 def tiles_version(ch):
+    ts = tileset_blob(ch)
+    if ts:
+        m = project().map(ch)
+        ids = sorted({w & 0x3FF for w in m.words}) if m else []
+        return 's%08x%08x' % (zlib.crc32(ts), zlib.crc32(bytes(str(ids), 'ascii')))
     dr = chapter_drawings(ch)
     if not dr:
         return 'rom'
@@ -4152,9 +4168,16 @@ def tiles_version(ch):
 
 
 def chapter_gfx(ch, drawings=None):
-    """The chapter's tiles with the project's drawings.  Earlier chapters' drawings come first, since
-    they take from the shared tile pool before this one (as the build does)."""
+    """The chapter's tiles with the project's drawings (or its own whole tile set).  Earlier chapters'
+    drawings come first, since they take from the shared tile pool before this one (as the build does)."""
     rom = rom_data()
+    if tileset_blob(ch) and drawings is None:
+        key = (id(rom), ch, tiles_version(ch))
+        if key not in _gfx_cache:
+            if len(_gfx_cache) > 24:
+                _gfx_cache.clear()
+            _gfx_cache[key] = fe4mapset.chapter_gfx(rom, ch, tileset_conv(ch)[0])
+        return _gfx_cache[key]
     dr = {c: chapter_drawings(c) for c in range(ch + 1)}
     if drawings is not None:
         dr[ch] = drawings
@@ -4163,7 +4186,7 @@ def chapter_gfx(ch, drawings=None):
         return _gfx_cache[key]
     pool = list(fe4maptiles.pool_tiles(rom))
     for c in range(ch):
-        if dr[c]:
+        if dr[c] and not tileset_blob(c):
             pool = list(fe4maptiles.load_project(rom, None, c, None, dr[c], pool).pool)
     g = fe4maptiles.load_project(rom, None, ch, None, dr[ch], pool)
     if drawings is None:
@@ -4173,16 +4196,117 @@ def chapter_gfx(ch, drawings=None):
     return g
 
 
+# ---------------------------------------------------------------- whole tile sets and map pictures (kit v55)
+def tileset_blob(ch):
+    p = project()
+    if p is None or not 0 <= ch < fe4maps.MAP_COUNT:
+        return None
+    return p.blob(fe4mapset.atlas_file(ch)).data
+
+
+def tileset_conv(ch, data=None):
+    """(converted set, note) of the chapter's tile set picture (or the given one)."""
+    p = project()
+    m = p.map(ch)
+    return fe4mapset.converted(p.path, ch, data or tileset_blob(ch), rom_data(), m.words if m else None)
+
+
+def api_tileset(b, q):
+    """Whether chapter ch has its own whole tile set, how it fits, and the tiles the game changes."""
+    p = need_project()
+    ch = int(q['ch'][0])
+    rom = rom_data()
+    if rom is None:
+        raise ValueError('Choose your FE4 ROM on the Project page first.')
+    data = tileset_blob(ch)
+    note = None
+    if data:
+        try:
+            note = tileset_conv(ch)[1]
+        except ValueError as e:
+            note = {'error': str(e)}
+    m = p.map(ch)
+    return {'ch': ch, 'custom': data is not None, 'note': note, 'reserved': sorted(fe4mapset.reserved(rom, ch)),
+            'ver': tiles_version(ch), 'w': fe4maps.WIDTH * 16, 'h': (len(m.words) // fe4maps.WIDTH) * 16 if m else 1024,
+            'tileLimit': len(fe4mapset.FREE_TILES)}
+
+
+def _terrain_ops(p, ch, new):
+    t = p.table('map_terrain')
+    if t is None:
+        return []
+    ops = []
+    for k in range(1024):
+        row = ch * 1024 + k
+        if row < len(t.rows) and t.rows[row].get('chapter') == str(ch) and t.rows[row].get('tile') == str(k):
+            old = t.rows[row].get('terrain', '')
+            if old != str(new[k]):
+                ops.append(('cell', 'map_terrain', row, 'terrain', old, str(new[k])))
+    return ops
+
+
+def api_tileset_set(b, q):
+    """{ch, png, kind: 'tiles'} a new tile set picture; {ch, png, kind: 'map', terrain: 'place'|'look'}
+    a whole-map picture (makes the tile set, the map and the tiles' terrain); {ch, reset: true} back
+    to the game's tiles, map and terrain.  One undo step."""
+    p = need_project()
+    rom = rom_data()
+    if rom is None:
+        raise ValueError('Choose your FE4 ROM on the Project page first.')
+    ch = int(b['ch'])
+    if not 0 <= ch < fe4maps.MAP_COUNT:
+        raise ValueError('No such chapter.')
+    m = p.map(ch)
+    rel = fe4mapset.atlas_file(ch)
+    old = p.blob(rel).data
+    if b.get('reset'):
+        orig_words = fe4maps.load_map(rom, ch)
+        ops = [('blob', rel, old, None)] if old else []
+        if m:
+            ops += [('map', ch, i, w, orig_words[i]) for i, w in enumerate(m.words) if i < len(orig_words) and w != orig_words[i]]
+        ops += _terrain_ops(p, ch, fe4maptiles.ChapterGfx(rom, ch).terrain)
+        p.edit(ops)
+        return {'ok': True}
+    try:
+        data = base64.b64decode(b['png'])
+    except (KeyError, ValueError):
+        raise ValueError('That file could not be read as a PNG picture.')
+    if b.get('kind') == 'map':
+        if m is None:
+            raise KeyError(f'no map for chapter {ch}')
+        g = chapter_gfx(ch)
+        terr = list(g.terrain)
+        for k, t_ in chapter_terrain(ch).items():
+            terr[k] = t_
+        atlas, words, terrain, note = fe4mapset.import_map(rom, ch, data, g, list(m.words), terr,
+                                                          'look' if b.get('terrain') == 'look' else 'place')
+        conv = fe4mapset.converted(p.path, ch, atlas, rom, words)[1]
+        ops = [('blob', rel, old, atlas)]
+        ops += [('map', ch, i, w, words[i]) for i, w in enumerate(m.words) if w != words[i]]
+        ops += _terrain_ops(p, ch, terrain)
+        p.edit(ops)
+        return {'ok': True, 'note': note, 'conv': conv}
+    conv = fe4mapset.converted(p.path, ch, data, rom, m.words if m else None)[1]    # ValueError: why it doesn't fit
+    p.set_blob(rel, data)
+    return {'ok': True, 'conv': conv}
+
+
 def api_tileinfo(b, q):
     p = need_project()
     ch, k = int(q['ch'][0]), int(q['k'][0])
     m = p.map(ch)
     g = chapter_gfx(ch)
     terr = chapter_terrain(ch)
-    custom = k in chapter_drawings(ch)
     used = sum(1 for w in m.words if w & 0x3FF == k)
     rom = rom_data()
     orig = fe4maptiles.ChapterGfx(rom, ch).terrain[k] if rom is not None else 0
+    if tileset_blob(ch):
+        note = tileset_conv(ch)[1]
+        return {'ch': ch, 'k': k, 'own': True, 'tileset': True, 'onMap': used, 'terrain': terr.get(k, g.terrain[k]),
+                'origTerrain': orig, 'row': ch * 1024 + k, 'custom': False, 'reserved': k in fe4mapset.reserved(rom, ch),
+                'free': max(0, note['tile_limit'] - note['tiles']), 'freeShared': 0, 'merged': note['merged'],
+                'ver': tiles_version(ch)}
+    custom = k in chapter_drawings(ch)
     return {'ch': ch, 'k': k, 'own': k < 256, 'onMap': used, 'terrain': terr.get(k, g.terrain[k]), 'origTerrain': orig,
             'row': ch * 1024 + k, 'custom': custom, 'free': sum(g.room()), 'freeShared': g.room()[1],
             'ver': tiles_version(ch)}
@@ -4193,6 +4317,18 @@ def api_tiledraw(b, q):
     import base64
     p = need_project()
     ch, k = int(b['ch']), int(b['k'])
+    ts = tileset_blob(ch) if 0 <= ch < fe4maps.MAP_COUNT else None
+    if ts:                     # the chapter's own whole tile set: any of the 1024, drawn into the set picture
+        if not 0 <= k < 1024:
+            raise ValueError('Tiles are numbered 0-1023.')
+        if b.get('reset'):
+            rgba = fe4maptiles.ChapterGfx(rom_data(), ch).metatile_rgba(k)
+        else:
+            rgba = fe4maptiles.rgba_from_png(base64.b64decode(b['png']))
+        new = fe4mapset.draw_tile(ts, k, rgba)
+        note = tileset_conv(ch, new)[1]
+        p.set_blob(fe4mapset.atlas_file(ch), new)
+        return {'ok': True, 'free': max(0, note['tile_limit'] - note['tiles'])}
     if not 0 <= ch < fe4maps.MAP_COUNT or not 0 <= k < 256:
         raise ValueError('Only the chapter\'s own tiles (0-255) can be redrawn; 256-1023 are shared by every chapter.')
     rel = fe4maptiles.drawing_file(ch, k)
@@ -4542,7 +4678,8 @@ API = {('GET', 'session'): api_session, ('POST', 'ping'): api_ping, ('GET', 'tab
        ('POST', 'addstep'): api_addstep, ('GET', 'eventinfo'): api_eventinfo, ('GET', 'maps'): api_maps, ('GET', 'map'): api_map, ('POST', 'paint'): api_paint,
        ('GET', 'armies'): api_armies, ('GET', 'portraits'): api_portraits, ('GET', 'mapsprites'): api_mapsprites, ('GET', 'skills'): api_skills, ('POST', 'gen2check'): api_gen2check, ('POST', 'newchild'): api_newchild, ('POST', 'skillcheck'): api_skillcheck, ('POST', 'skilledit'): api_skilledit, ('POST', 'spriteentry'): api_spriteentry, ('GET', 'tileinfo'): api_tileinfo, ('POST', 'tiledraw'): api_tiledraw, ('POST', 'mapsprite'): api_mapsprite, ('POST', 'mapwalk'): api_mapwalk, ('GET', 'mapbattle'): api_mapbattle, ('GET', 'mbplayer'): api_mbplayer, ('GET', 'mapspells'): api_mapspells, ('POST', 'mapspellset'): api_mapspellset, ('POST', 'mapspellsheet'): api_mapspellsheet, ('POST', 'mapspellbg'): api_mapspellbg, ('POST', 'mapspellcolour'): api_mapspellcolour, ('POST', 'mapspellpreview'): api_mapspellpreview, ('POST', 'mapbattleset'): api_mapbattleset, ('POST', 'mapbattlesheet'): api_mapbattlesheet, ('POST', 'mapbattlepreview'): api_mapbattlepreview, ('POST', 'portrait'): api_portrait, ('POST', 'aicmd'): api_aicmd, ('POST', 'airecipe'): api_airecipe, ('GET', 'music'): api_music, ('POST', 'musicfile'): api_musicfile,
        ('GET', 'title'): api_title, ('POST', 'titleset'): api_title_set,
-       ('POST', 'skillicon'): api_skillicon}
+       ('POST', 'skillicon'): api_skillicon,
+       ('GET', 'tileset'): api_tileset, ('POST', 'tilesetset'): api_tileset_set}
 
 
 # ---------------------------------------------------------------- window
