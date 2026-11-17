@@ -239,12 +239,42 @@ export async function skillsPage(root) {
     const sec = h('section', { class: 'arsec' }, h('h3', {}, 'In the Skills menu'));
     const show = h('input', { type: 'checkbox', checked: !['no', 'n', '0', 'false'].includes((s.fields.menu || '').toLowerCase()) });
     show.onchange = () => set(s.row, 'menu', show.checked ? '' : 'no');
-    const icon = selectIn(s, 'icon', [['', 'Default'], ...K.icons.filter(n => !/^(Unused|Hidden)/.test(n)).map(n => [n, n]), ...[1, 2, 3, 4, 5, 6].map(k => [`spare${k}`, `Unused icon ${k}`])], 'Icon');
+    const cur = s.fields.icon || '';
+    const mine = cur.toLowerCase().endsWith('.png');
+    const icon = selectIn(s, 'icon', [['', 'Default'], ...(mine ? [[cur, 'Your picture']] : []), ...K.icons.filter(n => !/^(Unused|Hidden)/.test(n) && K.iconTiles?.[n]).map(n => [n, n]), ...[1, 2, 3, 4, 5, 6].map(k => [`spare${k}`, `Unused icon ${k}`])], 'Icon');
+    const tile = mine ? null : K.iconTiles?.[cur] ?? null;
+    const prev = h('img', { class: 'skicon', width: 48, height: 48, alt: '',
+      src: mine ? `/gfx/skillicon/mine/${encodeURIComponent(cur.replace(/\.png$/i, ''))}.png?s=3&t=${Date.now()}` : tile != null ? `/gfx/skillicon/${tile}.png?s=3` : '' });
+    if (!mine && tile == null) prev.style.visibility = 'hidden';
+    const file = h('input', { type: 'file', accept: 'image/*', hidden: true });
+    file.onchange = () => {
+      const f = file.files[0]; file.value = '';
+      if (!f) return;
+      const u = URL.createObjectURL(f), im = new Image();
+      im.onerror = () => { URL.revokeObjectURL(u); toast('That file isn\'t a picture the browser can open.', true); };
+      im.onload = async () => {
+        URL.revokeObjectURL(u);
+        const cv = h('canvas', { width: 16, height: 16 });
+        const ctx = cv.getContext('2d');
+        ctx.imageSmoothingEnabled = im.width > 32;
+        const k = Math.min(16 / im.width, 16 / im.height), w = Math.round(im.width * k), hh = Math.round(im.height * k);
+        ctx.drawImage(im, Math.floor((16 - w) / 2), Math.floor((16 - hh) / 2), w, hh);
+        try {
+          const r = await api('skillicon', { name: s.name, png: cv.toDataURL('image/png').split(',')[1] });
+          await set(s.row, 'icon', r.file);
+          toast('Icon picture added');
+        } catch (e) { toast(e.message, true); }
+      };
+      im.src = u;
+    };
+    const pick = h('button', { class: 'btn btn-line', onclick: () => file.click() }, mine ? 'Change picture…' : 'Your own picture…');
     const type = selectIn(s, 'type', [['', 'Default'], ['Combat', 'Combat'], ['Field', 'Field'], ['Sword', 'Sword']], 'Type');
     const desc = h('textarea', { class: 'in skdesc', rows: 3, placeholder: 'Leave empty for a short description of the effect', 'aria-label': 'Help text' }, s.fields.description || '');
     desc.onchange = () => set(s.row, 'description', desc.value.trim().replace(/\n/g, '/'), desc);
     sec.append(h('label', { class: 'pick-check' }, show, 'List it in the map menu\'s Skills list'),
       h('div', { class: 'itgrid wide' }, field('Icon', icon), field('Type', type)),
+      h('div', { class: 'skiconrow' }, prev, pick, file,
+        h('small', { class: 'hint' }, '16 × 16, drawn with the 15 colours all skill icons share (other colours become the nearest). Up to 6 skills can have pictures of their own. It shows in the Skills menu and on the status page.')),
       field('Help text', desc, 'Three lines of about 24 letters; / starts a new line. The check above says when it doesn\'t fit.'));
     return sec;
   }

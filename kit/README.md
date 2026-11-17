@@ -871,9 +871,24 @@ like FE4's own skills.
 | Column | Meaning |
 |---|---|
 | `menu` | `no` hides the skill |
-| `icon` | borrow a listed skill's icon (`Pavise`, `Luna`, `Charm`…), or use one of the six unused ones, `spare1`–`spare6` |
+| `icon` | borrow a listed skill's icon (`Pavise`, `Luna`, `Charm`…), use one of the six unused ones, `spare1`–`spare6`, or a picture of your own: `rally.png` for `skill_icons/rally.png` (kit v54) |
 | `type` | `Combat`, `Field` or `Sword` |
 | `description` | help text, wrapped to 3 lines; `/` forces a line break. Defaults to a short description of the effect. |
+
+**Icons of your own** (kit v54): on the Skills page, **Your own picture…**
+under a new skill's icon takes any picture, fits it to 16 × 16 and keeps it as
+`skill_icons/NAME.png`. Icons are drawn with the 15 colours all skill icons
+share, so each colour of your picture becomes the nearest of those; the
+preview shows how it will look. Up to six skills can have pictures of their
+own (they use the six unused icon slots, so fewer if a skill picks `spare1`–
+`spare6` by name). The icon shows in the Skills menu and on the unit's status
+page.
+
+**On the status page** (kit v54): a unit's new skills appear in the row of
+skill icons on the second page of its status (X on the map, then down), up to
+7 skills in all. Press X there and pick one with left and right to see its
+help text, the same as in the Skills menu; skills given to units by name
+say "Personal skill", ones from a class say "Class skill".
 
 **Limits:**
 - The menu holds 32 rows, so up to 14 new skills can be listed.
@@ -883,7 +898,6 @@ like FE4's own skills.
   when something doesn't fit.
 
 ### Other limits
-- New skills don't show yet in the row of skill icons on a unit's status page.
 - Changing the names of FE4's own skills in the menu isn't supported yet.
 - The effects of Pavise, Adept, Vantage, Accost, Pursuit and Paragon are fixed.
   Who has them can still be changed.

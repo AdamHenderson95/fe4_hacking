@@ -1234,8 +1234,23 @@ defender `$4F15`, `$60` bytes each.
   `$20`). Unused icon tiles: `$2A`, `$4C`, `$4E`, `$6A`, `$6C`, `$6E`.
 - **Bearers:** `$7F:81F9` + `$40`×row, counts at `$7F:8741` (21 rows of room).
   The kit moves them to `$7F:A000` / `$7F:A800` for longer lists.
-- **Status page:** the skill-icon row is built by `$87:A373`/`A39C`/`A3CD`,
-  which loop over IDs 0–29 into `$7E:2002+id`. It isn't extended yet.
+- **Icon pictures (v54):** raw 4bpp sprite tiles `$20`-`$7F` at `$DE:34C0`
+  ($C00 bytes; the Skills menu DMAs them to OBJ VRAM `$4200`, the status page
+  to sprite tile `$80`+), one palette for all: `$DE:00C0` (OBJ palette 3 in
+  the menu, 7 on the status page). An icon at sprite tile T uses tiles T, T+1,
+  T+16, T+17.
+- **Status page (v54):** `$87:A415` sets `$7E:2002+id` for the unit's skills
+  0-29 (`$87:A373`/`A39C`/`A3CD`), `$89:A376` lists up to 7 as (id, icon) at
+  `$7F:81B3`/`$7F:81C1` (count `$7F:81B1`) with icons from `$89:92FE` (tile -
+  `$20`, `FFFF` none). X on the page picks one (`$7F:81CF`): `$89:A3C0` shows
+  its help picture from `$89:AC56` (ptr24) through `$51:1A00` (which forced
+  bank `$59` with `LDA #$5900 / STA $25` at `$51:1A11`), the header icon from
+  `$89:A52D` (tile add from `$80`), the text pointer `$89:ABF9`, and
+  "Personal/Class skill" from `$87:A2BC` (carry = personal). The kit replaces
+  `$89:A376` (new skills through HasSkill `$87:A19D`), repoints the four tables
+  to copies with the new ids, NOPs the bank `$59` load and answers `$87:A2BC`
+  for new ids from its unit list. `$89:D74A` (a list of skill names elsewhere)
+  still loops over 0-30 only.
 
 ## Generation 2 (V)
 

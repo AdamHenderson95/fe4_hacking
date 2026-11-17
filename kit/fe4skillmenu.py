@@ -42,6 +42,10 @@ ICON_TABLE = 0x0BDB7E
 ICON_TILES = [0x26, 0x20, 0x22, 0x24, 0x64, 0x66, 0x28, 0x2C, 0x2E, 0x40, 0x42, 0x44, 0x46, 0x48, 0x4A,
               0x60, 0x62, 0x68]                 # list sprite tile per vanilla row
 SPARE_ICONS = [0x2A, 0x4C, 0x4E, 0x6A, 0x6C, 0x6E]
+# the icons' pictures (kit v54): raw 4bpp sprite tiles $20-$7F at $DE:34C0 (DMA'd to the Skills menu's
+# and the status page's sprite tiles), all drawn with one palette, $DE:00C0 (OBJ palette 3 / 7)
+ICON_SHEET, ICON_PAL = 0x1E34C0, 0x1E00C0
+ICON_DIR = 'skill_icons'
 TYPES = {'combat': bytes.fromhex('01aa01ab01ac01ad01ae'), 'field': bytes.fromhex('01c001c101c2'),
          'sword': bytes.fromhex('01c501c601c701c8')}
 SPACE = bytes.fromhex('8140')
@@ -58,6 +62,87 @@ BEARERS, COUNTS = (0x7F81F9, [0x00D867, 0x00D8CB, 0x0BDA4F, 0x0BDE6E]), \
                   (0x7F8741, [0x00D875, 0x00D8DB, 0x0BD85D, 0x0BD8BB, 0x0BDBC0, 0x0BDC8E])
 OP_CLEAR_B, OP_CLEAR_C = 0x00D86D, 0x00D87B     # CPX #$0540 / CPX #$002A
 NEW_BEARERS, NEW_COUNTS = 0x7FA000, 0x7FA800
+# the unit status page's skill row (kit v54): $89:A376 lists the unit's skills (ids 0-30, flags from
+# $87:A415 at $7E:2002+id) as (id, icon) pairs at $7F:81B3 / $7F:81C1 (7 rows, count $7F:81B1) using
+# the icon table $89:92FE (sprite tile - $20, FFFF = none); picking one shows its help picture from
+# $89:AC56 (ptr24 per id) through $51:1A00, which forced bank $59.  $89:ABF9: per-id text (unused by
+# Naga's pane, copied for new ids).
+STATUS_LIST = 0x09A376, bytes.fromhex('641a221 5a487'.replace(' ', ''))
+STATUS_OPS = {0x09A398: 0x8992FE, 0x09A3F7: 0x89AC57, 0x09A3FD: 0x89AC56, 0x09A427: 0x89ABFA, 0x09A42D: 0x89ABF9,
+              0x09A51A: 0x89A52D}   # $89:A52D: the picked skill's icon (tile - $80 + $20)
+STATUS_BANK59 = 0x511A11, bytes.fromhex('a9005985 25'.replace(' ', ''))
+HAS_SKILL = 0x87A19D
+STATUS_KIND = 0x09A494                         # JSL $87:A2BC (personal or class skill)
+
+
+def icon_palette(rom):
+    return [rom[ICON_PAL + 2 * i] | rom[ICON_PAL + 2 * i + 1] << 8 for i in range(16)]
+
+
+def _icon_tile(t, q):
+    """File offset of quarter q (TL, TR, BL, BR) of the 16x16 icon at sprite tile t."""
+    return ICON_SHEET + 32 * (t - 0x20 + (q & 1) + 16 * (q >> 1))
+
+
+def icon_pixels(rom, t):
+    from fe4gfx import _tile
+    out = [[0] * 16 for _ in range(16)]
+    for q in range(4):
+        o = _icon_tile(t, q)
+        px = _tile(rom[o:o + 32], 0)
+        for y in range(8):
+            for x in range(8):
+                out[8 * (q >> 1) + y][8 * (q & 1) + x] = px[y][x]
+    return out
+
+
+def icon_png(rom, t, scale=1, pixels=None):
+    from fe4gfx import png
+    px = pixels or icon_pixels(rom, t)
+    pal = icon_palette(rom)
+    rows = []
+    for y in range(16):
+        r = bytearray()
+        for x in range(16):
+            c = px[y][x]
+            v = pal[c]
+            rgba = ((v & 31) * 255 // 31, (v >> 5 & 31) * 255 // 31, (v >> 10 & 31) * 255 // 31, 255 if c else 0)
+            r += bytes(rgba) * scale
+        rows += [bytes(r)] * scale
+    return png(16 * scale, 16 * scale, rows)
+
+
+def icon_from_png(rom, data):
+    """16x16 colour indices for a picture: each colour becomes the nearest of the icons' 15."""
+    from fe4gfx import read_png, snes_color
+    w, h, px = read_png(data)
+    if (w, h) != (16, 16):
+        raise ValueError(f'a skill icon is 16x16; this picture is {w}x{h}')
+    pal = icon_palette(rom)
+
+    def dist(a, b):
+        return sum(k * ((a >> s & 31) - (b >> s & 31)) ** 2 for k, s in ((3, 0), (4, 5), (2, 10)))
+    out = [[0] * 16 for _ in range(16)]
+    for i, (r, g, b, a) in enumerate(px):
+        if a >= 128:
+            c = snes_color((r, g, b))
+            out[i // 16][i % 16] = min(range(1, 16), key=lambda k: dist(c, pal[k]))
+    return out
+
+
+def write_icon(rom, t, px):
+    for q in range(4):
+        o = _icon_tile(t, q)
+        tile = bytearray(32)
+        for y in range(8):
+            row = px[8 * (q >> 1) + y][8 * (q & 1):8 * (q & 1) + 8]
+            for plane in range(4):
+                v = 0
+                for x, c in enumerate(row):
+                    if c >> plane & 1:
+                        v |= 0x80 >> x
+                tile[(plane >> 1) * 16 + 2 * y + (plane & 1)] = v
+        rom[o:o + 32] = tile
 
 
 def vanilla_rows(rom):
@@ -284,10 +369,167 @@ def build(rom, rows, region, space, far, meta_table):
     code = a.assemble()
     region.put(code)
     L = a.labels
+    _status_page(rom, rows, desc_ptrs[VANILLA_ROWS:], region)
     _jump(rom, SITE_ROWS[0], L['rows'], bytes.fromhex('a90050'))
     _jump(rom, SITE_DESC[0], L['desc'], bytes.fromhex('0a0a0a0a'))
     assert rom[SITE_ICONS:SITE_ICONS + 3] == bytes.fromhex('a91900')
     rom[SITE_ICONS:SITE_ICONS + 5] = bytes([0x22]) + L['icons'].to_bytes(3, 'little') + b'\x60'
+
+
+def _status_page(rom, rows, descs, region):
+    """New skills in the unit status page's skill row: their icon, and their help picture when picked."""
+    from dis65816 import snes_to_file
+    w = lambda a: rom[a] | rom[a + 1] << 8                    # noqa: E731
+    p24 = lambda a: rom[a] | rom[a + 1] << 8 | rom[a + 2] << 16   # noqa: E731
+    for op, old in STATUS_OPS.items():
+        if p24(op) != old:
+            return                                           # not the status page the kit knows
+    if rom[STATUS_LIST[0]:STATUS_LIST[0] + 6] != STATUS_LIST[1] or \
+            rom[snes_to_file(STATUS_BANK59[0]):snes_to_file(STATUS_BANK59[0]) + 5] != STATUS_BANK59[1]:
+        return
+    top = max([30] + [r[0] for r in rows]) + 1
+    icon = {r[0]: r[2] - 0x20 for r in rows}
+    desc = {r[0]: d for r, d in zip(rows, descs)}
+    t92, tac, tab = bytearray(), bytearray(), bytearray()
+    for i in range(top):
+        if i <= 30 and i not in icon:
+            t92 += w(snes_to_file(0x8992FE) + 2 * i).to_bytes(2, 'little')
+            tac += p24(snes_to_file(0x89AC56) + 3 * i).to_bytes(3, 'little')
+            tab += p24(snes_to_file(0x89ABF9) + 3 * i).to_bytes(3, 'little')
+        elif i in icon:
+            t92 += icon[i].to_bytes(2, 'little')
+            tac += desc[i].to_bytes(3, 'little')
+            tab += p24(snes_to_file(0x89ABF9) + 3 * 2).to_bytes(3, 'little')   # Pavise's (not shown)
+        else:
+            t92 += b'\xff\xff'
+            tac += bytes(3)
+            tab += bytes(3)
+    T92, TAC, TAB = region.put(bytes(t92)), region.put(bytes(tac)), region.put(bytes(tab))
+    NEW = region.put(b''.join(r[0].to_bytes(2, 'little') for r in rows) + b'\xff\xff')
+    a = Asm(region.cur)
+    a.label('st')
+    a.op('stz', 'dp', 0x1A)
+    a.op('jsl', 'long', 0x87A415)
+    a.op('lda', 'long', 0x7E2000)
+    a.op('beq', 'rel', 'new')
+    a.op('stz', 'dp', 0x1E)
+    a.label('v')                                # the game's skills (ids 0-30), as the game did
+    a.op('ldx', 'dp', 0x1E)
+    a.op('lda', 'long,x', 0x7E2002)
+    a.op('and', '#', 0xFF)
+    a.op('beq', 'rel', 'vn')
+    a.op('lda', 'dp', 0x1E)
+    a.op('asl')
+    a.op('tax')
+    a.op('lda', 'long,x', T92)
+    a.op('bmi', 'rel', 'vn')
+    a.op('jsr', 'abs', 'add')
+    a.label('vn')
+    a.op('inc', 'dp', 0x1E)
+    a.op('lda', 'dp', 0x1E)
+    a.op('cmp', '#', 31)
+    a.op('bne', 'rel', 'v')
+    a.label('new')                              # new skills: ask HasSkill for each
+    a.op('ldx', '#', 0)
+    a.label('n')
+    a.op('lda', 'long,x', NEW)
+    a.op('cmp', '#', 0xFFFF)
+    a.op('beq', 'rel', 'done')
+    a.op('sta', 'dp', 0x1E)
+    a.op('phx')
+    a.op('jsl', 'long', HAS_SKILL)
+    a.op('bcc', 'rel', 'nn')
+    a.op('lda', 'dp', 0x1E)
+    a.op('asl')
+    a.op('tax')
+    a.op('lda', 'long,x', T92)
+    a.op('bmi', 'rel', 'nn')
+    a.op('jsr', 'abs', 'add')
+    a.label('nn')
+    a.op('plx')
+    a.op('inx')
+    a.op('inx')
+    a.op('bra', 'rel', 'n')
+    a.label('done')
+    a.op('lda', 'dp', 0x1A)
+    a.op('sta', 'long', 0x7F81B1)
+    a.op('rtl')
+    a.label('add')                              # A = icon, $1E = id; at most 7 rows
+    a.op('sta', 'dp', 0x1C)
+    a.op('lda', 'dp', 0x1A)
+    a.op('cmp', '#', 7)
+    a.op('bcs', 'rel', 'full')
+    a.op('asl')
+    a.op('tax')
+    a.op('lda', 'dp', 0x1E)
+    a.op('sta', 'long,x', 0x7F81B3)
+    a.op('lda', 'dp', 0x1C)
+    a.op('sta', 'long,x', 0x7F81C1)
+    a.op('inc', 'dp', 0x1A)
+    a.label('full')
+    a.op('rts')
+    code = a.assemble()
+    if not region.fits(len(code)):
+        return                                   # no room: the status page stays as it was
+    at = region.put(code)
+    assert at == a.labels['st']
+    rom[STATUS_LIST[0]:STATUS_LIST[0] + 4] = bytes([0x5C]) + at.to_bytes(3, 'little')
+    for op, new in ((0x09A398, T92), (0x09A3F7, TAC + 1), (0x09A3FD, TAC), (0x09A427, TAB + 1), (0x09A42D, TAB),
+                    (0x09A51A, T92)):
+        rom[op:op + 3] = new.to_bytes(3, 'little')
+    f = snes_to_file(STATUS_BANK59[0])
+    rom[f:f + 5] = b'\xea' * 5               # the help picture's bank comes from the table
+    # "Personal skill" / "Class skill" under the help ($87:A2BC: carry = personal): new skills given
+    # to units by name count as personal
+    from fe4skillfx import table_addr
+    P = table_addr(rom, 'extra')
+    if P and rom[STATUS_KIND:STATUS_KIND + 4] == bytes.fromhex('22bca287'):
+        a = Asm(region.cur)
+        a.label('kind')
+        a.op('cmp', '#', 30)
+        a.op('bcs', 'rel', 'k_new')
+        a.op('jml', 'long', 0x87A2BC)
+        a.label('k_new')
+        a.op('phx')
+        a.op('phy')
+        a.op('pha')                             # id at 1,S
+        a.op('jsl', 'long', 0x84A333)           # the unit
+        a.op('tay')
+        a.op('ldx', '#', 0)
+        a.label('k_loop')
+        a.op('lda', 'long,x', P)
+        a.op('cmp', '#', 0xFFFF)
+        a.op('beq', 'rel', 'k_no')
+        a.op('tya')
+        a.op('cmp', 'long,x', P)
+        a.op('bne', 'rel', 'k_next')
+        a.op('lda', 'long,x', P + 2)
+        a.op('and', '#', 0xFF)
+        a.op('cmp', 'sr', 1)
+        a.op('beq', 'rel', 'k_yes')
+        a.label('k_next')
+        a.op('inx')
+        a.op('inx')
+        a.op('inx')
+        a.op('bra', 'rel', 'k_loop')
+        a.label('k_no')
+        a.op('pla')
+        a.op('ply')
+        a.op('plx')
+        a.op('clc')
+        a.op('rtl')
+        a.label('k_yes')
+        a.op('pla')
+        a.op('ply')
+        a.op('plx')
+        a.op('sec')
+        a.op('rtl')
+        code = a.assemble()
+        if not region.fits(len(code)):
+            return
+        at = region.put(code)
+        assert at == a.labels['kind']
+        rom[STATUS_KIND + 1:STATUS_KIND + 4] = at.to_bytes(3, 'little')
 
 
 def _jump(rom, fo, target, expect):

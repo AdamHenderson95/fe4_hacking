@@ -443,6 +443,10 @@ def _menu_rows(rom, rows, path, effects, stat_sk):
     """New skills shown in the Skills menu: [(id, name, icon tile, type, help lines, help text)]"""
     icons = MN.icon_names(rom, [r['name'] for r in [{'name': ''}] + rows])
     icons.update(MN.icon_names(rom, NAMES))
+    # pictures of your own (skill_icons/NAME.png) go to unused icon slots nobody picked by name
+    taken = {icons[r['icon'].lower()] for r in rows if r['icon'] and r['icon'].lower() in icons}
+    free = [t for t in MN.SPARE_ICONS if t not in taken]
+    pictures = {}
     out = []
     for r in rows[VANILLA_COUNT - 1:]:
         where = f"{path}:{r['line']}"
@@ -453,13 +457,26 @@ def _menu_rows(rom, rows, path, effects, stat_sk):
         eff = r['effect'] or ('combat' if r['bonus'] and not r['stat'] else 'stat')
         kind = FX.EFFECTS[eff][0] if eff in FX.EFFECTS else 0
         icon = r['icon'] or FX.DEFAULT_ICON.get(kind, 'wrath' if eff == 'combat' else 'spare3')
-        if icon.lower().startswith('0x'):
+        if icon.lower().endswith('.png'):
+            if icon not in pictures:
+                if not free:
+                    raise SystemExit(f'{where}: icon {icon}: the game has room for {len(MN.SPARE_ICONS)} icons of '
+                                     'your own (fewer when skills use the unused ones by name)')
+                f = os.path.join(os.path.dirname(path), MN.ICON_DIR, os.path.basename(icon))
+                try:
+                    px = MN.icon_from_png(rom, open(f, 'rb').read())
+                except (OSError, ValueError) as e:
+                    raise SystemExit(f'{where}: icon {icon}: {e}')
+                pictures[icon] = free.pop(0)
+                MN.write_icon(rom, pictures[icon], px)
+            tile = pictures[icon]
+        elif icon.lower().startswith('0x'):
             tile = int(icon, 16)
         elif icon.lower() in icons:
             tile = icons[icon.lower()]
         else:
-            raise SystemExit(f"{where}: icon must be a Skills-menu skill's name (Pavise, Luna, ...) or "
-                             'spare1-spare6')
+            raise SystemExit(f"{where}: icon must be a Skills-menu skill's name (Pavise, Luna, ...), "
+                             'spare1-spare6, or a picture of your own (NAME.png in skill_icons)')
         typ = r['type'] or ('field' if kind == FX.K_KILL or r['when'] == 'ally_near' else 'combat')
         if typ not in MN.TYPES:
             raise SystemExit(f'{where}: type must be Combat, Field or Sword')

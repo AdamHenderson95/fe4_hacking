@@ -43,6 +43,7 @@ import fe4mapbattle                # noqa: E402
 import fe4mapfx                    # noqa: E402
 import fe4maptiles                 # noqa: E402
 import fe4title                    # noqa: E402
+import fe4skillmenu                # noqa: E402
 import fe4music                    # noqa: E402
 import fe4battle                  # noqa: E402
 import fe4spellfx                  # noqa: E402
@@ -50,7 +51,7 @@ import fe4skillanim                # noqa: E402
 from fe4project import Project, load_settings, save_settings   # noqa: E402
 
 APP = 'Builder of the Holy War'
-VERSION = '53'
+VERSION = '54'
 STATIC = os.path.join(KIT, 'studio')
 
 # ---------------------------------------------------------------- state
@@ -383,6 +384,57 @@ def title_image(which, src, scale):
     return fe4title.png(lay, None if which == 'title' else which, scale)
 
 
+# ---------------------------------------------------------------- skill icons (kit v54)
+
+def skill_icon_tiles():
+    """{icon name (as the icon column takes it): sprite tile} for the game's icons and the unused ones."""
+    import fe4skills
+    rom = rom_data()
+    if rom is None:
+        return {}
+    out = {k: v for k, v in fe4skillmenu.icon_names(rom, fe4skills.NAMES).items()}
+    return {(k if k.startswith('spare') else next((n for n in fe4skills.NAMES[1:] if n and n.lower() == k), k)): v
+            for k, v in out.items()}
+
+
+def skill_icon_image(which, scale):
+    """/gfx/skillicon/<tile>.png (the game's) or /gfx/skillicon/mine/<file>.png (the project's picture,
+    in the icons' colours)."""
+    rom = rom_data()
+    if rom is None:
+        return None
+    if which.startswith('mine/'):
+        p = project()
+        data = p.blob(f'{fe4skillmenu.ICON_DIR}/{os.path.basename(which[5:])}.png').data if p else None
+        if not data:
+            return None
+        try:
+            px = fe4skillmenu.icon_from_png(rom, data)
+        except ValueError:
+            return None
+        return fe4skillmenu.icon_png(rom, 0x20, scale, px)
+    t = int(which, 16) if which.lower().startswith('0x') else int(which)
+    if not 0x20 <= t <= 0x6E:
+        return None
+    return fe4skillmenu.icon_png(rom, t, scale)
+
+
+def api_skillicon(b, q):
+    """A picture of your own for a skill's icon: PNG (base64, 16x16) -> skill_icons/<name>.png."""
+    p = need_project()
+    rom = rom_data()
+    if rom is None:
+        raise ValueError('Choose your FE4 ROM on the Project page first.')
+    name = re.sub(r'[^A-Za-z0-9_-]+', '_', str(b.get('name') or 'icon')).strip('_').lower() or 'icon'
+    try:
+        data = base64.b64decode(b['png'])
+        fe4skillmenu.icon_from_png(rom, data)
+    except (KeyError, ValueError) as e:
+        raise ValueError(str(e) if 'icon' in str(e) else 'That file could not be read as a PNG picture.')
+    p.set_blob(f'{fe4skillmenu.ICON_DIR}/{name}.png', data)
+    return {'file': f'{name}.png'}
+
+
 def table_json(name):
     t = project().table(name)
     if t is None:
@@ -608,6 +660,15 @@ class Handler(BaseHTTPRequestHandler):
             except ValueError:
                 return self._send(404, 'no')
             return (self._send(200, data, 'image/png', cache='c' in q) if data else self._send(404, 'no'))
+        if path.startswith('/gfx/skillicon/'):
+            q = parse_qs(u.query)
+            try:
+                with lock:
+                    data = skill_icon_image(path[len('/gfx/skillicon/'):].rsplit('.png', 1)[0],
+                                            max(1, min(int(q.get('s', ['1'])[0]), 6)))
+            except ValueError:
+                return self._send(404, 'no')
+            return self._send(200, data, 'image/png', cache='c' in q) if data else self._send(404, 'no')
         if path.startswith('/gfx/title/'):
             q = parse_qs(u.query)
             which = path.rsplit('/', 1)[1].split('.')[0]
@@ -4240,6 +4301,7 @@ def api_skills(b, q):
     effects = [{'key': k, 'kind': v[0], 'help': v[-1], 'power': v[7]} for k, v in fe4skillfx.EFFECTS.items()]
     return {'skills': out, 'effects': effects,
             'when': [k for k in fe4skillfx.WHEN if k], 'icons': sorted(set(fe4skills.NAMES[1:]) - {None}),
+            'iconTiles': skill_icon_tiles(),
             'classes': [r.get('_name', '') for r in (p.table('classes').rows if p.table('classes') else [])]}
 
 
@@ -4257,6 +4319,13 @@ def api_skillcheck(b, q):
             w = csv.DictWriter(f, fieldnames=t.fields)
             w.writeheader()
             w.writerows(t.rows)
+        for r in t.rows:                     # pictures of your own for icons
+            ic = (r.get('icon') or '').strip()
+            if ic.lower().endswith('.png'):
+                data = p.blob(f'{fe4skillmenu.ICON_DIR}/{os.path.basename(ic)}').data
+                if data:
+                    os.makedirs(os.path.join(d, fe4skillmenu.ICON_DIR), exist_ok=True)
+                    open(os.path.join(d, fe4skillmenu.ICON_DIR, os.path.basename(ic)), 'wb').write(data)
         try:
             r2 = bytearray(rom)
             fe4skills.apply(r2, d, L.BankSpace(r2), L.FreeSpace())
@@ -4472,7 +4541,8 @@ API = {('GET', 'session'): api_session, ('POST', 'ping'): api_ping, ('GET', 'tab
        ('POST', 'msg'): api_msg, ('POST', 'evtcmd'): api_evtcmd, ('GET', 'dsearch'): api_dsearch, ('GET', 'villages'): api_villages, ('GET', 'itemuse'): api_itemuse, ('POST', 'newevent'): api_newevent, ('POST', 'talkmenu'): api_talkmenu, ('POST', 'delstep'): api_delstep,
        ('POST', 'addstep'): api_addstep, ('GET', 'eventinfo'): api_eventinfo, ('GET', 'maps'): api_maps, ('GET', 'map'): api_map, ('POST', 'paint'): api_paint,
        ('GET', 'armies'): api_armies, ('GET', 'portraits'): api_portraits, ('GET', 'mapsprites'): api_mapsprites, ('GET', 'skills'): api_skills, ('POST', 'gen2check'): api_gen2check, ('POST', 'newchild'): api_newchild, ('POST', 'skillcheck'): api_skillcheck, ('POST', 'skilledit'): api_skilledit, ('POST', 'spriteentry'): api_spriteentry, ('GET', 'tileinfo'): api_tileinfo, ('POST', 'tiledraw'): api_tiledraw, ('POST', 'mapsprite'): api_mapsprite, ('POST', 'mapwalk'): api_mapwalk, ('GET', 'mapbattle'): api_mapbattle, ('GET', 'mbplayer'): api_mbplayer, ('GET', 'mapspells'): api_mapspells, ('POST', 'mapspellset'): api_mapspellset, ('POST', 'mapspellsheet'): api_mapspellsheet, ('POST', 'mapspellbg'): api_mapspellbg, ('POST', 'mapspellcolour'): api_mapspellcolour, ('POST', 'mapspellpreview'): api_mapspellpreview, ('POST', 'mapbattleset'): api_mapbattleset, ('POST', 'mapbattlesheet'): api_mapbattlesheet, ('POST', 'mapbattlepreview'): api_mapbattlepreview, ('POST', 'portrait'): api_portrait, ('POST', 'aicmd'): api_aicmd, ('POST', 'airecipe'): api_airecipe, ('GET', 'music'): api_music, ('POST', 'musicfile'): api_musicfile,
-       ('GET', 'title'): api_title, ('POST', 'titleset'): api_title_set}
+       ('GET', 'title'): api_title, ('POST', 'titleset'): api_title_set,
+       ('POST', 'skillicon'): api_skillicon}
 
 
 # ---------------------------------------------------------------- window

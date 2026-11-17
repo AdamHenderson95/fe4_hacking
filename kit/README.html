@@ -1405,7 +1405,7 @@ like FE4's own skills.</p>
 </tr>
 <tr>
 <td><code>icon</code></td>
-<td>borrow a listed skill's icon (<code>Pavise</code>, <code>Luna</code>, <code>Charm</code>…), or use one of the six unused ones, <code>spare1</code>–<code>spare6</code></td>
+<td>borrow a listed skill's icon (<code>Pavise</code>, <code>Luna</code>, <code>Charm</code>…), use one of the six unused ones, <code>spare1</code>–<code>spare6</code>, or a picture of your own: <code>rally.png</code> for <code>skill_icons/rally.png</code> (kit v54)</td>
 </tr>
 <tr>
 <td><code>type</code></td>
@@ -1417,6 +1417,19 @@ like FE4's own skills.</p>
 </tr>
 </tbody>
 </table>
+<p><strong>Icons of your own</strong> (kit v54): on the Skills page, <strong>Your own picture…</strong>
+under a new skill's icon takes any picture, fits it to 16 × 16 and keeps it as
+<code>skill_icons/NAME.png</code>. Icons are drawn with the 15 colours all skill icons
+share, so each colour of your picture becomes the nearest of those; the
+preview shows how it will look. Up to six skills can have pictures of their
+own (they use the six unused icon slots, so fewer if a skill picks <code>spare1</code>–
+<code>spare6</code> by name). The icon shows in the Skills menu and on the unit's status
+page.</p>
+<p><strong>On the status page</strong> (kit v54): a unit's new skills appear in the row of
+skill icons on the second page of its status (X on the map, then down), up to
+7 skills in all. Press X there and pick one with left and right to see its
+help text, the same as in the Skills menu; skills given to units by name
+say "Personal skill", ones from a class say "Class skill".</p>
 <p><strong>Limits:</strong>
 - The menu holds 32 rows, so up to 14 new skills can be listed.
 - The names share 57 spaces 8 pixels wide. A name like "Vengeance" uses 7 and
@@ -1425,7 +1438,6 @@ like FE4's own skills.</p>
   when something doesn't fit.</p>
 <h3>Other limits</h3>
 <ul>
-<li>New skills don't show yet in the row of skill icons on a unit's status page.</li>
 <li>Changing the names of FE4's own skills in the menu isn't supported yet.</li>
 <li>The effects of Pavise, Adept, Vantage, Accost, Pursuit and Paragon are fixed.
   Who has them can still be changed.</li>

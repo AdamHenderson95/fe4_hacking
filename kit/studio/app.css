@@ -774,3 +774,8 @@ textarea.fe4box.bad { border-color: #E1606F; }
 .tinote { font-weight: 600; }
 .tinote.bad { color: var(--crimson, #A52A36); }
 @media (max-width: 1100px) { .tipage { grid-template-columns: 1fr; } .tishow { border-right: 0; } .ticard-body { grid-template-columns: 1fr; } }
+
+/* skill icons (kit v54) */
+.skiconrow { display: flex; align-items: center; gap: 12px; margin: 4px 0 10px; }
+.skiconrow .hint { flex: 1; }
+.skicon { image-rendering: pixelated; background: #3B3424; border-radius: 4px; padding: 4px; box-sizing: content-box; }
