@@ -407,7 +407,29 @@ default browser). The editor runs on your PC only: nothing is sent anywhere.
      cores then play your music when they load that ROM; other emulators play
      the game's own. The tracks are converted by the PC port (0.11 or newer,
      found as for Test play); `.pcm` files are copied as they are.
-16. On the Project page, **Add unit stats to the map box** puts the PC port's
+16. **Title screen** (kit v53): the title is three layers, and each can be
+   replaced with any picture: **Background** (the knights), **Logo** (the
+   title text, subtitle box and copyright line, in front of everything) and
+   **Emblem** (the sword and book, in between). **Replace with a picture…**
+   fits the picture to 256 × 224 (as is, inside the screen, or filling it) and
+   the editor reduces it to what the SNES allows, telling you how it fits:
+   - background: two palettes of 15 colours (pure black is free), up to 512
+     different 8 × 8 tiles; similar tiles are merged when a picture has more;
+   - logo: transparent around it; three palettes (15, 15 and 8 colours), up
+     to 270 different tiles. When the opening runs into the title, the logo
+     flies in with only its top part showing (down to y = 168); keep the main
+     title text there and put the subtitle below;
+   - emblem: transparent around it; two palettes of 15 colours, at most 128
+     sprites (16 × 16 squares) and 356 sprite tiles, about the size of the
+     original emblem. **Hide it** removes the sword and book.
+   **Download PNG** gives the layer as it is now, to edit and put back; **Use
+   the original** goes back to the game's. The preview switches between your
+   title and the game's. The pictures are kept as `title/background.png`,
+   `title/logo.png` and `title/emblem.png` (256 × 224, any colours), so you
+   can also draw them in any paint program. The menu and the Jugdral
+   Chronology keep the game's knights; the logo's moving shine works with any
+   logo, and the old logo's drop shadow is removed with it.
+17. On the Project page, **Add unit stats to the map box** puts the PC port's
    MT / HIT / AS / AVO box into the ROMs and patches you build, so players
    on emulators get it too (the port can still switch it off).
 

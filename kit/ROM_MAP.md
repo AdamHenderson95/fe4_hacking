@@ -1398,6 +1398,36 @@ Prologue (lsrun `--apu`, `--dsp`, `--wav`).
   tracks (`FE4.exe --make-pcm in out`: 44.1 kHz stereo, "MSU1" + loop point); verified the built ROM plays
   `name-17.pcm` and `name-51.pcm` through lsrun's MSU-1 chip.
 
+## Title screen (v53)
+Traced on the title (lsrun `--dump`, PPU line log) after Start and after the opening. Mode 1:
+main screen BG1 + BG2 + OBJ, colour math adds the sub screen (BG3) to BG1 only.
+
+| Layer | Data | Notes |
+|---|---|---|
+| BG2 background (knights) | tiles `$9C:8000` (LZ, $4800 bytes; first 512 tiles to VRAM $2000), map `$9C:BBB7` (32x32), palettes 5/6 = colours 1-15 of rows 5/6 of the LZ 256-colour block `$9C:BFA1` (copied via `$7F:6700`/`$7F:6720`) | vscroll 31: screen row y shows map line y + 32 |
+| BG1 logo | tiles `$43:0000` (Naga, LZ, $2200 bytes = 272 tiles to VRAM $4000), map `$42:24D0` (32x32, via `$7F:6000`), palettes 2 `$E0:26FF`, 3 `$E0:26C3`, 4 `$E0:2759` (9 colours; its 9th is OBJ palette 4's 1st) | vscroll -1; content tiles have priority (in front of the sprites) |
+| OBJ emblem | tiles `$F5:7E44` (LZ, $2C80 bytes to VRAM $6000, decompressed at `$7E:8B88`), OBJ palettes 2 `$E0:271D`, 4 `$E0:2769` | OBSEL size 0 (8x8 / 16x16) |
+| BG3 shine (after Start) | map `$42:2B10` (64x32) to VRAM $5800, 2bpp tiles `$42:2660` to VRAM $5100 | added to BG1 |
+| BG3 shadow (after the opening) | map `$42:29A0` to VRAM $0C00, same tiles | subtracted from BG2/OBJ |
+
+- Loaders: `$95:EE73` (during the opening: logo tiles/map to `$7F:0000`/`$7F:6000`), `$95:EF54` (the title,
+  `JSL $80:A4BD` + 9 inline bytes per DMA: mode, source, size, VMAIN, VRAM word address), palettes
+  `$95:F07E`. Each source is `LDX #lo` / `LDA #bank` before `JSL $80:AA02`. The opening's path loads the
+  same streams from a graphics script table at `$97:F369`: 11-byte entries (0, source, $7E:8B88,
+  VRAM, size).
+- The menu and the chronology load the knights again (`$97:F45B` map, `$97:F466` tiles) with a taller
+  layout of their own (the parchment below the knights): a new title background must not move those.
+- The opening's logo fly-in shows map rows 14-20 of the logo and fills rows 21-26 with tile `$0B`;
+  the title it runs into keeps rows 25-26 filled with `$0B`.
+- Sprite objects (`$95:F967` creates one from a 13-byte descriptor: script ptr, bank, frames table,
+  x, y, tile add (`$7F:D09D`), attribute OR (`$7F:D09B`); `$95:F8BC` runs the script: `nn tt` = frame
+  nn-1 for tt frames, `80 nn` = back nn entries): `$99:FE92`/`$99:FE9F` the sword sliding in after the
+  opening, `$99:FEAC` the sword after Start, `$99:FEB9`-`$99:FF3B` the book in 11 pieces (both).
+  Frames tables hold 16-bit offsets to metasprites in the same bank.
+- Metasprites (`$80:87C7`, DB = their bank): count word, then 5 bytes each: x word (bit 15 = 16x16),
+  y byte (signed), tile/attribute word. The routine writes the OAM buffer `$1C00` with `STA $1C00,X`
+  through DB, so metasprites must be in a bank that mirrors RAM ($80-$BF).
+
 ## Engine routines found so far
 
 | Routine | Purpose |

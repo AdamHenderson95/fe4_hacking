@@ -22,6 +22,7 @@ import fe4gfx as GFX
 import fe4sprites as SPR
 import fe4walk as WK
 import fe4music as MU
+import fe4title as TITLE
 import fe4mapbattle as MBT
 import fe4mapfx as MFX
 import fe4battle as BA
@@ -384,6 +385,7 @@ def build(rom_path, proj, out_path, ips=None, hover=False, msu=False):
     n += MP.apply_maps(rom, os.path.join(proj, 'maps'), far)
     n += MT.apply(rom, proj, far)
     n += GFX.apply_portraits(rom, os.path.join(proj, 'portraits'), far)
+    n += TITLE.apply(rom, proj, far, space)
     n += SPR.apply(rom, proj, space)
     n += WK.apply(rom, proj, far)
     n += MBT.apply(rom, proj, far, 72)

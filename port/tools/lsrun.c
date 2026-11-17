@@ -165,6 +165,11 @@ static void line_hook(Ppu* p, int line) {
     p->layer[0].subScreenEnabled, p->layer[1].subScreenEnabled, p->layer[2].subScreenEnabled, p->layer[3].subScreenEnabled, p->layer[4].subScreenEnabled);
   for(int i = 0; i < 4; i++) fprintf(lineLog, " bg%d:h=%d,v=%d,map=%04X%s%s,chr=%04X%s", i + 1, p->bgLayer[i].hScroll, p->bgLayer[i].vScroll,
     p->bgLayer[i].tilemapAdr, p->bgLayer[i].tilemapWider ? "W" : "", p->bgLayer[i].tilemapHigher ? "H" : "", p->bgLayer[i].tileAdr, p->bgLayer[i].bigTiles ? "B" : "");
+  fprintf(lineLog, " obj=%04X/%04X,size=%d", p->objTileAdr1, p->objTileAdr2, p->objSize);
+  fprintf(lineLog, " math=clip%d,prev%d,%s%s%s,on=%d%d%d%d%d%d,fix=%d.%d.%d", p->clipMode, p->preventMathMode,
+          p->addSubscreen ? "sub" : "fix", p->subtractColor ? "-" : "+", p->halfColor ? "/2" : "",
+          p->mathEnabled[0], p->mathEnabled[1], p->mathEnabled[2], p->mathEnabled[3], p->mathEnabled[4],
+          p->mathEnabled[5], p->fixedColorR, p->fixedColorG, p->fixedColorB);
   fprintf(lineLog, " win1=%d-%d win2=%d-%d fb=%d bright=%d\n", p->window1left, p->window1right, p->window2left, p->window2right, p->forcedBlank, p->brightness);
 }
 

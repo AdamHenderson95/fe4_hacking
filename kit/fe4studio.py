@@ -42,6 +42,7 @@ import fe4walk                     # noqa: E402
 import fe4mapbattle                # noqa: E402
 import fe4mapfx                    # noqa: E402
 import fe4maptiles                 # noqa: E402
+import fe4title                    # noqa: E402
 import fe4music                    # noqa: E402
 import fe4battle                  # noqa: E402
 import fe4spellfx                  # noqa: E402
@@ -308,6 +309,80 @@ def api_portrait(b, q):
     return {'ok': True}
 
 
+# ---------------------------------------------------------------- title screen (kit v53)
+
+_title_cache = {}
+
+
+def title_game():
+    """The game's own title layers (read once per ROM)."""
+    rom = rom_data()
+    if rom is None:
+        raise RuntimeError('The editor needs the game ROM for this page.')
+    if _title_cache.get('rom') is not rom:
+        _title_cache['rom'], _title_cache['layers'] = rom, fe4title.read_layers(bytearray(rom))
+    return _title_cache['layers']
+
+
+def title_blob(name):
+    p = project()
+    return p.blob(f'{fe4title.FOLDER}/{name}.png').data if p else None
+
+
+def title_layers(src):
+    lay = dict(title_game())
+    if src != 'game' and project():
+        for name in fe4title.LAYERS:
+            data = title_blob(name)
+            if data:
+                lay[name] = fe4title.converted(project().path, name, data)[0]
+    return lay
+
+
+def api_title(b, q):
+    """The title's three layers: whether the project replaced each, and how the new one fits."""
+    need_project()
+    out = []
+    for name in fe4title.LAYERS:
+        data = title_blob(name)
+        note = None
+        if data:
+            try:
+                note = fe4title.converted(project().path, name, data)[1]
+            except ValueError as e:
+                note = {'error': str(e)}
+        out.append({'name': name, 'custom': data is not None, 'note': note,
+                    'ver': '%08x' % zlib.crc32(data) if data else 'rom'})
+    return {'layers': out, 'w': fe4title.W, 'h': fe4title.H}
+
+
+def api_title_set(b, q):
+    """Replace a title layer with a PNG (base64, 256x224), hide the emblem, or go back to the game's."""
+    p = need_project()
+    name = b.get('layer')
+    if name not in fe4title.LAYERS:
+        raise ValueError('No such part of the title.')
+    rel = f'{fe4title.FOLDER}/{name}.png'
+    if b.get('reset'):
+        p.set_blob(rel, None)
+        return {'ok': True}
+    if b.get('hide'):
+        data = fe4gfx.png(fe4title.W, fe4title.H, [bytes(4 * fe4title.W)] * fe4title.H)
+    else:
+        try:
+            data = base64.b64decode(b['png'])
+        except (KeyError, ValueError):
+            raise ValueError('That file could not be read as a PNG picture.')
+    note = fe4title.converted(p.path, name, data)[1]       # ValueError: the reason it doesn't fit
+    p.set_blob(rel, data)
+    return {'ok': True, 'note': note}
+
+
+def title_image(which, src, scale):
+    lay = title_layers(src)
+    return fe4title.png(lay, None if which == 'title' else which, scale)
+
+
 def table_json(name):
     t = project().table(name)
     if t is None:
@@ -533,6 +608,17 @@ class Handler(BaseHTTPRequestHandler):
             except ValueError:
                 return self._send(404, 'no')
             return (self._send(200, data, 'image/png', cache='c' in q) if data else self._send(404, 'no'))
+        if path.startswith('/gfx/title/'):
+            q = parse_qs(u.query)
+            which = path.rsplit('/', 1)[1].split('.')[0]
+            if which not in ('title',) + fe4title.LAYERS:
+                return self._send(404, 'no')
+            try:
+                with lock:
+                    data = title_image(which, q.get('src', ['project'])[0], max(1, min(int(q.get('s', ['1'])[0]), 4)))
+            except (ValueError, RuntimeError):
+                return self._send(404, 'no')
+            return self._send(200, data, 'image/png', cache='c' in q)
         if path.startswith('/music/'):
             try:
                 song = int(path.rsplit('/', 1)[1].split('.')[0])
@@ -4385,7 +4471,8 @@ API = {('GET', 'session'): api_session, ('POST', 'ping'): api_ping, ('GET', 'tab
        ('GET', 'chapters'): api_chapters, ('GET', 'scene'): api_scene, ('POST', 'messages'): api_messages,
        ('POST', 'msg'): api_msg, ('POST', 'evtcmd'): api_evtcmd, ('GET', 'dsearch'): api_dsearch, ('GET', 'villages'): api_villages, ('GET', 'itemuse'): api_itemuse, ('POST', 'newevent'): api_newevent, ('POST', 'talkmenu'): api_talkmenu, ('POST', 'delstep'): api_delstep,
        ('POST', 'addstep'): api_addstep, ('GET', 'eventinfo'): api_eventinfo, ('GET', 'maps'): api_maps, ('GET', 'map'): api_map, ('POST', 'paint'): api_paint,
-       ('GET', 'armies'): api_armies, ('GET', 'portraits'): api_portraits, ('GET', 'mapsprites'): api_mapsprites, ('GET', 'skills'): api_skills, ('POST', 'gen2check'): api_gen2check, ('POST', 'newchild'): api_newchild, ('POST', 'skillcheck'): api_skillcheck, ('POST', 'skilledit'): api_skilledit, ('POST', 'spriteentry'): api_spriteentry, ('GET', 'tileinfo'): api_tileinfo, ('POST', 'tiledraw'): api_tiledraw, ('POST', 'mapsprite'): api_mapsprite, ('POST', 'mapwalk'): api_mapwalk, ('GET', 'mapbattle'): api_mapbattle, ('GET', 'mbplayer'): api_mbplayer, ('GET', 'mapspells'): api_mapspells, ('POST', 'mapspellset'): api_mapspellset, ('POST', 'mapspellsheet'): api_mapspellsheet, ('POST', 'mapspellbg'): api_mapspellbg, ('POST', 'mapspellcolour'): api_mapspellcolour, ('POST', 'mapspellpreview'): api_mapspellpreview, ('POST', 'mapbattleset'): api_mapbattleset, ('POST', 'mapbattlesheet'): api_mapbattlesheet, ('POST', 'mapbattlepreview'): api_mapbattlepreview, ('POST', 'portrait'): api_portrait, ('POST', 'aicmd'): api_aicmd, ('POST', 'airecipe'): api_airecipe, ('GET', 'music'): api_music, ('POST', 'musicfile'): api_musicfile}
+       ('GET', 'armies'): api_armies, ('GET', 'portraits'): api_portraits, ('GET', 'mapsprites'): api_mapsprites, ('GET', 'skills'): api_skills, ('POST', 'gen2check'): api_gen2check, ('POST', 'newchild'): api_newchild, ('POST', 'skillcheck'): api_skillcheck, ('POST', 'skilledit'): api_skilledit, ('POST', 'spriteentry'): api_spriteentry, ('GET', 'tileinfo'): api_tileinfo, ('POST', 'tiledraw'): api_tiledraw, ('POST', 'mapsprite'): api_mapsprite, ('POST', 'mapwalk'): api_mapwalk, ('GET', 'mapbattle'): api_mapbattle, ('GET', 'mbplayer'): api_mbplayer, ('GET', 'mapspells'): api_mapspells, ('POST', 'mapspellset'): api_mapspellset, ('POST', 'mapspellsheet'): api_mapspellsheet, ('POST', 'mapspellbg'): api_mapspellbg, ('POST', 'mapspellcolour'): api_mapspellcolour, ('POST', 'mapspellpreview'): api_mapspellpreview, ('POST', 'mapbattleset'): api_mapbattleset, ('POST', 'mapbattlesheet'): api_mapbattlesheet, ('POST', 'mapbattlepreview'): api_mapbattlepreview, ('POST', 'portrait'): api_portrait, ('POST', 'aicmd'): api_aicmd, ('POST', 'airecipe'): api_airecipe, ('GET', 'music'): api_music, ('POST', 'musicfile'): api_musicfile,
+       ('GET', 'title'): api_title, ('POST', 'titleset'): api_title_set}
 
 
 # ---------------------------------------------------------------- window

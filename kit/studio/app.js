@@ -7,6 +7,7 @@ import { eventsPage } from './pages/events.js';
 import { itemsPage } from './pages/items.js';
 import { armiesPage } from './pages/armies.js';
 import { portraitsPage } from './pages/portraits.js';
+import { titlePage } from './pages/title.js';
 import { spritesPage } from './pages/sprites.js';
 import { battlePage } from './pages/battle.js';
 import { skillsPage } from './pages/skills.js';
@@ -205,6 +206,7 @@ const PAGES = {
   sprites: { title: 'Map sprites', make: spritesPage, needsProject: true },
   battle: { title: 'Battle animations', make: battlePage, needsProject: true },
   music: { title: 'Music', make: musicPage, needsProject: true },
+  title: { title: 'Title screen', make: titlePage, needsProject: true },
 };
 
 async function show() {
