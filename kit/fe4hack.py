@@ -107,6 +107,7 @@ def extract(rom_path, proj):
     MFX.export(rom, proj, inames)
     MU.export(rom, os.path.join(proj, MU.FILE), MU.CHAPTER_NAMES, lambda i: LOC.castle_name(rom, i))
     MT.export_terrain(rom, os.path.join(proj, 'map_terrain.csv'))
+    MP.export_sizes(rom, os.path.join(proj, MP.SIZES_FILE))
     AR.export(rom, proj)
     G2.export(rom, proj)
     NM.export(rom, os.path.join(proj, 'names.csv'))
@@ -386,6 +387,7 @@ def build(rom_path, proj, out_path, ips=None, hover=False, msu=False):
     n += MP.apply_maps(rom, os.path.join(proj, 'maps'), far)
     n += MT.apply(rom, proj, far)
     n += MS.apply(rom, proj, far, space)              # after MT: custom tile sets (palettes, raw blocks, loader)
+    n += MP.apply_sizes(rom, proj)                    # last: the others compare sizes with the ROM's
     n += GFX.apply_portraits(rom, os.path.join(proj, 'portraits'), far)
     n += TITLE.apply(rom, proj, far, space)
     n += SPR.apply(rom, proj, space)

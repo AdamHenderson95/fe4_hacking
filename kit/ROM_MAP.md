@@ -788,8 +788,20 @@ Map headers are 12 records of 27 bytes. The pointer table is at `$88:9FC3` (file
 | +3 | ptr24, chapter metatiles 0–255, compressed (2 KB) |
 | +6 | ptr24, chapter BG tiles, compressed (4 KB, goes to VRAM `$5000`, tiles `$280–$2FF`) |
 | +9 | ptr24, palettes 1–7, raw (224 bytes, goes to CGRAM byte 32) |
-| +12 | width mode (`4` = 64 tiles wide) |
+| +12 / +14 | words → `$075C` / `$075E`: 4 (screens of 256 px across / down; always 4) |
+| +16 / +18 | words → `$0740` / `$0744`: camera min x / min y, pixels |
+| +20 / +22 | words: map right / bottom edge in pixels; `$0742` = +20 − 256, `$0746` = +22 − 224 (camera max). The Prologue's +22 is `$200`: its map is 64 × 32 and the layout's lower half is unused |
 | +24 | ptr24, terrain type per metatile, compressed (1 KB) |
+
+- **Map size (kit v57):** `$88:92B5` copies +12–+22 at map load (both loader paths); `$88:BD3D` / `$88:BE8B`
+  stop the camera at the bounds and the cursor stays on screen; the port's widescreen (fe4wide.c) draws
+  only inside them. Movement costs are computed over all 64 × 64 cells (`$87:B394`: `$7E:9388` = 1 + cost
+  from `$83:0000 + $C488` + terrain; `$C488` from `$83:8008` + 2 × movement type `$87:A689`; 128 =
+  impassable), so the kit fills the cells outside a resized map with an unused tile whose terrain is 13
+  (castle walls: 128 for every movement type, fliers included). A destination outside the area then has
+  no route, and the game stops on its own error check (`$91:A852`) — verified by cropping the Prologue
+  to 40 × 24 with Evans and Jungby outside. Verified working: Prologue at 62 × 31 (camera max x `$2E0`,
+  max y `$110`; the view stops two columns and a row earlier than the game's).
 
 ### Map layout
 

@@ -328,6 +328,8 @@ def apply(rom, proj, far):
     import fe4mapset as MS
     terr = project_terrain(proj)
     sets = MS.project_chapters(proj)       # chapters with their own whole tile set: drawings don't apply
+    for ch, (_, void) in M.resized_chapters(proj, bytes(rom)).items():   # resized maps: the outside can't be entered
+        terr.setdefault(ch, {})[void] = M.VOID_TERRAIN
     drawings = {ch: project_drawings(proj, ch) if ch not in sets else {} for ch in range(M.MAP_COUNT)}
     clean = bytes(rom)
     try:

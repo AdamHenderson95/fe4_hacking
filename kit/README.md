@@ -92,6 +92,15 @@ default browser). The editor runs on your PC only: nothing is sent anywhere.
        or walls fit best. Redrawing a tile the map doesn't use frees
        its quarters. Tiles 256–1023 are shared by every chapter and can't be
        redrawn.
+   - **Map size…** (kit v57) sets how much of the 64 × 64 layout the chapter
+     uses: any width from 16 and height from 14 (one screen) up to 64, at any
+     place in the layout. The camera and the cursor stop at its edges, and the
+     cells outside get a tile no unit can enter. The dialog lists castles,
+     villages and units left outside: move them in, because an army whose
+     goal lies outside finds no way there and the game stops. The rest of
+     the layout is kept, so a map can grow again. (The Prologue is 64 × 32 in
+     the game.) Bigger than 64 × 64 isn't possible: the game's map memory and
+     movement grids are 64 cells wide.
    - **Map picture & tile set…** (kit v55) gives a chapter a whole new look:
      - **Draw the whole map**: **Download map picture** saves the map as one
        1024 × 1024 picture (16 pixels a cell). Paint over it, or draw a new
@@ -571,6 +580,7 @@ runs this randomizer from its own menu (Mods → Randomizer).
 | `talks.csv` | 42 | Each chapter's Talk menu: which unit can Talk to which, until which event flag is set |
 | `map_terrain.csv` | 12,288 | The terrain type of each chapter's 1024 tiles |
 | `maps/tiles/<map>/tNNN.png` | – | Your own drawings for a chapter's tile NNN (0–255), 16 × 16 or bigger pixel art; only redrawn ones exist |
+| `map_sizes.csv` | ✓ | Each chapter's map area in the 64 × 64 layout: x, y, width, height in cells (kit v57) |
 | `maps/tilesets/<map>.png` | – | A chapter's own whole tile set (kit v55): 512 × 512, its 1024 tiles of 16 × 16, 32 to a row; only chapters that have one. Drawings in `maps/tiles/` don't apply to such a chapter |
 | `map_sprites.csv` | 119 | Which map sprite each class uses (`S0`–`S62` on foot, `T0`–`T30` mounted/flying), with the per-gender and per-character rows; a class's last row is `default`, and a class can have up to 30 rows |
 | `sprites/sNN.png`, `sprites/tNN.png` | – | Your own drawings for map sprites (48 × 16 or 48 × 24, the map palette's colours); only replaced ones exist |
@@ -683,7 +693,9 @@ Same-army talks need both; the editor's **+ New event** writes both.
 - **A whole new map:** give the chapter its own tile set
   (`maps/tilesets/<map>.png`, 512 × 512, tile k at column k % 32, row k ÷ 32)
   and point the CSV's cells at its tiles. The Maps page's **Map picture & tile
-  set…** makes both from one picture of the whole map.
+  set…** makes both from one picture of the whole map. For a smaller map, set
+  its area in `map_sizes.csv` (or **Map size…**); the picture is then just
+  that area.
 - **Previews:** PNGs need Pillow (`pip install pillow`). Everything else needs only Python.
 
 ## Castles and villages

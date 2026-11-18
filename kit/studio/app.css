@@ -782,6 +782,9 @@ textarea.fe4box.bad { border-color: #E1606F; }
 
 /* map picture & tile set (kit v55) */
 .mtileset { margin-left: auto; padding: 4px 12px; font-size: 13px; }
+.mtileset2 { padding: 4px 12px; font-size: 13px; }
+.msize-warn ul { margin: 4px 0 0 18px; padding: 0; }
+.msize-warn .tinote { margin: 6px 0; }
 .mts-sec { border-top: 1px solid var(--line); padding-top: 12px; margin-top: 12px; }
 .mts-sec h3 { margin: 0 0 6px; font-size: 15px; }
 .mts-sec p { margin: 0 0 10px; }

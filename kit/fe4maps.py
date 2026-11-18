@@ -239,23 +239,114 @@ def _free_alloc(rom, size, cursor):
         a = a + 1
 
 
+# ---------------------------------------------------------------- map sizes (kit v57)
+# Header +16/+18/+20/+22 (words, pixels): camera min x, min y, max x + 256, max y + 224 ($88:92B5 -> $0740-$0746;
+# $88:BD3D / $88:BE8B stop the camera there, and the cursor stays on screen).  The Prologue's map is 64 x 32 this
+# way.  A smaller map keeps the 64-wide layout in RAM; cells outside it get a "void" tile whose terrain (13, castle
+# walls) no movement type can enter ($83:989B tables: 128 = impassable).
+SIZES_FILE = 'map_sizes.csv'
+MIN_W, MIN_H = 16, 14          # one screen
+VOID_TERRAIN = 13
+
+
+def rom_size(rom, ch):
+    """(x, y, width, height) in cells: the part of the 64 x 64 layout the camera may show."""
+    fo = header(rom, ch)['file']
+    w = lambda k: rom[fo + k] | rom[fo + k + 1] << 8   # noqa: E731
+    x, y = w(16) // 16, w(18) // 16
+    return x, y, max(1, w(20) // 16 - x), max(1, w(22) // 16 - y)
+
+
+def export_sizes(rom, path):
+    with open(path, 'w', newline='') as f:
+        f.write('chapter,map,x,y,width,height\n')
+        for ch in range(MAP_COUNT):
+            f.write('%d,%s,%d,%d,%d,%d\n' % ((ch, MAP_NAMES[ch]) + rom_size(rom, ch)))
+
+
+def project_sizes(proj, rom):
+    """{chapter: (x, y, width, height)} in cells (the ROM's where the project has no row)."""
+    out = {ch: rom_size(rom, ch) for ch in range(MAP_COUNT)}
+    p = os.path.join(proj, SIZES_FILE)
+    if os.path.exists(p):
+        import csv
+        for row in csv.DictReader(open(p, newline='')):
+            try:
+                ch, mw, mh = int(row['chapter']), int(row['width']), int(row['height'])
+                x, y = int(row.get('x') or 0), int(row.get('y') or 0)
+            except (KeyError, ValueError):
+                continue
+            if 0 <= ch < MAP_COUNT:
+                if not (MIN_W <= mw and MIN_H <= mh and x >= 0 and y >= 0 and x + mw <= WIDTH and y + mh <= WIDTH):
+                    raise SystemExit(f'{SIZES_FILE}: chapter {ch} is {mw} x {mh} at ({x}, {y}); a map is at least '
+                                     f'{MIN_W} x {MIN_H} and fits in 64 x 64')
+                out[ch] = (x, y, mw, mh)
+    return out
+
+
+def inside(i, box):
+    x, y, mw, mh = box
+    return x <= i % WIDTH < x + mw and y <= i // WIDTH < y + mh
+
+
+def void_tile(words, box, avoid=()):
+    """A tile number no cell inside the map uses (and not in avoid), for the cells outside it."""
+    used = {words[i] & 0x3FF for i in range(len(words)) if inside(i, box)} | set(avoid)
+    for k in range(1023, 0, -1):
+        if k not in used:
+            return k
+    raise SystemExit('map sizes: every tile is in use inside the map; none is left for the area outside it')
+
+
+def resized_chapters(proj, rom):
+    """{chapter: ((x, y, width, height), void tile)} for chapters whose size the project changed."""
+    import fe4mapset as MS
+    out = {}
+    for ch, box in project_sizes(proj, rom).items():
+        if box == rom_size(rom, ch):
+            continue
+        words = MS.project_words(proj, rom, ch)
+        out[ch] = (box, void_tile(words, box, MS.reserved(rom, ch)))
+    return out
+
+
+def apply_sizes(rom, proj):
+    """Header bounds for resized chapters (the layout fill is in apply_maps, the terrain in fe4maptiles)."""
+    n = 0
+    for ch, ((x, y, mw, mh), _) in resized_chapters(proj, bytes(rom)).items():
+        fo = header(rom, ch)['file']
+        for k, v in ((16, x * 16), (18, y * 16), (20, (x + mw) * 16), (22, (y + mh) * 16)):
+            rom[fo + k], rom[fo + k + 1] = v & 0xFF, v >> 8
+        n += 1
+    return n
+
+
 def apply_maps(rom, mapdir, far=None):
     if not os.path.isdir(mapdir):
         return 0
     changes = 0
     far = far or __import__('fe4lib').FreeSpace()
     clean = bytes(rom)
+    resized = resized_chapters(os.path.dirname(os.path.abspath(mapdir)), clean)
     for ch in range(MAP_COUNT):
         path = os.path.join(mapdir, 'ch%02d_%s.csv' % (ch, MAP_NAMES[ch]))
-        if not os.path.exists(path):
-            continue
-        words = read_csv(path)
         orig = load_map(clean, ch)
-        if len(words) != len(orig) and words == load_map_v15(clean, ch):
-            continue                                  # an old export of the unchanged map
+        if not os.path.exists(path):
+            if ch not in resized:
+                continue
+            words = list(orig)
+        else:
+            words = read_csv(path)
+            if len(words) != len(orig) and words == load_map_v15(clean, ch):
+                if ch not in resized:
+                    continue                          # an old export of the unchanged map
+                words = list(orig)
         if len(words) != len(orig):
             raise SystemExit(f'{path}: map must keep the same size ({len(orig)} cells); edit values, '
                              'do not add or remove cells')
+        if ch in resized:                             # cells outside the map: the void tile
+            box, void = resized[ch]
+            words = [w if inside(i, box) else (w & 0xFC00) | void for i, w in enumerate(words)]
         if words == orig:
             continue
         data = fe4lz.compress(map_bytes(words))

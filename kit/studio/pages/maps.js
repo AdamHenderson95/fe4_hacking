@@ -62,7 +62,8 @@ export async function mapsPage(root) {
     h('div', { class: 'mlayers', role: 'group', 'aria-label': 'Show' },
       [['grid', 'Grid'], ['terrain', 'Terrain'], ['areas', 'Area flags'], ['sites', 'Castles & villages'], ['units', 'Units'], ['events', 'Event areas']].map(([k, label]) =>
         h('button', { class: 'chip', 'aria-pressed': String(st.layers[k]), onclick: e => { st.layers[k] = !st.layers[k]; e.currentTarget.setAttribute('aria-pressed', String(st.layers[k])); drawOverlay(); drawObjects(); } }, label))),
-    h('button', { class: 'btn btn-line mtileset', title: 'Draw the whole map as one picture, or give the chapter a whole new set of tiles', onclick: () => tilesetDialog() }, 'Map picture & tile set…'));
+    h('button', { class: 'btn btn-line mtileset', title: 'How much of the 64 × 64 layout the chapter uses', onclick: () => sizeDialog() }, 'Map size…'),
+    h('button', { class: 'btn btn-line mtileset2', title: 'Draw the whole map as one picture, or give the chapter a whole new set of tiles', onclick: () => tilesetDialog() }, 'Map picture & tile set…'));
 
   const base = h('canvas', { class: 'mbase' });
   const over = h('canvas', { class: 'mover' });
@@ -154,6 +155,17 @@ export async function mapsPage(root) {
         }
       }
       ctx.globalAlpha = 1;
+    }
+    // outside the chapter's map area (kit v57): the game never shows it and nothing can enter it
+    if (M.area && (M.area[2] < M.width || M.area[3] < M.height)) {
+      const [ax, ay, aw, ah] = M.area;
+      ctx.fillStyle = 'rgba(14,16,28,.72)';
+      ctx.fillRect(0, 0, over.width, ay * s);
+      ctx.fillRect(0, (ay + ah) * s, over.width, over.height - (ay + ah) * s);
+      ctx.fillRect(0, ay * s, ax * s, ah * s);
+      ctx.fillRect((ax + aw) * s, ay * s, over.width - (ax + aw) * s, ah * s);
+      ctx.strokeStyle = '#e0b04a'; ctx.lineWidth = 2;
+      ctx.strokeRect(ax * s + 1, ay * s + 1, aw * s - 2, ah * s - 2);
     }
     if (st.layers.grid && st.zoom >= 1.5) {
       ctx.strokeStyle = 'rgba(0,0,0,.22)'; ctx.lineWidth = 1; ctx.beginPath();
@@ -326,7 +338,7 @@ export async function mapsPage(root) {
       return;
     }
     inspector.append(h('h3', {}, M.title),
-      h('p', { class: 'hint', style: 'margin:0' }, `${M.width} × ${M.height} cells · ${M.locations.length} castles and villages · ${M.deploy.reduce((n, l) => n + l.units.length, 0)} deployed units`),
+      h('p', { class: 'hint', style: 'margin:0' }, `${M.area ? `${M.area[2]} × ${M.area[3]}` : `${M.width} × ${M.height}`} cells${M.area && (M.area[0] || M.area[1]) ? ` from (${M.area[0]}, ${M.area[1]})` : ''} · ${M.locations.length} castles and villages · ${M.deploy.reduce((n, l) => n + l.units.length, 0)} deployed units`),
       h('p', { class: 'hint', style: 'margin:6px 0 0' }, 'Click a castle, village or unit to edit it, or drag it to a new spot. Paint (B) changes the ground; right-click picks the tile under the pointer.'));
   }
 
@@ -391,6 +403,52 @@ export async function mapsPage(root) {
     modal.querySelector('.modal-actions .btn:last-child').focus();
   }
 
+  // ------------------------------------------------------------ map size (kit v57)
+  function sizeDialog() {
+    document.querySelector('.modal.msize-dlg')?.remove();
+    const [ax, ay, aw, ah] = M.area || [0, 0, M.width, M.height];
+    const num = (v, label, lo, hi) => h('input', { class: 'in num', type: 'number', value: v, min: lo, max: hi, 'aria-label': label });
+    const fx = num(ax, 'Left column', 0, 48), fy = num(ay, 'Top row', 0, 50), fw = num(aw, 'Width', 16, 64), fh = num(ah, 'Height', 14, 64);
+    const warn = h('div', { class: 'msize-warn', 'aria-live': 'polite' });
+    const out = (x, y, b) => x < b[0] || y < b[1] || x >= b[0] + b[2] || y >= b[1] + b[3];
+    const box = () => [fx, fy, fw, fh].map(e => Number(e.value));
+    const check = () => {
+      const b = box();
+      const bad = !b.every(Number.isInteger) || b[2] < 16 || b[3] < 14 || b[0] < 0 || b[1] < 0 || b[0] + b[2] > 64 || b[1] + b[3] > 64;
+      const lost = [];
+      if (!bad) {
+        for (const l of M.locations) if (out(Number(l.x), Number(l.y), b)) lost.push(`${l.kind === 'castle' ? (l.name || 'castle') : l.kind} at (${l.x}, ${l.y})`);
+        for (const L of M.deploy) for (const u of L.units) if (u.x !== '' && out(Number(u.x), Number(u.y), b)) lost.push(`${u.name} (list ${L.list}) at (${u.x}, ${u.y})`);
+      }
+      warn.replaceChildren(
+        bad ? h('p', { class: 'tinote bad' }, 'A map is at least 16 × 14 cells (one screen) and has to fit in the 64 × 64 layout.')
+          : h('p', { class: 'hint' }, `${b[2]} × ${b[3]} cells: columns ${b[0]}–${b[0] + b[2] - 1}, rows ${b[1]}–${b[1] + b[3] - 1}.`),
+        lost.length ? h('div', { class: 'tinote bad' }, h('p', {}, `Outside the map (${lost.length}): move them in, or the game may stop when an army can't find its way there.`),
+          h('ul', {}, lost.slice(0, 12).map(t => h('li', {}, t)), lost.length > 12 ? h('li', {}, `and ${lost.length - 12} more`) : null)) : null);
+      ok.disabled = bad;
+    };
+    const ok = h('button', { class: 'btn btn-gilt' }, 'Use this size');
+    const full = h('button', { class: 'btn btn-line', onclick: () => { fx.value = 0; fy.value = 0; fw.value = 64; fh.value = 64; check(); } }, 'All 64 × 64');
+    const cancel = h('button', { class: 'btn btn-line', onclick: () => modal.remove() }, 'Cancel');
+    for (const e of [fx, fy, fw, fh]) e.oninput = check;
+    ok.onclick = async () => {
+      const [x, y, w, hh] = box();
+      try { await api('mapsize', { ch: st.ch, x, y, w, h: hh }); await refreshSession(); modal.remove(); await load(); toast(`Map size ${w} × ${hh}. Ctrl+Z undoes it.`); }
+      catch (e) { toast(e.message, true); }
+    };
+    const modal = h('div', { class: 'modal msize-dlg', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Map size' },
+      h('div', { class: 'modal-box' }, h('h2', {}, 'Map size'),
+        h('p', {}, 'The part of the 64 × 64 layout this chapter uses. The camera and the cursor stop at its edges; the cells outside get a tile no unit can enter. The rest of the layout is kept, so you can make the map bigger again later.'),
+        h('div', { class: 'itgrid wide' },
+          h('label', { class: 'lbl' }, h('span', {}, 'Width (cells)'), fw), h('label', { class: 'lbl' }, h('span', {}, 'Height (cells)'), fh),
+          h('label', { class: 'lbl' }, h('span', {}, 'Left column'), fx), h('label', { class: 'lbl' }, h('span', {}, 'Top row'), fy)),
+        warn,
+        h('div', { class: 'modal-actions' }, full, cancel, ok)));
+    modal.addEventListener('keydown', e => { if (e.key === 'Escape') modal.remove(); });
+    document.body.append(modal);
+    check(); fw.focus();
+  }
+
   // ------------------------------------------------------------ whole map picture and tile set (kit v55)
   async function tilesetDialog() {
     let T;
@@ -444,7 +502,7 @@ export async function mapsPage(root) {
     const modal = h('div', { class: 'modal mtileset-dlg', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Map picture and tile set' },
       h('div', { class: 'modal-box' }, h('h2', {}, 'Map picture & tile set'), state,
         h('section', { class: 'mts-sec' }, h('h3', {}, 'Draw the whole map'),
-          h('p', {}, `Download the map as one ${T.w} × ${T.h} picture (16 pixels a cell), paint over it or draw a new one in any program, and import it: the editor makes this chapter's tiles from it and places them. Up to ${1024 - T.reserved.length} different 16 × 16 tiles and ${T.tileLimit} different 8 × 8 pieces; where there are more, the most alike are merged. Castles and villages stay where the Castles & villages layer has them.`),
+          h('p', {}, `Download the map as one ${T.w} × ${T.h} picture (16 pixels a cell; the map's own area, see Map size), paint over it or draw a new one in any program, and import it: the editor makes this chapter's tiles from it and places them. Up to ${1024 - T.reserved.length} different 16 × 16 tiles and ${T.tileLimit} different 8 × 8 pieces; where there are more, the most alike are merged. Castles and villages stay where the Castles & villages layer has them.`),
           h('div', { class: 'itgrid wide' }, h('label', { class: 'lbl' }, h('span', {}, 'Terrain of each cell'), terrainSel)),
           h('div', { class: 'ptactions' },
             h('a', { class: 'btn btn-line', href: `/gfx/mappicture/${st.ch}.png?c=${T.ver}`, download: `${slug}_map.png` }, 'Download map picture'),
@@ -704,7 +762,7 @@ export async function mapsPage(root) {
     async refresh(change) {
       if (!M) return;
       if (change?.files?.some(f => f.startsWith('maps/tiles/') || f.startsWith('maps/tilesets/'))) { await load(); return; }
-      if (!change || change.maps?.includes(M.ch) || change.tables?.some(t => t === 'deploy' || t === 'locations' || t === 'map_terrain')) await reloadData();
+      if (!change || change.maps?.includes(M.ch) || change.tables?.some(t => t === 'deploy' || t === 'locations' || t === 'map_terrain' || t === 'map_sizes')) await reloadData();
     },
   };
 }

@@ -52,7 +52,7 @@ import fe4skillanim                # noqa: E402
 from fe4project import Project, load_settings, save_settings   # noqa: E402
 
 APP = 'Builder of the Holy War'
-VERSION = '56'
+VERSION = '57'
 STATIC = os.path.join(KIT, 'studio')
 
 # ---------------------------------------------------------------- state
@@ -107,6 +107,8 @@ def open_project(d):
             fe4locations.export_talks(rom, os.path.join(d, 'talks.csv'))
         if not os.path.exists(os.path.join(d, 'map_terrain.csv')):   # kits before v24
             fe4maptiles.export_terrain(rom, os.path.join(d, 'map_terrain.csv'))
+        if not os.path.exists(os.path.join(d, fe4maps.SIZES_FILE)):   # kits before v57
+            fe4maps.export_sizes(rom, os.path.join(d, fe4maps.SIZES_FILE))
         if not os.path.exists(os.path.join(d, 'skill_anims.csv')):   # kits before v40
             import fe4skillanim, fe4skills
             fe4skillanim.export(rom, os.path.join(d, 'skill_anims.csv'), dict(enumerate(fe4skills.NAMES)))
@@ -755,7 +757,7 @@ class Handler(BaseHTTPRequestHandler):
             m = p.map(ch) if p and rom_data() is not None and 0 <= ch < fe4maps.MAP_COUNT else None
             if m is None:
                 return self._send(404, 'no')
-            return self._send(200, fe4mapset.map_png(chapter_gfx(ch), m.words), 'image/png')
+            return self._send(200, fe4mapset.map_png(chapter_gfx(ch), m.words, box=map_area(ch)), 'image/png')
         if path.startswith('/gfx/tile/'):
             q = parse_qs(u.query)
             try:
@@ -2633,7 +2635,41 @@ def api_map(b, q):
             'height': (len(m.words) + m.WIDTH - 1) // m.WIDTH, 'words': m.words, 'terrain': terrain,
             'terrainNames': {str(k): v for k, v in TERRAIN_NAMES.items()}, 'impassable': sorted(IMPASSABLE),
             'locations': locs, 'deploy': [lists[k] for k in sorted(lists)], 'areas': chapter_areas(ch),
-            'tilesVer': tiles_version(ch)}
+            'tilesVer': tiles_version(ch), 'area': list(map_area(ch))}
+
+
+def map_area(ch):
+    """(x, y, width, height) of the part of the 64 x 64 layout the chapter shows (map_sizes.csv, kit v57)."""
+    rom = rom_data()
+    t = need_project().table('map_sizes')
+    for r in t.rows if t else []:
+        if r.get('chapter') == str(ch):
+            try:
+                return int(r.get('x') or 0), int(r.get('y') or 0), int(r['width']), int(r['height'])
+            except (KeyError, ValueError):
+                break
+    return fe4maps.rom_size(rom, ch) if rom is not None else (0, 0, 64, 64)
+
+
+def api_mapsize(b, q):
+    """{ch, x, y, w, h}: the part of the layout the chapter shows.  One undo step."""
+    p = need_project()
+    ch = int(b['ch'])
+    x, y, w, h = (int(b[k]) for k in ('x', 'y', 'w', 'h'))
+    if not (fe4maps.MIN_W <= w and fe4maps.MIN_H <= h and x >= 0 and y >= 0 and x + w <= 64 and y + h <= 64):
+        raise ValueError(f'A map is at least {fe4maps.MIN_W} x {fe4maps.MIN_H} cells (one screen) and fits in 64 x 64.')
+    t = p.table('map_sizes')
+    if t is None:
+        fe4maps.export_sizes(rom_data(), os.path.join(p.path, fe4maps.SIZES_FILE))
+        t = p.table('map_sizes')
+    row = next((i for i, r in enumerate(t.rows) if r.get('chapter') == str(ch)), None)
+    if row is None:
+        raise KeyError(f'map_sizes.csv has no row for chapter {ch}')
+    ops = [('cell', 'map_sizes', row, k, t.rows[row].get(k, ''), str(v))
+           for k, v in (('x', x), ('y', y), ('width', w), ('height', h)) if t.rows[row].get(k, '') != str(v)]
+    if ops:
+        p.edit(ops)
+    return {'ok': True}
 
 
 def chapter_areas(ch):
@@ -4238,7 +4274,7 @@ def api_tileset(b, q):
             note = {'error': str(e)}
     m = p.map(ch)
     return {'ch': ch, 'custom': data is not None, 'note': note, 'reserved': sorted(fe4mapset.reserved(rom, ch)),
-            'ver': tiles_version(ch), 'w': fe4maps.WIDTH * 16, 'h': (len(m.words) // fe4maps.WIDTH) * 16 if m else 1024,
+            'ver': tiles_version(ch), 'w': map_area(ch)[2] * 16, 'h': map_area(ch)[3] * 16,
             'tileLimit': len(fe4mapset.FREE_TILES)}
 
 
@@ -4290,7 +4326,7 @@ def api_tileset_set(b, q):
         for k, t_ in chapter_terrain(ch).items():
             terr[k] = t_
         atlas, words, terrain, note = fe4mapset.import_map(rom, ch, data, g, list(m.words), terr,
-                                                          'look' if b.get('terrain') == 'look' else 'place')
+                                                          'look' if b.get('terrain') == 'look' else 'place', map_area(ch))
         conv = fe4mapset.converted(p.path, ch, atlas, rom, words)[1]
         ops = [('blob', rel, old, atlas)]
         ops += [('map', ch, i, w, words[i]) for i, w in enumerate(m.words) if w != words[i]]
@@ -4690,7 +4726,7 @@ API = {('GET', 'session'): api_session, ('POST', 'ping'): api_ping, ('GET', 'tab
        ('GET', 'armies'): api_armies, ('GET', 'portraits'): api_portraits, ('GET', 'mapsprites'): api_mapsprites, ('GET', 'skills'): api_skills, ('POST', 'gen2check'): api_gen2check, ('POST', 'newchild'): api_newchild, ('POST', 'skillcheck'): api_skillcheck, ('POST', 'skilledit'): api_skilledit, ('POST', 'spriteentry'): api_spriteentry, ('GET', 'tileinfo'): api_tileinfo, ('POST', 'tiledraw'): api_tiledraw, ('POST', 'mapsprite'): api_mapsprite, ('POST', 'mapwalk'): api_mapwalk, ('GET', 'mapbattle'): api_mapbattle, ('GET', 'mbplayer'): api_mbplayer, ('GET', 'mapspells'): api_mapspells, ('POST', 'mapspellset'): api_mapspellset, ('POST', 'mapspellsheet'): api_mapspellsheet, ('POST', 'mapspellbg'): api_mapspellbg, ('POST', 'mapspellcolour'): api_mapspellcolour, ('POST', 'mapspellpreview'): api_mapspellpreview, ('POST', 'mapbattleset'): api_mapbattleset, ('POST', 'mapbattlesheet'): api_mapbattlesheet, ('POST', 'mapbattlepreview'): api_mapbattlepreview, ('POST', 'portrait'): api_portrait, ('POST', 'aicmd'): api_aicmd, ('POST', 'airecipe'): api_airecipe, ('GET', 'music'): api_music, ('POST', 'musicfile'): api_musicfile,
        ('GET', 'title'): api_title, ('POST', 'titleset'): api_title_set,
        ('POST', 'skillicon'): api_skillicon,
-       ('GET', 'tileset'): api_tileset, ('POST', 'tilesetset'): api_tileset_set}
+       ('GET', 'tileset'): api_tileset, ('POST', 'tilesetset'): api_tileset_set, ('POST', 'mapsize'): api_mapsize}
 
 
 # ---------------------------------------------------------------- window

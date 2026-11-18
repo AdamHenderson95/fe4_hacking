@@ -202,19 +202,22 @@ def atlas_png_of(g):
     return _rgba_png(ATLAS_W, ATLAS_W, {k: gfx_cells(g, k) for k in range(1024)})
 
 
-def map_png(g, words, width=M.WIDTH):
-    """The whole map as one picture (16 pixels a cell)."""
-    h = len(words) // width
+def map_png(g, words, width=M.WIDTH, box=None):
+    """The map as one picture (16 pixels a cell): the part box = (x, y, w, h) shows, or all of it."""
+    x0, y0, bw, bh = box or (0, 0, width, len(words) // width)
     memo = {}
-    rows = [bytearray(width * 16 * 4) for _ in range(h * 16)]
-    for i, w in enumerate(words[:width * h]):
-        k = w & 0x3FF
-        if k not in memo:
-            memo[k] = [b''.join(bytes(px) for px in r) for r in g.metatile_rgba(k)]
-        bx, by = (i % width) * 16 * 4, (i // width) * 16
-        for y in range(16):
-            rows[by + y][bx:bx + 64] = memo[k][y]
-    return G.png(width * 16, h * 16, [bytes(r) for r in rows])
+    rows = [bytearray(bw * 16 * 4) for _ in range(bh * 16)]
+    for cy in range(bh):
+        for cx in range(bw):
+            i = (y0 + cy) * width + x0 + cx
+            if i >= len(words):
+                continue
+            k = words[i] & 0x3FF
+            if k not in memo:
+                memo[k] = [b''.join(bytes(px) for px in r) for r in g.metatile_rgba(k)]
+            for y in range(16):
+                rows[cy * 16 + y][cx * 64:cx * 64 + 64] = memo[k][y]
+    return G.png(bw * 16, bh * 16, [bytes(r) for r in rows])
 
 
 # ---------------------------------------------------------------- merging alike pictures
@@ -503,7 +506,7 @@ def chapter_gfx(rom, ch, tset):
 
 
 # ---------------------------------------------------------------- a whole map picture -> tile set + map
-def import_map(rom, ch, data, g, words, terrain, terrain_from='place'):
+def import_map(rom, ch, data, g, words, terrain, terrain_from='place', box=None):
     """A whole-map picture (16 pixels a cell) -> (tile set PNG, new map words, terrain per tile, note).
 
     g: the chapter's tiles now (ChapterGfx); words: its map now; terrain: its 1024 terrain types now.
@@ -515,12 +518,18 @@ def import_map(rom, ch, data, g, words, terrain, terrain_from='place'):
         raise ValueError(f'not a PNG picture ({e})')
     width = M.WIDTH
     rows = len(words) // width
-    if (w, h) != (width * 16, rows * 16):
-        raise ValueError(f'this map is {width} x {rows} cells, so its picture is {width * 16} x {rows * 16} pixels; '
+    x0, y0, bw, bh = box or (0, 0, width, rows)
+    if (w, h) == (bw * 16, bh * 16):
+        ox, oy = x0, y0                     # a picture of the map's own area
+    elif (w, h) == (width * 16, rows * 16):
+        ox, oy = 0, 0                       # a picture of the whole 64-wide layout
+    else:
+        raise ValueError(f'this map is {bw} x {bh} cells, so its picture is {bw * 16} x {bh * 16} pixels; '
                          f'this one is {w} x {h}')
+    inside = [i for i in range(width * rows) if x0 <= i % width < x0 + bw and y0 <= i // width < y0 + bh]
     keep = sorted(reserved(rom, ch))
     keep_set = set(keep)
-    cells = [tuple(_snes_cells(px, w, (i % width) * 16, (i // width) * 16, 16)) for i in range(width * rows)]
+    cells = {i: tuple(_snes_cells(px, w, (i % width - ox) * 16, (i // width - oy) * 16, 16)) for i in inside}
     if terrain_from == 'look':
         on_map = sorted({x & 0x3FF for x in words})
         lib = [(_sig(gfx_cells(g, k), 16, 8), terrain[k]) for k in on_map]
@@ -545,7 +554,7 @@ def import_map(rom, ch, data, g, words, terrain, terrain_from='place'):
     fixed = {}
     for k in keep:
         fixed.setdefault((tuple(gfx_cells(g, k)), terrain[k]), k)
-    keys = [(cells[i], terr_of(i)) for i in range(len(cells))]
+    keys = [(cells[i], terr_of(i)) for i in inside]
     uniq, index, uses = [], {}, []
     cell_u = []
     for key in keys:
@@ -559,13 +568,19 @@ def import_map(rom, ch, data, g, words, terrain, terrain_from='place'):
         uses[index[key]] += 1
         cell_u.append(('u', index[key]))
     free = [k for k in range(1024) if k not in keep_set]
-    merged = merge_alike([u[1] for u in uniq], [_sig(u[0], 16, 4) for u in uniq], list(uses), len(free))
+    limit = len(free) - (0 if len(inside) == len(words) else 1)     # one left for the area outside a smaller map
+    merged = merge_alike([u[1] for u in uniq], [_sig(u[0], 16, 4) for u in uniq], list(uses), limit)
     kept = sorted(set(merged), key=lambda t: t)
     number = {t: free[n] for n, t in enumerate(kept)}
-    new_words = []
-    for i, (kind, v) in enumerate(cell_u):
+    new_words = list(words)
+    for i, (kind, v) in zip(inside, cell_u):
         k = v if kind == 'k' else number[merged[v]]
-        new_words.append((words[i] & 0xFC00) | k)
+        new_words[i] = (words[i] & 0xFC00) | k
+    first = new_words[inside[0]] & 0x3FF
+    inside_set = set(inside)
+    for i in range(len(words)):
+        if i not in inside_set:             # outside the map: the build puts its own tile there
+            new_words[i] = (words[i] & 0xFC00) | first
     new_terrain = list(terrain)
     atlas = {}
     for k in keep:
@@ -577,7 +592,7 @@ def import_map(rom, ch, data, g, words, terrain, terrain_from='place'):
     for k in free:
         if k not in used:
             new_terrain[k] = 3          # Plain, for unused tiles
-    note = {'pictures': len(uniq), 'kept': len(kept), 'merged': len(uniq) - len(kept), 'limit': len(free),
+    note = {'pictures': len(uniq), 'kept': len(kept), 'merged': len(uniq) - len(kept), 'limit': limit,
             'reserved': len(keep)}
     return _rgba_png(ATLAS_W, ATLAS_W, atlas), new_words, new_terrain, note
 
