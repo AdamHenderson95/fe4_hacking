@@ -1,4 +1,4 @@
-Fire Emblem: Genealogy of the Holy War - PC port (fe4port) 0.13
+Fire Emblem: Genealogy of the Holy War - PC port (fe4port) 0.15
 ===============================================================
 
 This is a native Windows build of FE4. It runs from YOUR OWN ROM: the

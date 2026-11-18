@@ -1,0 +1,96 @@
+FE4 PC Port - Start here
+========================
+
+This plays Fire Emblem: Genealogy of the Holy War (FE4) on Windows as a normal
+PC game. It doesn't include the game itself: you need your own FE4 ROM file.
+The English fan translation by Project Naga is the one to use.
+
+
+1. Set it up (once)
+-------------------
+  1. Unzip the whole FE4Port folder somewhere, such as Documents or the desktop.
+     Keep all the files together.
+  2. Copy your FE4 ROM (a .sfc or .smc file) into that folder, next to FE4.exe.
+  3. Double-click FE4.exe.
+       - If you didn't copy the ROM in, it asks you to pick it. It remembers
+         the ROM after that.
+       - If Windows says "Windows protected your PC", click "More info", then
+         "Run anyway". The program isn't signed, so Windows doesn't know it yet.
+
+The first start takes a moment longer while it gets the game ready. After
+that it starts right away.
+
+
+2. Play
+-------
+  Keyboard        SNES button        In FE4
+  --------        -----------        ------
+  Arrow keys      D-pad              move the cursor
+  X               A                  choose / confirm
+  Z               B                  cancel / go back
+  S               X                  a unit's status screen
+  A               Y
+  Q / W           L / R
+  Enter           Start
+  Right Shift     Select
+
+A gamepad (Xbox, PlayStation or Switch) works as soon as it's plugged in.
+
+
+3. The keys worth knowing
+-------------------------
+  F1 or Esc ...... open the menu (all the settings)
+  Tab (hold) ..... fast-forward (gamepad: hold the right trigger)
+  F3 ............. fast-forward on/off, handy for long enemy turns
+  F5 / F7 ........ quick save / quick load (save states)
+  F11 ............ fullscreen
+  F4 ............. widescreen on/off
+  F9 ............. rank tracker (turns, level-ups, deaths)
+  F10 ............ love tracker (every couple's love points)
+
+
+4. Saving
+---------
+  * The game's own saves work as usual. They go in the "saves" folder.
+  * Save states (F5 / F7) save anywhere, at any moment. There are 9 slots:
+    F6 and F8 switch between them.
+  * Game saves are in the standard .srm format, so they move to and from
+    SNES emulators like Snes9x.
+
+
+5. The menu (F1)
+----------------
+Everything is in the menu, and hovering over an option says what it does.
+  Game ............ save states, pause, reset
+  Graphics ........ window size, fullscreen, widescreen, smooth picture
+  Audio ........... volume, your own music
+  Enhancements .... faster text, battles and enemy turns, unit stats on the
+                    map, the rank and love trackers
+  Controls ........ change any key or gamepad button
+  Cheats .......... restore HP, gold, experience
+  Mods ............ patches (.ips/.bps) and the randomizer
+Settings save by themselves.
+
+
+6. Extras
+---------
+  * Mods: put .ips or .bps patches in the "mods" folder, then switch them on
+    in the menu (Mods). Each set of mods keeps its own saves.
+  * Randomizer: in the menu, Mods > Randomizer.
+  * Your own music: put music files in the "music" folder (see README.txt).
+  * Making your own hack: the "fe4kit" folder has Builder of the Holy War,
+    the editor. Open BuilderOfTheHolyWar.exe; its manual is README.html.
+
+
+7. If something goes wrong
+--------------------------
+  * "That file isn't a Fire Emblem: Genealogy of the Holy War ROM": pick a
+    different copy. The Project Naga English translation is recommended; ROMs
+    with or without a copier header both work.
+  * No sound: check the volume in the menu (Audio) and your Windows sound
+    output.
+  * The window is too small or too big: F1 > Graphics > Window size, or F11
+    for fullscreen.
+  * Want a fresh start with the settings: delete fe4port.ini and start again.
+
+Everything else, including how the port works, is in README.txt.
