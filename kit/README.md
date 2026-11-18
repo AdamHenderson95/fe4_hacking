@@ -193,10 +193,31 @@ default browser). The editor runs on your PC only: nothing is sent anywhere.
      attack anyone, attack only what's in reach, seize a castle, guard a
      castle, raid villages, go after one unit, or stay put, optionally
      only from a given turn (until then they wait or attack what's in reach).
-     It can also set a marching formation and facing, a player unit they
-     never attack, and an HP % at which they go home to heal.
+     It can also set a marching formation and facing, a **fight style**
+     (kit v56, below), a player unit they never attack, and an HP % at
+     which they go home to heal.
      Every command in the game now has a plain description; formation,
-     facing, spared unit and percentages have their own fields.
+     facing, fight style, spared unit and percentages have their own fields.
+   - **Fight styles** (the game's AI "modes") decide which attacks a unit
+     takes:
+     - **Careful**: only when the counter-attack wouldn't cost it much HP
+       (less careful as the turns go by).
+     - **Normal**: the game's default; any enemy it can reach. It turns
+       Aggressive once its group has targets.
+     - **Aggressive**: the best target, meaning the most damage, enemies low
+       on HP, and kills.
+     - **Never attacks**: moves as told but never starts a fight.
+     - **Hold the area**: its group stays where it is, and it attacks only
+       when quite safe.
+     - **Stand still**: its group stays, and it attacks only what it can hit
+       without moving.
+     - **Never attacks, presses on** and **Hunter**: the game's own styles
+       for a march to a point and for going after one unit; they fight like
+       Never attacks and Aggressive.
+
+     Seize and Guard steps carry their own style. Several commands set
+     one while they act: attack in reach sets Hold the area, hold sets
+     Stand still, going home sets Aggressive, and move-to sets Careful.
    - **Units on the map**: every deployed unit of the army, grouped by
      deploy list, with the program it follows. **Set all to…** changes a
      whole list at once.
@@ -774,6 +795,7 @@ or "Jungby". Three files work together:
 | Command | Bytes | Meaning |
 |---|---|---|
 | `FORMATION` | `0C shape facing` | (not yet seen working in a test) march as a group in a shape (0 none, 1 narrow wedge, 2 wide wings, 3 arrowhead, 4 triangle, 5 one row, 6 two rows, 7 single file, 8–9 columns two/three wide, 10 wide V, 11 zigzag, 12 ring, 13–14 clusters); facing 0 south, 1 west, 2 north, 3 east |
+| `SET_MODE` | `02 m` | fight style for the rest of the turn: 0 Careful, 1 Normal (default), 2 Aggressive, 3 Never attacks, 4 Hold the area, 5 Stand still, 6 Never attacks/presses on, 7 Hunter |
 | `PACE` | `03 n` | move only about n/256 of its movement each turn (`00` = full) |
 | `SPARE_SLOT` | `04 slot` | never attack the player unit in that army slot (e.g. `04 12` spares Raquesis) |
 | `RETREAT_IF_HURT` | `1E n 00 01` | go back to its castle to heal when HP ≤ n/256 (`4C` ≈ 30%) |

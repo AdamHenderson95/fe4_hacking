@@ -1050,9 +1050,27 @@ adds working Armory and Arena buttons to the Prologue.
   Handlers return carry set when the unit has its job for the turn, clear to
   go on to the next command. Settings (`$02 $03 $04 $05 $0C`) always go on.
   - `$00` sets action 0 and stops: the unit does nothing this turn.
-  - `$02 m` sets the mode `$2002`. Known: mode 1 turns into 2 once enemies are
-    in reach (`$86:AF43`, table `$86:AF57`); modes 4 and 5 keep the group's
-    centre where it is (`$86:B090`); 3, 6 and 7 skip a target check in `$86:B7E0`.
+  - `$02 m` sets the mode `$2002` (the editor's "fight style", kit v56). Every unit turn starts in mode 1
+    (`$87:CCB4`). Modes set by commands: `$06`/`$07` their argument, `$09` 0, `$0A` 4 (no target),
+    `$0B` 5, `$0F`/`$10`/`$12` 2, `$11` 1, `$13` 5, `$19` 7, `$1A`-`$1D` 0; `$18`, `$0D`, `$0E`, `$17`
+    use whatever is set.
+  - **What the mode does:** `$86:B526` copies it to `$7F:4448` (5 when the unit's status has bit 13);
+    for each candidate attack `$86:A174` runs `JSR ($A18F,X)` by mode:
+    - 0 `$A1A1`: in reach (`$7E:754A,X`), scored, and own HP / 2 + turn / 2 ≥ damage taken (and with
+      `$2000` bit 2, `$445A` ≥ `$445C`). Careful.
+    - 1 `$A1CD`: in reach only; the pick among candidates is random (`$86:A258`, `$80:A73A` vs `$4438`).
+      Turns into 2 once the group has targets (`$86:AF43`, table `$86:AF57`).
+    - 2, 7, 8 `$A1D1`: in reach and scored. Score (`$86:A2B1` → `$441C`) = damage dealt (`$86:A3AA`)
+      + (21 − foe HP) (+20 when it kills) − damage taken (`$86:A3EC`) − (21 − own HP) − terrain
+      (`$7E:654A,X`, ≤ 7). Mode 7 also skips `$86:B771` for targets with `$7E:438B` bit 4.
+    - 3, 6 `$A1DF`: never. **Verified:** chapter 7 copy with the default changed to 3 at `$87:CCB5`:
+      no battle in the enemy phase (default 1, 0 and 2: the same Mercenary/Javelin battles).
+    - 4 `$A1E1`: scored and own HP − 5 + turn / 2 ≥ damage taken, ⌈dealt / 2⌉ + turn / 2 ≥ taken, own
+      HP × 3 ≥ terrain. Also the group's centre stays (`$86:B090`). **Verified** (default 4): battles
+      started at once, without the march.
+    - 5 `$A221`: only from the tile it stands on (`$86:A23E`: distance 0), scored; centre stays.
+      **Verified** (default 5): no battle.
+  - Modes 3, 6 and 7 skip the after-move check `$86:B7E0`.
   - `$03 n` = **pace**: `$2008` = move (`$84:9D61`) × n / 256 + 1, or the full
     move when n = 0. `$86:B0B6` uses it to pick how far the group's centre
     advances (`$86:A6CD`, `$86:AD5E` → `$2010/$2012`).

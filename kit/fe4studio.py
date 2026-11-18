@@ -52,7 +52,7 @@ import fe4skillanim                # noqa: E402
 from fe4project import Project, load_settings, save_settings   # noqa: E402
 
 APP = 'Builder of the Holy War'
-VERSION = '55'
+VERSION = '56'
 STATIC = os.path.join(KIT, 'studio')
 
 # ---------------------------------------------------------------- state
@@ -3498,12 +3498,12 @@ AI = 'ai_orders.evt'
 AI_WORDS = {
     0x00: ('Stay where it is this turn', []),
     0x01: ('Go to step {jump}', []),
-    0x02: ('Set behaviour mode {b1}?', [('Mode', 'num', 1, 1)]),
+    0x02: ('Fight style from here on: {mode}', [('Style', 'mode', 1, 1)]),
     0x03: ('Group pace: {pace}', [('Pace', 'pace', 1, 1)]),
     0x04: ('Never attack {slot}', [('Spare', 'slot', 1, 1)]),
     0x05: ('Set an unknown switch (bit 9 of $7E:2000)?', []),
-    0x06: ('Seize {loc} (skipped once it is taken)', [('Castle', 'loc', 1, 1), ('Mode?', 'num', 2, 1)]),
-    0x07: ('Guard {loc} while its army holds it', [('Castle', 'loc', 1, 1), ('Mode?', 'num', 2, 1)]),
+    0x06: ('Seize {loc} (skipped once it is taken), fighting {mode2}', [('Castle', 'loc', 1, 1), ('Style', 'mode', 2, 1)]),
+    0x07: ('Guard {loc} while its army holds it, fighting {mode2}', [('Castle', 'loc', 1, 1), ('Style', 'mode', 2, 1)]),
     0x08: ('Raid {loc}', [('Village', 'loc', 1, 1)]),
     0x09: ('Move to ({b4}, {b5}) once', [('x', 'num', 4, 1), ('y', 'num', 5, 1)]),
     0x0A: ('Attack anyone in reach; otherwise stay', []),
@@ -3521,7 +3521,7 @@ AI_WORDS = {
     0x16: ('Clear event flag {flag}', []),
     0x17: ('Raid the nearest village', []),
     0x18: ('Attack anyone (marches on the nearest enemy)', []),
-    0x19: ('Attack anyone (mode 7)?', []),
+    0x19: ('Attack anyone, as a Hunter', []),
     0x1A: ('Close in on an enemy with free sides around it', []),
     0x1B: ('Close in on an enemy with free sides around it', []),
     0x1C: ('Close in on an enemy with free sides around it', []),
@@ -3607,7 +3607,9 @@ def _ai_steps(blk, com, locname):
             vals['pace'] = 'full move' if b[1] == 0 else 'about %d%% of its move' % round(b[1] * 100 / 256)
             vals['slot'] = slot_name(b[1])
             vals['formation'] = fe4armies.FORMATIONS[b[1]] if b[1] < len(fe4armies.FORMATIONS) else 'shape %d' % b[1]
+            vals['mode'] = fe4armies.mode_name(b[1])
         if len(b) > 2:
+            vals['mode2'] = fe4armies.mode_name(b[2])
             vals['facing'] = fe4armies.FACINGS[b[2] & 3]
         if op == 0x23 and len(b) > 3:
             vals['asm'] = '$%02X:%02X%02X' % (b[3], b[2], b[1])
@@ -3716,7 +3718,7 @@ def api_armies(b, q):
     return {'ch': ch, 'title': CHAPTER_TITLES[ch] if ch < len(CHAPTER_TITLES) else '', 'armies': armies,
             'locations': locs, 'castleNames': names,
             'actions': [[k, v[0]] for k, v in AI_ACTIONS.items()],
-            'formations': fe4armies.FORMATIONS, 'facings': fe4armies.FACINGS,
+            'formations': fe4armies.FORMATIONS, 'facings': fe4armies.FACINGS, 'modes': fe4armies.MODES,
             'slots': sorted([k, v] for k, v in slot_names().items())}
 
 
@@ -3781,6 +3783,13 @@ def api_airecipe(b, q):
             raise ValueError('Choose who to go after.')
         vals['u'] = '%02X %02X' % (u & 0xFF, u >> 8)
     body = [x.format(**vals) for x in body]
+    style = b.get('style')
+    if style not in (None, ''):
+        style = int(style)
+        if not 0 <= style < len(fe4armies.MODES):
+            raise ValueError('Unknown fight style.')
+        if body[0].startswith(('06 ', '07 ')):          # seize / guard set their own style while they act
+            body[0] = body[0][:6] + '%02X' % style
     turn = int(b.get('until_turn') or 0)
     if turn:
         if not 2 <= turn <= 99:
@@ -3800,6 +3809,8 @@ def api_airecipe(b, q):
         if not (0 <= shape < len(fe4armies.FORMATIONS) and 0 <= facing < 4):
             raise ValueError('Unknown formation.')
         setup.append('0C %02X %02X' % (shape, facing))
+    if style not in (None, ''):
+        setup.append('02 %02X' % style)
     if b.get('retreat') not in (None, ''):
         pc = int(b['retreat'])
         if not 1 <= pc <= 99:

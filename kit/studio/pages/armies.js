@@ -191,6 +191,11 @@ export async function armiesPage(root) {
       } else if (kind === 'unit') {
         el = h('input', { class: 'in', list: 'arpeople', value: `${personName(v)} (${v})`, 'aria-label': label });
         el.onchange = () => { const n = parseUnit(el.value); if (n === null) { el.classList.add('bad'); toast('Pick someone from the list.', true); return; } write(pos, size, n, el); };
+      } else if (kind === 'mode') {
+        el = h('select', { class: 'in', 'aria-label': label, title: A.modes[v]?.[1] || '' },
+          A.modes.map(([t, help], i) => h('option', { value: i, selected: i === v, title: help }, t)),
+          v < A.modes.length ? null : h('option', { value: v, selected: true }, `Style ${v}`));
+        el.onchange = () => write(pos, size, Number(el.value), el);
       } else if (kind === 'formation' || kind === 'facing' || kind === 'slot') {
         const opts = kind === 'formation' ? A.formations.map((t, i) => [i, `${i}: ${t}`])
           : kind === 'facing' ? A.facings.map((t, i) => [i, t]) : A.slots.map(([n, t]) => [n, `${t} (slot ${n})`]);
@@ -230,6 +235,10 @@ export async function armiesPage(root) {
     const spare = h('select', { class: 'in', 'aria-label': 'Never attack' }, h('option', { value: '' }, 'nobody spared'),
       A.slots.map(([n, t]) => h('option', { value: n }, t)));
     const retreat = h('input', { class: 'in num', placeholder: 'never', inputmode: 'numeric', 'aria-label': 'Go home to heal at HP %' });
+    const style = h('select', { class: 'in', 'aria-label': 'Fight style' }, h('option', { value: '' }, 'game default'),
+      A.modes.map(([t, help], i) => h('option', { value: i, title: help }, t)));
+    const styleHelp = h('p', { class: 'hint arstyle' });
+    style.onchange = () => { styleHelp.textContent = style.value === '' ? '' : A.modes[Number(style.value)][1]; };
     const facingL = h('label', { class: 'lbl' }, h('span', {}, 'Facing'), facing);
     const castleL = h('label', { class: 'lbl' }, h('span', {}, 'Castle'), castle);
     const unitL = h('label', { class: 'lbl' }, h('span', {}, 'Who'), unit);
@@ -249,6 +258,7 @@ export async function armiesPage(root) {
       if (turn.value.trim()) { body.until_turn = Number(turn.value); body.wait = wait.value; }
       if (form.value) { body.formation = Number(form.value); body.facing = Number(facing.value); }
       if (spare.value) body.spare = Number(spare.value);
+      if (style.value !== '') body.style = Number(style.value);
       if (retreat.value.trim()) {
         const n = Number(retreat.value);
         if (!Number.isInteger(n) || n < 1 || n > 99) { toast('Heal at 1 to 99% HP, or leave it empty.', true); return; }
@@ -261,8 +271,10 @@ export async function armiesPage(root) {
     box.append(h('div', { class: 'itgrid wide' }, h('label', { class: 'lbl' }, h('span', {}, 'What it does'), act), castleL, unitL,
       h('label', { class: 'lbl' }, h('span', {}, 'Starting on turn'), turn), waitL,
       h('label', { class: 'lbl' }, h('span', {}, 'Marching formation'), form), facingL,
+      h('label', { class: 'lbl' }, h('span', {}, 'Fight style'), style),
       h('label', { class: 'lbl' }, h('span', {}, 'Never attack'), spare),
       h('label', { class: 'lbl' }, h('span', {}, 'Go home to heal at HP %'), retreat)),
+      styleHelp,
       h('p', { class: 'hint' }, `Replaces all the steps above for every unit with program ${p.k}${others}. Undo puts them back.`), goBtn);
     return box;
   }

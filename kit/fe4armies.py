@@ -58,6 +58,31 @@ FORMATIONS = ['none (all aim for the same spot)', 'wedge, narrow', 'wide wings',
               'column, three wide', 'V, wide', 'zigzag column', 'ring', 'cluster', 'cluster, loose']
 FACINGS = ['south', 'west', 'north', 'east']
 STOPS = {0x00, 0x01, 0xFF}
+# fight styles ("modes", $7E:2002; kit v56).  Every unit turn starts in style 1 ($87:CCB4); $02 m sets one, and
+# so do several commands (seize/guard: their argument; move-to 0, attack-in-reach 4, attack-or-go-on 5, go
+# home 2, hold 5, $19 7, close in 0).  The style picks which attacks the unit takes ($86:A174 -> table
+# $86:A18F, the unit's style in $7F:4448; style 5 when its status has bit 13):
+#   0  only when the counter-attack would cost at most half its HP (+ turn/2 per turn of the chapter)
+#   1  any target it can reach, picked at random; becomes 2 once its group has targets ($86:AF43)
+#   2  the best target by score: damage dealt + how low the foe's HP is (+20 for a kill) - damage taken
+#      - how low its own HP is - terrain ($86:A2B1)
+#   3  never (verified: chapter 7 with every unit in style 3, the enemy phase had no battle)
+#   4  only very safe attacks (counter <= HP - 5 + turn/2 and <= half the damage it deals); its group's centre
+#      stays where it is ($86:B090), so it fights where it stands (verified: battles began before any march)
+#   5  only targets it can hit without moving; group centre stays (verified: no battle, enemies stayed)
+#   6  never, like 3 (also skips the after-move check $86:B7E0, as 3 and 7 do)
+#   7  like 2; with a target in $7E:438B bit 4 it skips $86:B771 (used to hunt one unit: $19, and before
+#      Attack unit / Follow in the game's programs)
+MODES = [
+    ('Careful', 'attacks only when the counter-attack would not cost it much HP (less careful as turns go by)'),
+    ('Normal', 'attacks any enemy it can reach (the game\'s default; turns Aggressive once its group has targets)'),
+    ('Aggressive', 'attacks the best target: most damage, enemies low on HP, kills'),
+    ('Never attacks', 'moves as told but never starts a fight'),
+    ('Hold the area', 'its group stays where it is; attacks only when it is quite safe'),
+    ('Stand still', 'its group stays; attacks only what it can hit without moving'),
+    ('Never attacks, presses on', 'like Never attacks (the game uses it for a march to a point)'),
+    ('Hunter', 'like Aggressive (the game uses it for units going after one target)'),
+]
 
 
 def _w(rom, fo):
@@ -134,6 +159,10 @@ def ai_walk(rom, start):
     return seen
 
 
+def mode_name(m):
+    return MODES[m][0] if m < len(MODES) else 'style %d' % m
+
+
 def ai_comment(rom, b, com, locnames):
     op = b[0]
     if op == 0xFF:
@@ -143,6 +172,10 @@ def ai_comment(rom, b, com, locnames):
     c = ''
     if op in (0x06, 0x07, 0x08):
         c = 'location %d%s' % (b[1], locnames.get(b[1], ''))
+        if op != 0x08 and len(b) > 2:
+            c += ', style %s' % mode_name(b[2])
+    elif op == 0x02:
+        c = mode_name(b[1])
     elif op == 0x09:
         c = 'to (%d,%d) unless flag %d.%d, then set it' % (b[4], b[5], w(1), b[3])
     elif op in (0x0D, 0x0E):

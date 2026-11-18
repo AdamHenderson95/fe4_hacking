@@ -204,55 +204,78 @@ default browser). The editor runs on your PC only: nothing is sent anywhere.
      attack anyone, attack only what's in reach, seize a castle, guard a
      castle, raid villages, go after one unit, or stay put, optionally
      only from a given turn (until then they wait or attack what's in reach).
-     It can also set a marching formation and facing, a player unit they
-     never attack, and an HP % at which they go home to heal.
+     It can also set a marching formation and facing, a <strong>fight style</strong>
+     (kit v56, below), a player unit they never attack, and an HP % at
+     which they go home to heal.
      Every command in the game now has a plain description; formation,
-     facing, spared unit and percentages have their own fields.</li>
-<li><strong>Units on the map</strong>: every deployed unit of the army, grouped by
-     deploy list, with the program it follows. <strong>Set all to…</strong> changes a
-     whole list at once.</li>
-<li><strong>Portraits</strong>: all 247 faces with who uses each one (units, generic
+     facing, fight style, spared unit and percentages have their own fields.</li>
+<li>
+<p><strong>Fight styles</strong> (the game's AI "modes") decide which attacks a unit
+     takes:</p>
+<ul>
+<li><strong>Careful</strong>: only when the counter-attack wouldn't cost it much HP
+   (less careful as the turns go by).</li>
+<li><strong>Normal</strong>: the game's default; any enemy it can reach. It turns
+   Aggressive once its group has targets.</li>
+<li><strong>Aggressive</strong>: the best target, meaning the most damage, enemies low
+   on HP, and kills.</li>
+<li><strong>Never attacks</strong>: moves as told but never starts a fight.</li>
+<li><strong>Hold the area</strong>: its group stays where it is, and it attacks only
+   when quite safe.</li>
+<li><strong>Stand still</strong>: its group stays, and it attacks only what it can hit
+   without moving.</li>
+<li><strong>Never attacks, presses on</strong> and <strong>Hunter</strong>: the game's own styles
+   for a march to a point and for going after one unit; they fight like
+   Never attacks and Aggressive.</li>
+</ul>
+<p>Seize and Guard steps carry their own style. Several commands set
+ one while they act: attack in reach sets Hold the area, hold sets
+ Stand still, going home sets Aggressive, and move-to sets Careful.
+   - <strong>Units on the map</strong>: every deployed unit of the army, grouped by
+ deploy list, with the program it follows. <strong>Set all to…</strong> changes a
+ whole list at once.
+10. <strong>Portraits</strong>: all 247 faces with who uses each one (units, generic
    classes, people who only speak). Pick one to see it large, with a
-   talking preview.</li>
-<li><strong>Replace with a picture…</strong> takes any image. It is fitted to 48 × 64
-     (fill and crop, or fit inside) and reduced to the 15 colours a
-     portrait can have. The colour in the corners becomes transparent
-     unless you keep the background.</li>
-<li><strong>Download PNG</strong> gives the 80 × 64 sheet: the face, plus the two
-     talking-mouth frames at the right (each is the face's 32 × 16 block at
-     the left, 32 pixels down, with the mouth open). Edit it and replace
-     with it to draw your own talking frames.</li>
-<li><strong>Use the original</strong> goes back to the game's picture. On a character's
-     sheet, <strong>Change picture</strong> opens that character's portrait.</li>
-<li><strong>Map sprites</strong>: the little unit each class shows on the map.</li>
-<li>The list shows every class's sprite, animated, in the army colour you
-     pick (player, enemy, ally, other, has moved).</li>
-<li>Some classes have extra entries the game checks first: one for women,
-     or one for a single character (Knight Lord: Sigurd and Seliph each have
-     their own). <strong>Use another sprite…</strong> picks from all 63 sprites on foot
-     and 31 mounted or flying ones.</li>
-<li><strong>Add a sprite for</strong> adds a row for one character (say, Noish gets his
-     own look as a Cavalier) or for all women or all men of the class;
-     <strong>Remove</strong> takes a row out. Rows are checked from the top, so new ones
-     go above "Everyone else".</li>
-<li><strong>Edit drawing</strong> shows a sprite's three frames. <strong>Replace drawing…</strong>
-     takes a PNG of the three frames side by side (48 × 16 on foot, 48 × 24
-     mounted; 2× to 4× bigger also works); colours become the nearest of the
-     map palette, so every army recolours it. <strong>Download PNG</strong> gives the
-     current drawing to edit. Classes that share a sprite all change.</li>
-<li><strong>Edit walking</strong> shows what the unit looks like while it moves (and
-     while you have it picked up): four steps for each direction, with a
-     walker per direction playing them. <strong>Replace walking pictures…</strong> takes
-     one PNG with the steps across and left, right, up and down from the top
-     (96 × 96 on foot, four 24 × 24 frames per row; 128 × 128 mounted or
-     flying, 32 × 32 frames; 2× to 4× bigger also works), in the same
-     colours as the drawing. <strong>Download PNG</strong> gives the current pictures to
-     start from; <strong>Use the original</strong> goes back.</li>
-<li>Changes are checked as you type (a value out of range turns red and
+   talking preview.
+   - <strong>Replace with a picture…</strong> takes any image. It is fitted to 48 × 64
+ (fill and crop, or fit inside) and reduced to the 15 colours a
+ portrait can have. The colour in the corners becomes transparent
+ unless you keep the background.
+   - <strong>Download PNG</strong> gives the 80 × 64 sheet: the face, plus the two
+ talking-mouth frames at the right (each is the face's 32 × 16 block at
+ the left, 32 pixels down, with the mouth open). Edit it and replace
+ with it to draw your own talking frames.
+   - <strong>Use the original</strong> goes back to the game's picture. On a character's
+ sheet, <strong>Change picture</strong> opens that character's portrait.
+11. <strong>Map sprites</strong>: the little unit each class shows on the map.
+   - The list shows every class's sprite, animated, in the army colour you
+ pick (player, enemy, ally, other, has moved).
+   - Some classes have extra entries the game checks first: one for women,
+ or one for a single character (Knight Lord: Sigurd and Seliph each have
+ their own). <strong>Use another sprite…</strong> picks from all 63 sprites on foot
+ and 31 mounted or flying ones.
+   - <strong>Add a sprite for</strong> adds a row for one character (say, Noish gets his
+ own look as a Cavalier) or for all women or all men of the class;
+ <strong>Remove</strong> takes a row out. Rows are checked from the top, so new ones
+ go above "Everyone else".
+   - <strong>Edit drawing</strong> shows a sprite's three frames. <strong>Replace drawing…</strong>
+ takes a PNG of the three frames side by side (48 × 16 on foot, 48 × 24
+ mounted; 2× to 4× bigger also works); colours become the nearest of the
+ map palette, so every army recolours it. <strong>Download PNG</strong> gives the
+ current drawing to edit. Classes that share a sprite all change.
+   - <strong>Edit walking</strong> shows what the unit looks like while it moves (and
+ while you have it picked up): four steps for each direction, with a
+ walker per direction playing them. <strong>Replace walking pictures…</strong> takes
+ one PNG with the steps across and left, right, up and down from the top
+ (96 × 96 on foot, four 24 × 24 frames per row; 128 × 128 mounted or
+ flying, 32 × 32 frames; 2× to 4× bigger also works), in the same
+ colours as the drawing. <strong>Download PNG</strong> gives the current pictures to
+ start from; <strong>Use the original</strong> goes back.
+12. Changes are checked as you type (a value out of range turns red and
    says why). <strong>Undo / Redo</strong> (Ctrl+Z / Ctrl+Y) cover every change (a whole
    paint stroke or fill is one step); <strong>Save</strong> (Ctrl+S) writes the project
-   files.</li>
-<li><strong>Build ROM</strong> writes the hacked ROM plus a shareable <code>.ips</code> patch next to
+   files.
+13. <strong>Build ROM</strong> writes the hacked ROM plus a shareable <code>.ips</code> patch next to
    the project folder. <strong>Test play</strong> (F6) builds it and opens it straight
    away in the FE4 PC port (FE4Port.zip), without your mods and with its own
    saves. The editor finds FE4.exe when the kit sits in the port's <code>fe4kit</code>
@@ -264,8 +287,8 @@ default browser). The editor runs on your PC only: nothing is sent anywhere.
    CRC32) and how to apply it (Flips, Lunar IPS, or soft-patching in an
    emulator). It checks the patch by applying it to your ROM before it
    finishes. The patch holds only your changes, never the game. The dialog
-   remembers what you typed for next time.</li>
-<li><strong>Battle animations</strong> lists every class with a row for each weapon kind
+   remembers what you typed for next time.
+14. <strong>Battle animations</strong> lists every class with a row for each weapon kind
    (and gender, and the few character-only rows such as Julia's). Pick one
    to watch it: a player runs any of the animation's motions (the game's own
    scripts: frames, timings and loops) at ¼× to 2× speed, frame by frame or
@@ -368,7 +391,8 @@ default browser). The editor runs on your PC only: nothing is sent anywhere.
    <strong>Use the game's</strong> goes back. <strong>Watch in battle</strong> plays the sparkle in
    the PC port at the start of the same Prologue battle as for spells, so
    you can see it whatever the skill really needs to activate. Saved in
-   <code>skill_anims.csv</code>.</li>
+   <code>skill_anims.csv</code>.</p>
+</li>
 </ol>
 <p><strong>Map battles</strong> (the fifth switch) is what fights on the map when battle
    animations are off: two little figures. Each class shows a figure (most
@@ -1097,6 +1121,11 @@ or "Jungby". Three files work together:</p>
 <td><code>FORMATION</code></td>
 <td><code>0C shape facing</code></td>
 <td>(not yet seen working in a test) march as a group in a shape (0 none, 1 narrow wedge, 2 wide wings, 3 arrowhead, 4 triangle, 5 one row, 6 two rows, 7 single file, 8–9 columns two/three wide, 10 wide V, 11 zigzag, 12 ring, 13–14 clusters); facing 0 south, 1 west, 2 north, 3 east</td>
+</tr>
+<tr>
+<td><code>SET_MODE</code></td>
+<td><code>02 m</code></td>
+<td>fight style for the rest of the turn: 0 Careful, 1 Normal (default), 2 Aggressive, 3 Never attacks, 4 Hold the area, 5 Stand still, 6 Never attacks/presses on, 7 Hunter</td>
 </tr>
 <tr>
 <td><code>PACE</code></td>
