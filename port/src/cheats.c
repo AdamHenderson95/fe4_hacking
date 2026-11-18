@@ -32,7 +32,7 @@ static int handle_ok(const uint8_t* r, uint32_t h) {
   return 1;
 }
 
-static void decode_name(const uint8_t* rom, int romLen, uint32_t nid, char* out, int n) {
+void cheat_name(const uint8_t* rom, int romLen, uint32_t nid, char* out, int n) {
   out[0] = 0;
   uint32_t a = 0x500000 + 16 * nid + 8;
   if(nid > 575 || a + 8 > (uint32_t)romLen) return;
@@ -62,7 +62,7 @@ static int unit_info(const uint8_t* r, const uint8_t* rom, int romLen, uint32_t 
   // name through the record in ROM (types 0 and 2; children use their own record layout)
   uint32_t rp = (uint32_t)((r[h + 9] & 0x3F) << 16 | w16(r, h + 7));
   if(r[h + 9] >= 0x80 && r[h + 9] < 0xC0 && rp + 4 < (uint32_t)romLen && r[h] != 1)
-    decode_name(rom, romLen, rom[rp + 2] | rom[rp + 3] << 8, u->name, sizeof u->name);
+    cheat_name(rom, romLen, rom[rp + 2] | rom[rp + 3] << 8, u->name, sizeof u->name);
   if(!u->name[0]) snprintf(u->name, sizeof u->name, "Unit");
   return u->maxHp > 0 && u->maxHp < 100 && u->level > 0 && u->level <= 40;
 }

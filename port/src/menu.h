@@ -4,6 +4,7 @@
 #include <SDL.h>
 #include "cheats.h"
 #include "rank.h"
+#include "love.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -42,6 +43,8 @@ typedef struct MenuState {
   const char* musicDir;
   // rank tracker overlay
   int* rankTracker; int* rankCorner; RankInfo rank;
+  // love tracker overlay and pop-ups
+  int* loveTracker; int* loveCorner; int* loveLayout; int* lovePopup; LoveInfo love;
 } MenuState;
 
 enum {
@@ -68,6 +71,7 @@ void menu_toggle(void);
 int  menu_popup_open(void);                          // a menu or window of the menu is open (Esc closes that first)
 int  menu_capturing_key(void);                       // waiting for a key to bind
 void menu_notify(const char* text);                  // short message in the corner
+void menu_love_gains(const LoveGain* g, int n);      // pop-up: these couples' love went up
 #ifdef __cplusplus
 }
 #endif

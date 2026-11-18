@@ -16,6 +16,7 @@ enum { CHEAT_HEAL = 1, CHEAT_GOLD = 2, CHEAT_EXP = 3 };
 
 int cheat_army(const uint8_t* ram, const uint8_t* rom, int romLen, CheatUnit* out, int max); // the player's units
 int cheat_selected(const uint8_t* ram, const uint8_t* rom, int romLen, CheatUnit* u);        // the unit the cursor was last on (player's)
+void cheat_name(const uint8_t* rom, int romLen, uint32_t nameId, char* out, int n);           // a unit name from the ROM's name table
 int cheat_apply(uint8_t* ram, const uint8_t* rom, int romLen, int what, int allUnits);       // returns how many units changed
 
 #ifdef __cplusplus

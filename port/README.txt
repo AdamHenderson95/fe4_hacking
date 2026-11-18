@@ -53,8 +53,8 @@ and is saved in fe4port.ini.
   Audio ....... volume, mute, custom music (on/off, its volume, the song
                 playing now, open the music folder, look for new files)
   Enhancements  unit stats in the map box, fast-forward on/off and speed,
-                automatic speed-ups, the rank tracker, pause while the menu
-                is open
+                automatic speed-ups, the rank and love trackers, pause while
+                the menu is open
   Controls .... click a box, then press the key or gamepad button you want
   Cheats ...... restore HP, gold, EXP for the unit under the cursor or the
                 whole army
@@ -247,6 +247,26 @@ chapter restarts exactly as the game's ranking does. Pick the corner in the
 menu.
 
 
+Love tracker
+------------
+F10 (or Menu > Enhancements > Love tracker) shows the love points of the
+women in your army. A couple marries at 500.
+
+  Each woman's top 3 ..... her three highest, with the men's names (the
+                           default)
+  Every couple (table) ... women down, men across; a dash means the two can
+                           never fall in love (brother and sister, say), and
+                           * marks a married couple
+
+Only units in your army are listed. "Pop-up when love goes up" (in the same
+menu, and it works with the tracker off too) shows a box at the top of the
+screen each time love points rise: who, by how much, and the couple's new
+total out of 500 ("married!" when it reaches 500). Rises that come together,
+such as at the start of your turn, share one box. Loading a state or
+resetting doesn't count as a rise. Pick the box's corner in the menu; in the
+same corner as the rank tracker it goes under it.
+
+
 Other keys
   Tab (hold) ....... fast-forward (gamepad: hold the right trigger)
   F3 ............... fast-forward on/off (handy for long enemy phases)
@@ -255,6 +275,7 @@ Other keys
   F2 ............... switch between square pixels (8:7) and 4:3
   F4 ............... widescreen on/off
   F9 ............... rank tracker on/off
+  F10 .............. love tracker on/off
   P / Pause ........ pause
   F5 / F7 .......... save state / load state
   F6 / F8 .......... previous / next state slot (1-9)
@@ -282,6 +303,9 @@ Settings (fe4port.ini, created on first launch)
   show_fps=0       FPS counter in the corner
   rank_tracker=0   rank tracker box (F9); rank_corner=0-3 (top left, top
                    right, bottom left, bottom right)
+  love_tracker=0   love tracker box (F10); love_corner=0-3 as above;
+                   love_layout=0 each woman's top 3, 1 every couple
+  love_popup=0     pop-up when a couple's love points go up
   fast_forward=4   fast-forward speed, 2-8
   faster_text=1    automatic speed-ups, 1 = off, 2-8 = speed
   faster_battles=1
@@ -368,6 +392,14 @@ Port 0.14 adds the rank tracker (it only reads the game's RAM) and was run
 with a ROM built with a new title screen from the kit (v53): the title, the
 opening's logo fly-in, the menu and the chronology showed as in the
 emulator.
+
+Port 0.15 adds the love tracker (it also only reads the game's RAM). Checked
+under Wine: from a chapter 7 save state, the start of turn 2 raised Nanna
+and Leif from 107 to 114, and the pop-up said "Nanna & Leif +7 114/500"
+while the box went from 107 to 114; from a chapter 6 state the table showed
+Larcei and Lana against Seliph and Ulster (Larcei and Ulster as never), as
+in the game's RAM. The port also ran a ROM built with a whole new map
+picture from the kit (v55) with the new tiles, map and terrain.
 
 Tested on: Linux, and the Windows build under Wine. It has not yet been run
 on a real Windows PC.

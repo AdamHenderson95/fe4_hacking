@@ -1334,6 +1334,14 @@ defender `$4F15`, `$60` bytes each.
   - A start byte of `$FF` means never and `$FE` means 499; otherwise it is ×10.
     Growth bit 7 = negative.
   - Love is added at `$87:AE05`, and 500 marries the pair (`$84:8C31`).
+  - **In RAM (port 0.15's love tracker):** a woman's unit handle +`$10` is a
+    long pointer to her love block (0 for men): one word per man, word k =
+    the man in army slot k + 1 (slots 1–15; `$1FF` in the low 9 bits =
+    never). The slot is the record's +4 (`$84:A358`: handle +7 → record,
+    +4, bit 7 = none; women are 16 and up). `$87:AE05` takes the man's slot
+    in A and the woman in `$056F`; at 500 `$84:8C31` writes each one's slot
+    into the other's unit object +3. Love rises at the start of the player's
+    turn (verified: Nanna and Leif 107 → 114 at chapter 7, turn 2).
 - **Unit-list names:** `$50:A000` + 16 × name ID holds up to 6 big-endian
   tile IDs (top row; bottom = +16). They point into a pre-drawn sheet in VRAM:
   generation 1 `$45:D000` (6 rows), generation 2 `$45:E000` (10 rows), loaded

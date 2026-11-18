@@ -269,6 +269,8 @@ static int rando_window(MenuState* st) {
   return act;
 }
 
+static float rankBoxH;    // height of the rank tracker box this frame (the love box goes under it in the same corner)
+
 // Rank tracker overlay: the numbers FE4's ranking counts and the grade each would get now
 static void rank_overlay(MenuState* st) {
   const RankInfo& r = st->rank;
@@ -282,7 +284,7 @@ static void rank_overlay(MenuState* st) {
   ImGui::SetNextWindowBgAlpha(0.62f);
   ImGui::Begin("rank", NULL, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoInputs |
                ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoSavedSettings);
-  if(!r.inGame) { ImGui::TextDisabled("Rank tracker: starts with the first chapter"); ImGui::End(); return; }
+  if(!r.inGame) { ImGui::TextDisabled("Rank tracker: starts with the first chapter"); rankBoxH = ImGui::GetWindowHeight(); ImGui::End(); return; }
   char ch[32];
   if(r.chapter == 0) snprintf(ch, sizeof ch, "Prologue");
   else if(r.chapter >= 11) snprintf(ch, sizeof ch, "Final Chapter");
@@ -303,7 +305,143 @@ static void rank_overlay(MenuState* st) {
   }
   if(r.castlesLost) ImGui::TextColored(gradeCol[3], "%d castle%s lost (Tactics -%d)", r.castlesLost, r.castlesLost > 1 ? "s" : "", r.castlesLost);
   if(r.gen1Survivors) ImGui::TextDisabled("Generation 1 survivors: %d", r.gen1Survivors);
+  rankBoxH = ImGui::GetWindowHeight();
   ImGui::End();
+}
+
+// ------------------------------------------------------------ love tracker (port 0.15)
+static ImVec4 love_col(int v, int married) {
+  if(married) return ImVec4(1.0f, 0.55f, 0.75f, 1);
+  if(v >= 400) return ImVec4(1.0f, 0.62f, 0.72f, 1);
+  if(v >= 250) return ImVec4(1.0f, 0.82f, 0.86f, 1);
+  if(v >= 100) return ImVec4(0.92f, 0.92f, 0.92f, 1);
+  return ImVec4(0.62f, 0.62f, 0.66f, 1);
+}
+
+static ImVec2 corner_pos(int c, float stackAbove) {
+  ImVec2 ds = ImGui::GetIO().DisplaySize;
+  float m = baseFont * 0.6f;
+  ImVec2 pos(c & 1 ? ds.x - m : m, c & 2 ? ds.y - m : m);
+  if(c & 2) pos.y -= stackAbove; else pos.y += stackAbove;
+  return pos;
+}
+
+static void love_overlay(MenuState* st) {
+  const LoveInfo& L = st->love;
+  int c = *st->loveCorner & 3;
+  float off = 0;
+  if(c == 1 && (*st->showFps || st->speed > 1)) off += baseFont * 2.0f;
+  if(c == 2) off += baseFont * 2.6f;
+  if(st->rankTracker && *st->rankTracker && (*st->rankCorner & 3) == c) off += rankBoxH + baseFont * 0.4f;
+  ImGui::SetNextWindowPos(corner_pos(c, off), ImGuiCond_Always, ImVec2(c & 1 ? 1.0f : 0.0f, c & 2 ? 1.0f : 0.0f));
+  ImGui::SetNextWindowBgAlpha(0.62f);
+  ImGui::Begin("love", NULL, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoInputs |
+               ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoSavedSettings);
+  if(!L.ok) { ImGui::TextDisabled("Love tracker: no women in your army yet"); ImGui::End(); return; }
+  ImGui::TextUnformatted("Love");
+  ImGui::SameLine(); ImGui::TextDisabled("(500 = married)");
+  if(*st->loveLayout) {
+    // every couple: women down, men across
+    int cols = 0; int slots[LOVE_SLOTS];
+    for(int i = 0; i < L.nMen; i++) {          // men who can love at least one of the women
+      int any = 0;
+      for(int j = 0; j < L.nWomen; j++) if(L.women[j].love[L.men[i].slot] >= 0) any = 1;
+      if(any) slots[cols++] = L.men[i].slot;
+    }
+    if(cols && ImGui::BeginTable("lv", cols + 1, ImGuiTableFlags_SizingFixedFit | ImGuiTableFlags_RowBg)) {
+      ImGui::TableNextRow();
+      ImGui::TableNextColumn();
+      for(int k = 0; k < cols; k++) { ImGui::TableNextColumn(); char sh[8]; snprintf(sh, sizeof sh, "%.6s", love_man_name(&L, slots[k])); ImGui::TextDisabled("%s", sh); }
+      for(int j = 0; j < L.nWomen; j++) {
+        const LoveWoman& w = L.women[j];
+        ImGui::TableNextRow();
+        ImGui::TableNextColumn(); ImGui::TextUnformatted(w.name);
+        for(int k = 0; k < cols; k++) {
+          ImGui::TableNextColumn();
+          int v = w.love[slots[k]], wed = w.partner == slots[k];
+          if(v < 0) ImGui::TextDisabled("  -");
+          else ImGui::TextColored(love_col(v, wed), wed ? "%3d*" : "%3d", v);
+        }
+      }
+      ImGui::EndTable();
+    }
+    int anyWed = 0; for(int j = 0; j < L.nWomen; j++) if(L.women[j].partner >= 0) anyWed = 1;
+    if(anyWed) ImGui::TextDisabled("* married");
+  } else if(ImGui::BeginTable("lv", 4, ImGuiTableFlags_SizingFixedFit)) {
+    // each woman's three highest
+    for(int j = 0; j < L.nWomen; j++) {
+      const LoveWoman& w = L.women[j];
+      ImGui::TableNextRow();
+      ImGui::TableNextColumn(); ImGui::TextUnformatted(w.name);
+      if(w.partner >= 0) {
+        const char* p = love_man_name(&L, w.partner);
+        ImGui::TableNextColumn(); ImGui::TextColored(love_col(LOVE_MAX, 1), "married%s%s", p ? " to " : "", p ? p : "");
+        ImGui::TableNextColumn(); ImGui::TableNextColumn();
+        continue;
+      }
+      int used[LOVE_SLOTS] = { 0 };
+      for(int r = 0; r < 3; r++) {
+        int best = -1;
+        for(int i = 0; i < L.nMen; i++) {
+          int s = L.men[i].slot;
+          if(!used[s] && w.love[s] >= 0 && (best < 0 || w.love[s] > w.love[best])) best = s;
+        }
+        ImGui::TableNextColumn();
+        if(best < 0) continue;
+        used[best] = 1;
+        ImGui::TextColored(love_col(w.love[best], 0), "%s %d", love_man_name(&L, best), w.love[best]);
+      }
+    }
+    ImGui::EndTable();
+  }
+  ImGui::End();
+}
+
+// pop-up: couples whose love went up lately (merged while it shows)
+struct LovePop { LoveGain g; Uint32 at; };
+static LovePop lovePops[24]; static int lovePopN; static Uint32 lovePopUntil;
+
+extern "C" void menu_love_gains(const LoveGain* g, int n) {
+  Uint32 now = SDL_GetTicks();
+  if(now > lovePopUntil) lovePopN = 0;
+  for(int i = 0; i < n; i++) {
+    int k = -1;
+    for(int j = 0; j < lovePopN; j++) if(!strcmp(lovePops[j].g.man, g[i].man) && !strcmp(lovePops[j].g.woman, g[i].woman)) k = j;
+    if(k < 0) {
+      if(lovePopN == 24) continue;
+      k = lovePopN++; lovePops[k].g = g[i]; lovePops[k].g.gain = 0;
+    }
+    lovePops[k].g.gain += g[i].gain; lovePops[k].g.total = g[i].total; lovePops[k].at = now;
+  }
+  // biggest rises first
+  for(int a = 1; a < lovePopN; a++) for(int b = a; b > 0 && lovePops[b].g.gain > lovePops[b - 1].g.gain; b--) { LovePop t = lovePops[b]; lovePops[b] = lovePops[b - 1]; lovePops[b - 1] = t; }
+  lovePopUntil = now + 4500;
+}
+
+static void love_popup(void) {
+  Uint32 now = SDL_GetTicks();
+  if(!lovePopN || now > lovePopUntil) return;
+  ImVec2 ds = ImGui::GetIO().DisplaySize;
+  float a = (lovePopUntil - now) < 600 ? (lovePopUntil - now) / 600.0f : 1.0f;
+  ImGui::SetNextWindowPos(ImVec2(ds.x * 0.5f, baseFont * 1.2f), ImGuiCond_Always, ImVec2(0.5f, 0));
+  ImGui::SetNextWindowBgAlpha(0.75f * a);
+  ImGui::PushStyleVar(ImGuiStyleVar_Alpha, a);
+  ImGui::Begin("lovepop", NULL, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoInputs |
+               ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoSavedSettings);
+  int shown = lovePopN > 8 ? 7 : lovePopN;
+  if(ImGui::BeginTable("lp", 3, ImGuiTableFlags_SizingFixedFit)) {
+    for(int i = 0; i < shown; i++) {
+      const LoveGain& g = lovePops[i].g;
+      ImGui::TableNextRow();
+      ImGui::TableNextColumn(); ImGui::Text("%s & %s", g.woman, g.man);
+      ImGui::TableNextColumn(); ImGui::TextColored(ImVec4(0.55f, 0.95f, 0.55f, 1), "+%d", g.gain);
+      ImGui::TableNextColumn(); ImGui::TextColored(love_col(g.total, g.total >= LOVE_MAX), g.total >= LOVE_MAX ? "%d/500  married!" : "%d/500", g.total);
+    }
+    ImGui::EndTable();
+  }
+  if(lovePopN > shown) ImGui::TextDisabled("and %d more couple%s", lovePopN - shown, lovePopN - shown > 1 ? "s" : "");
+  ImGui::End();
+  ImGui::PopStyleVar();
 }
 
 extern "C" int menu_frame(MenuState* st) {
@@ -428,6 +566,28 @@ extern "C" int menu_frame(MenuState* st) {
         }
       }
       if(!*st->rankTracker) ImGui::EndDisabled();
+      if(check("Love tracker", st->loveTracker, "F10")) { act |= MA_SAVE_CONFIG; menu_notify(*st->loveTracker ? "Love tracker on" : "Love tracker off"); }
+      help_marker("A box over the game with the love points of the women in your army: each one's three highest, "
+                  "or every couple. A couple marries at 500. A dash means the two can never fall in love.");
+      if(!*st->loveTracker) ImGui::BeginDisabled();
+      {
+        static const char* corners[4] = { "Top left", "Top right", "Bottom left", "Bottom right" };
+        static const char* layouts[2] = { "Each woman's top 3", "Every couple (table)" };
+        ImGui::SetNextItemWidth(baseFont * 10);
+        if(ImGui::BeginCombo("Love tracker corner", corners[*st->loveCorner & 3])) {
+          for(int i = 0; i < 4; i++) if(ImGui::Selectable(corners[i], (*st->loveCorner & 3) == i)) { *st->loveCorner = i; act |= MA_SAVE_CONFIG; }
+          ImGui::EndCombo();
+        }
+        ImGui::SetNextItemWidth(baseFont * 10);
+        if(ImGui::BeginCombo("Love tracker shows", layouts[*st->loveLayout ? 1 : 0])) {
+          for(int i = 0; i < 2; i++) if(ImGui::Selectable(layouts[i], (*st->loveLayout ? 1 : 0) == i)) { *st->loveLayout = i; act |= MA_SAVE_CONFIG; }
+          ImGui::EndCombo();
+        }
+      }
+      if(!*st->loveTracker) ImGui::EndDisabled();
+      if(check("Pop-up when love goes up", st->lovePopup)) { act |= MA_SAVE_CONFIG; menu_notify(*st->lovePopup ? "Love pop-ups on" : "Love pop-ups off"); }
+      help_marker("Whenever a couple's love points go up (at the start of your turn, from standing together, from talking), "
+                  "a pop-up at the top of the screen says who, by how much and their new total. Works with the love tracker on or off.");
       ImGui::SeparatorText("Menu");
       if(check("Pause the game while this menu is open", st->pauseInMenu)) act |= MA_SAVE_CONFIG;
       ImGui::EndMenu();
@@ -524,7 +684,7 @@ extern "C" int menu_frame(MenuState* st) {
         static const char* rows[][2] = {
           { "F1 / Esc / right stick click", "open or close this menu" },
           { "F5 / F7", "save / load state" }, { "F6 / F8", "previous / next state slot" },
-          { "Tab (hold), right trigger", "fast-forward" }, { "F3", "fast-forward on/off" }, { "F9", "rank tracker on/off" },
+          { "Tab (hold), right trigger", "fast-forward" }, { "F3", "fast-forward on/off" }, { "F9", "rank tracker on/off" }, { "F10", "love tracker on/off" },
           { "F4", "widescreen on/off" }, { "F2", "square pixels / TV shape" },
           { "F11, Alt+Enter", "fullscreen" }, { "P", "pause" },
           { "Gamepad buttons", "by default by position, as on a SNES pad:" }, { "", "right = A, bottom = B, top = X, left = Y" }, { "", "(change them under Controls)" },
@@ -559,6 +719,8 @@ extern "C" int menu_frame(MenuState* st) {
   }
 
   if(st->rankTracker && *st->rankTracker) rank_overlay(st);
+  if(st->loveTracker && *st->loveTracker) love_overlay(st);
+  if(st->lovePopup && *st->lovePopup) love_popup();
   // FPS overlay (top right) when the menu is closed
   if(*st->showFps && !visible) {
     ImGui::SetNextWindowPos(ImVec2(ImGui::GetIO().DisplaySize.x - baseFont * 0.6f, baseFont * 0.6f), ImGuiCond_Always, ImVec2(1, 0));

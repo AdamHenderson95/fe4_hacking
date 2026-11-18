@@ -40,7 +40,7 @@
 #include "music.h"
 #include "fe4music_patch.h"
 
-#define PORT_VERSION "0.14"
+#define PORT_VERSION "0.15"
 #define GAME_TITLE "Fire Emblem: Genealogy of the Holy War"
 #define NAGA_SHA1 "2b6eb74646a527ba293b0e004db3e0134a28dc6c"
 
@@ -52,6 +52,7 @@ typedef struct {
   char rom[1024];
   int scale, fullscreen, aspect43, recompiled, volume, learn, vsync, linear, turbo, widescreen, hoverstats, mute, pauseInMenu, showFps;
   int rankTracker, rankCorner;
+  int loveTracker, loveCorner, loveLayout, lovePopup;   // love tracker overlay (F10) and pop-ups when love goes up
   int customMusic, musicVolume;   // music folder tracks on/off, their volume 0-100
   int ffText, ffBattle, ffEnemy, ffCursor;  // automatic speed-ups (1 = off)
   SDL_Keycode keys[12];
@@ -67,7 +68,7 @@ static void trim(char* s) {
 
 static void config_defaults(void) {
   memset(&cfg, 0, sizeof cfg);
-  cfg.scale = 3; cfg.turbo = 4; cfg.ffText = cfg.ffBattle = cfg.ffEnemy = cfg.ffCursor = 1; cfg.widescreen = 1; cfg.hoverstats = 1; cfg.pauseInMenu = 1; cfg.recompiled = 1; cfg.volume = 100; cfg.customMusic = 1; cfg.musicVolume = 100; cfg.learn = 1; cfg.vsync = 1;
+  cfg.scale = 3; cfg.turbo = 4; cfg.ffText = cfg.ffBattle = cfg.ffEnemy = cfg.ffCursor = 1; cfg.widescreen = 1; cfg.hoverstats = 1; cfg.pauseInMenu = 1; cfg.recompiled = 1; cfg.volume = 100; cfg.customMusic = 1; cfg.musicVolume = 100; cfg.learn = 1; cfg.vsync = 1; cfg.loveCorner = 1;
   for(int i = 0; i < 12; i++) cfg.keys[i] = SDL_GetKeyFromName(BTN_DEFKEYS[i]);
   memcpy(cfg.pad, PAD_DEFAULTS, sizeof cfg.pad);
 }
@@ -85,6 +86,7 @@ static void config_save(void) {
   fprintf(f, "# custom music from the music folder (1 = on) and its volume 0-100\ncustom_music=%d\nmusic_volume=%d\n", cfg.customMusic, cfg.musicVolume);
   fprintf(f, "# in-game menu (F1): pause the game while it is open; FPS counter\npause_in_menu=%d\nshow_fps=%d\n", cfg.pauseInMenu, cfg.showFps);
   fprintf(f, "# rank tracker overlay (F9): on/off; corner 0 top left, 1 top right, 2 bottom left, 3 bottom right\nrank_tracker=%d\nrank_corner=%d\n", cfg.rankTracker, cfg.rankCorner);
+  fprintf(f, "# love tracker overlay (F10): on/off; corner as above; layout 0 = each woman's top 3, 1 = every couple; pop-up when love goes up\nlove_tracker=%d\nlove_corner=%d\nlove_layout=%d\nlove_popup=%d\n", cfg.loveTracker, cfg.loveCorner, cfg.loveLayout, cfg.lovePopup);
   fprintf(f, "# fast-forward speed (2-8). Hold Tab (or the right trigger), or press F3 to toggle. Music stays at normal speed.\nfast_forward=%d\n", cfg.turbo);
   fprintf(f, "# automatic speed-ups (1 = off, 2-8 = speed): while text is being written, in battle scenes,\n# during other armies' phases, while moving the cursor on the map. Music stays at normal speed.\nfaster_text=%d\nfaster_battles=%d\nfaster_enemy_phase=%d\nfaster_cursor=%d\n", cfg.ffText, cfg.ffBattle, cfg.ffEnemy, cfg.ffCursor);
   fprintf(f, "# recompiled=1 runs the translated C code; 0 runs the game in the interpreter\nrecompiled=%d\n", cfg.recompiled);
@@ -119,6 +121,10 @@ static void config_load(void) {
     else if(!strcmp(line, "show_fps")) cfg.showFps = atoi(v);
     else if(!strcmp(line, "rank_tracker")) cfg.rankTracker = atoi(v) != 0;
     else if(!strcmp(line, "rank_corner")) cfg.rankCorner = atoi(v) & 3;
+    else if(!strcmp(line, "love_tracker")) cfg.loveTracker = atoi(v) != 0;
+    else if(!strcmp(line, "love_corner")) cfg.loveCorner = atoi(v) & 3;
+    else if(!strcmp(line, "love_layout")) cfg.loveLayout = atoi(v) != 0;
+    else if(!strcmp(line, "love_popup")) cfg.lovePopup = atoi(v) != 0;
     else if(!strcmp(line, "volume")) cfg.volume = atoi(v);
     else if(!strcmp(line, "custom_music")) cfg.customMusic = atoi(v);
     else if(!strcmp(line, "music_volume")) cfg.musicVolume = atoi(v);
@@ -377,6 +383,8 @@ static void sram_flush(Snes* snes) {
   char p[1200]; sram_path(p, sizeof p);
   if(write_file(p, snes->cart->ram, snes->cart->ramSize)) memcpy(lastSram, snes->cart->ram, snes->cart->ramSize);
 }
+static int loveResync = 1;   // the game jumped (state loaded, reset): don't report love changes
+
 static int state_io(Snes* snes, int slot, int save) {
   char p[1200]; snprintf(p, sizeof p, "%s%s.state%d", saveDir, romBase, slot);
   if(save) {
@@ -678,6 +686,7 @@ int main(int argc, char** argv) {
   ms.turbo = &cfg.turbo; ms.ffToggle = &turboToggle; ms.hoverstats = &cfg.hoverstats; ms.pauseInMenu = &cfg.pauseInMenu;
   ms.showFps = &cfg.showFps; ms.paused = &paused; ms.slot = &slot; ms.keys = cfg.keys;
   ms.rankTracker = &cfg.rankTracker; ms.rankCorner = &cfg.rankCorner;
+  ms.loveTracker = &cfg.loveTracker; ms.loveCorner = &cfg.loveCorner; ms.loveLayout = &cfg.loveLayout; ms.lovePopup = &cfg.lovePopup;
   ms.version = PORT_VERSION; ms.romName = romBase; ms.recompiled = recompiled; ms.hoverActive = hoverPatched;
   static char romInfo[160];
   snprintf(romInfo, sizeof romInfo, "SHA-1 %s%s", romSha, strcmp(romSha, NAGA_SHA1) ? " (not the Project Naga 1.0 image)" : " (Project Naga 1.0)");
@@ -725,11 +734,12 @@ int main(int argc, char** argv) {
             for(int i = 0; i < 12; i++) if(cfg.keys[i] == SDLK_RETURN) keyState &= ~(1 << i);
           }
           if(k == SDLK_F5) { char t[64]; snprintf(t, sizeof t, state_io(snes, slot, 1) ? "Saved state %d" : "Couldn't save state %d", slot); menu_notify(t); }
-          if(k == SDLK_F7) { char t[64]; snprintf(t, sizeof t, state_io(snes, slot, 0) ? "Loaded state %d" : "No state in slot %d", slot); menu_notify(t); }
+          if(k == SDLK_F7) { char t[64]; loveResync = 1; snprintf(t, sizeof t, state_io(snes, slot, 0) ? "Loaded state %d" : "No state in slot %d", slot); menu_notify(t); }
           if(k == SDLK_F6 || k == SDLK_F8) { slot = (slot + (k == SDLK_F8 ? 1 : 8)) % 10; if(!slot && k == SDLK_F8) slot = 1; if(!slot) slot = 9; char t[64]; snprintf(t, sizeof t, "State slot %d", slot); menu_notify(t); }
           if(k == SDLK_PAUSE || k == SDLK_p) { paused = !paused; menu_notify(paused ? "Paused" : "Resumed"); }
           if(k == SDLK_F3) { turboToggle = !turboToggle; char t[64]; snprintf(t, sizeof t, "Fast-forward x%d", cfg.turbo); menu_notify(turboToggle ? t : "Normal speed"); }
           if(k == SDLK_F2) { cfg.aspect43 = !cfg.aspect43; APPLY_VIDEO(); config_save(); menu_notify(cfg.aspect43 ? "TV shape (4:3)" : "Square pixels"); }
+          if(k == SDLK_F10) { cfg.loveTracker = !cfg.loveTracker; config_save(); menu_notify(cfg.loveTracker ? "Love tracker on" : "Love tracker off"); }
           if(k == SDLK_F9) { cfg.rankTracker = !cfg.rankTracker; config_save(); menu_notify(cfg.rankTracker ? "Rank tracker on" : "Rank tracker off"); }
           if(k == SDLK_F4) { cfg.widescreen = !cfg.widescreen; APPLY_VIDEO(); config_save(); menu_notify(cfg.widescreen ? "Widescreen on" : "Widescreen off"); }
           break;
@@ -862,14 +872,25 @@ int main(int argc, char** argv) {
         ms.selOk = cheat_selected(snes->ram, snes->cart->rom, romLen, &ms.sel);
       }
       if(cfg.rankTracker) rank_read(snes->ram, snes->cart->rom, romLen, &ms.rank);
+      if(cfg.loveTracker || cfg.lovePopup) {
+        // love points; a rise since the last frame becomes a pop-up (not across a loaded state or a reset)
+        static LoveInfo prev; static int havePrev;
+        LoveInfo now; love_read(snes->ram, snes->cart->rom, romLen, &now);
+        if(havePrev && !loveResync && cfg.lovePopup) {
+          LoveGain g[48]; int n = love_gains(&prev, &now, g, 48);
+          if(n) menu_love_gains(g, n);
+        }
+        prev = now; havePrev = 1; loveResync = 0;
+        ms.love = now;
+      }
       ms.padCount = 0; for(int i = 0; i < 4; i++) if(pads[i]) ms.padCount++;
       ms.fps = fps; ms.speed = speed; ms.compiledBlocks = rc_stats.blocks; ms.interpOps = rc_stats.interp; ms.wideActive = wideOn;
       ms.musicTracks = music_count(); ms.musicNow = music_playing(); ms.musicReq = music_last_request();
       ms.musicNowFile = music_file(ms.musicNow); ms.musicReqFile = music_file(ms.musicReq);
       int act = menu_frame(&ms);
       if(act & MA_SAVE_STATE) { char t[64]; snprintf(t, sizeof t, state_io(snes, slot, 1) ? "Saved state %d" : "Couldn't save state %d", slot); menu_notify(t); }
-      if(act & MA_LOAD_STATE) { char t[64]; snprintf(t, sizeof t, state_io(snes, slot, 0) ? "Loaded state %d" : "No state in slot %d", slot); menu_notify(t); }
-      if(act & MA_RESET) { snes_reset(snes, false); music_stop(); menu_notify("Reset"); }
+      if(act & MA_LOAD_STATE) { char t[64]; loveResync = 1; snprintf(t, sizeof t, state_io(snes, slot, 0) ? "Loaded state %d" : "No state in slot %d", slot); menu_notify(t); }
+      if(act & MA_RESET) { loveResync = 1; snes_reset(snes, false); music_stop(); menu_notify("Reset"); }
       if(act & (MA_MUSIC_RESCAN | MA_MUSIC_TOGGLE)) {
         if(act & MA_MUSIC_RESCAN) music_rescan();
         music_set_enabled(cfg.customMusic);
