@@ -1,0 +1,4 @@
+Music file decoders compiled into FE4.exe (third_party/audio in source.zip):
+  stb_vorbis 1.24 (Sean Barrett) ............ public domain (or MIT)
+  dr_flac, dr_mp3, dr_wav (David Reid) ...... public domain (Unlicense) or MIT No Attribution
+Each file carries its full licence text at its end.

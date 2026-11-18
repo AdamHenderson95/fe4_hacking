@@ -711,7 +711,7 @@ extern "C" int menu_frame(MenuState* st) {
       else ImGui::TextWrapped("Running the game in the interpreter.");
       ImGui::Spacing();
       ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);
-      ImGui::TextWrapped("Uses LakeSnes (MIT), SDL2 (zlib), TinyCC (LGPL), Dear ImGui (MIT) and the Roboto font (Apache 2.0). Licenses are in the licenses folder.");
+      ImGui::TextWrapped("Free software under the MIT license. Uses LakeSnes (MIT), SDL2 (zlib), TinyCC (LGPL), Dear ImGui (MIT), stb_vorbis and dr_libs (public domain / MIT-0) and the Roboto font (Apache 2.0). Licenses are in the licenses folder; the source is source.zip.");
       ImGui::TextWrapped("Fire Emblem is (c) Nintendo / Intelligent Systems. This program contains no game data; it runs from your own ROM.");
       ImGui::PopStyleColor();
     }

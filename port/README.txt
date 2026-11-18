@@ -1,5 +1,9 @@
-Fire Emblem: Genealogy of the Holy War - PC port (fe4port) 0.15
+Fire Emblem: Genealogy of the Holy War - PC port (fe4port) 1.0
 ===============================================================
+
+Version 1.0, the first public release (test builds were numbered up to 0.15).
+New here? Read "START HERE.txt" first. Free software under the MIT license
+(see licenses\FE4Port-MIT.txt).
 
 This is a native Windows build of FE4. It runs from YOUR OWN ROM: the
 program contains no game code, graphics, music or text. On first launch it

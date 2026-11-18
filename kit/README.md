@@ -1,5 +1,9 @@
 # fe4kit: FE4 hacking toolkit (Project Naga ROM)
 
+**Builder of the Holy War 1.0**, the first public release (test builds were
+numbered up to v57; the "kit vNN" notes below refer to those). Free software
+under the MIT license (`licenses/`).
+
 Make hacks and randomized games of Fire Emblem: Genealogy of the Holy War
 (the Project Naga translation). You need your own copy of the ROM; the tools
 read everything out of it and never ship any of the game.
