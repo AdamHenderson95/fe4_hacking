@@ -1,10 +1,13 @@
 """Widescreen unit window, switchable (PC port).
 
-FE4 only draws map units inside a window around the camera: from 1 tile left of it, 18 tiles wide.
-With widescreen on, the window has to cover the extra area (6 tiles left, 28 wide). The two
-immediates that set it ($88:C8A5 SBC #$0001, $88:C8C3 CMP #$0012) become JSRs to helpers in free
-space at the end of bank $88 that pick the value from a flag word (0 = 4:3, 1 = widescreen), which
-the port sets when widescreen is switched on or off.
+FE4 only draws map units it thinks are on screen. Two checks decide that:
+- the army loop at $88:D0A0 skips a unit unless its screen x + 7 < $FF ($88:D0B7 ADC #$0007,
+  CMP #$00FF), i.e. x from -7 to 247. Widescreen needs x from -80 to 335 (ADC #$0050, CMP #$01A0);
+  the sprite writer already stores the 9th x bit, so units in the extra area get the right position;
+- the selected / moving unit ($88:C89A) is drawn when it is within a window from 1 tile left of the
+  camera, 18 tiles wide ($88:C8A5 SBC #$0001, $88:C8C3 CMP #$0012); widescreen: 6 tiles left, 28 wide.
+Each site becomes a JSR to a helper in free space at the end of bank $88 that picks the values from a
+flag word (0 = 4:3, 1 = widescreen), which the port sets when widescreen is switched on or off.
 
 fe4widepatch.py header out.h
 """
@@ -17,12 +20,17 @@ SITES = [  # address, original bytes, op, value when widescreen, value when 4:3
     (0x88C8A5, [0xE9, 0x01, 0x00], 'SBC', 0x06, 0x01),
     (0x88C8C3, [0xC9, 0x12, 0x00], 'CMP', 0x1C, 0x12),
 ]
+# army loop: ADC #$0007 / CMP #$00FF (6 bytes) -> JSR helper + 3 NOPs (carry is clear before it)
+ARMY = (0x88D0B7, [0x69, 0x07, 0x00, 0xC9, 0xFF, 0x00], (0x50, 0x1A0), (0x07, 0xFF))
 
 def source():
     src = ".m 0\n.x 0\nwide_flag:\n    .dw $0000\n"
     for i, (at, orig, op, on, off) in enumerate(SITES):
         n = 'w%d' % i
         src += f"{n}:\n    PHA\n    LDA wide_flag\n    BEQ {n}o\n    PLA\n    {op} #${on:04X}\n    RTS\n{n}o:\n    PLA\n    {op} #${off:04X}\n    RTS\n"
+    at, orig, (a1, c1), (a0, c0) = ARMY
+    src += (f"wa:\n    PHA\n    LDA wide_flag\n    BEQ wao\n    PLA\n    ADC #${a1:04X}\n    CMP #${c1:04X}\n    RTS\n"
+            f"wao:\n    PLA\n    ADC #${a0:04X}\n    CMP #${c0:04X}\n    RTS\n")
     return src
 
 def build():
@@ -31,6 +39,9 @@ def build():
     for i, (at, orig, op, on, off) in enumerate(SITES):
         a = L['w%d' % i] & 0xffff
         patches.append((snes_to_file(at), bytes(orig), bytes([0x20, a & 0xff, a >> 8])))
+    at, orig = ARMY[0], ARMY[1]
+    a = L['wa'] & 0xffff
+    patches.append((snes_to_file(at), bytes(orig), bytes([0x20, a & 0xff, a >> 8, 0xEA, 0xEA, 0xEA])))
     patches.append((snes_to_file(ORG), bytes(len(code)), code))
     return patches, snes_to_file(L['wide_flag']), code
 

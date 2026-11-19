@@ -811,6 +811,14 @@ Map headers are 12 records of 27 bytes. The pointer table is at `$88:9FC3` (file
   reads them isn't mapped yet; the editors keep them when painting.
 - **In RAM:** the game keeps the map at `$7F:2400`.
 - **Drawing:** the draw code is `$88:8EBB`. The row stride comes from `$075C` (4 → 64 tiles, 8 → 128 tiles).
+  It ANDs each cell with the mask at `$0596` (`$3FF`, so the area flags never reach the screen) and each
+  tile word of the metatile with `$DFFF` (no priority bit). When `$075A` bit 1 is set it also draws a second
+  layer from `$7F:6400` with the priority bit on.
+- **Units on the map:** the army loop `$88:D0A0` (bank `$7E` tables at `$438B`.., Y = unit × 2) draws every
+  unit as a sprite. Screen x = `$453B,Y` − camera `$0598`; the unit is skipped unless x + 7 < `$FF`
+  (`$88:D0B7`), i.e. x from −7 to 247. The sprite writer `$80:897F` keeps the 9th x bit, so a wider check
+  is all the PC port's widescreen needs (x from −80 to 335). The selected / moving unit is drawn by
+  `$88:C844` with its own window (1 tile left of the camera, 18 wide: `$88:C8A5`, `$88:C8C3`).
 
 ### Metatiles
 
@@ -1544,6 +1552,8 @@ ranges in a table that a value fits (`lo-1 < v` signed, `v <= hi`), else E.
 | `$91:8A01` | text control-code dispatch |
 | `$80:AA02` | decompress `[$C8]` to `$CD:$CB` (`$80:A9F2`: variant entry, see Compression) |
 | `$88:8EBB` | draw map rows from `$7F:2400` |
+| `$88:D0A0` | draw the map units (sprites) |
+| `$95:C52C` | battle sprite writer (no x clipping) |
 | `$87:EA09` | find the location covering a map cell |
 | `$87:EBC8` | per-location chapter setup: village gold, armory stock |
 | `$87:EDEB` | current gold of the visited village |

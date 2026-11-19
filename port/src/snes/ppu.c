@@ -544,16 +544,27 @@ static int ppu_getPixelWide(Ppu* ppu, int x, int y, bool sub, int* r, int* g, in
           if(ppu->mode == 2 || ppu->mode == 4 || ppu->mode == 6) {
             ppu_handleOPT(ppu, curLayer, &lx, &ly);
           }
+          // clip (or mirror) the layer to its art in the extension
+          bool clipped = false;
+          int clo = ppu->wideLine.clipLo[curLayer], chi = ppu->wideLine.clipHi[curLayer];
+          if(chi > clo && (x < 0 || x >= 256)) {
+            int wm = ppu->bgLayer[curLayer].tilemapWider ? 0x1ff : 0xff;
+            int cx = lx & wm;
+            if(cx < clo || cx >= chi) {
+              if(ppu->wideLine.clipMirror[curLayer]) {
+                int m;
+                if(x >= 256) { int d = (cx - chi) & wm; m = chi - 1 - d; if(m < clo) m = clo; }
+                else { int d = (clo - 1 - cx) & wm; m = clo + d; if(m >= chi) m = chi - 1; }
+                lx += m - cx;
+              } else clipped = true;
+            }
+          }
           if (lx != ppu->layerCache[curLayer]) {
             ppu_getPixelForBgLayer(ppu, lx & 0x3ff, ly & 0x3ff, curLayer);
             ppu->layerCache[curLayer] = lx;
           }
           pixel = (ppu->bg_prio_buf[curLayer] == curPriority) ? ppu->bg_pixel_buf[curLayer] : 0;
-          int clo = ppu->wideLine.clipLo[curLayer], chi = ppu->wideLine.clipHi[curLayer];
-          if(chi > clo && (x < 0 || x >= 256)) {
-            int cx = lx & (ppu->bgLayer[curLayer].tilemapWider ? 0x1ff : 0xff);
-            if(cx < clo || cx >= chi) pixel = 0;
-          }
+          if(clipped) pixel = 0;
         }
       } else {
         // get a pixel from the sprite buffer

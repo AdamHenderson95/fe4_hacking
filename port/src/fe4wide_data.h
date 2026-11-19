@@ -5,11 +5,14 @@ static const unsigned char FE4_WIDE_o0[] = {233,1,0};
 static const unsigned char FE4_WIDE_n0[] = {32,2,254};
 static const unsigned char FE4_WIDE_o1[] = {201,18,0};
 static const unsigned char FE4_WIDE_n1[] = {32,19,254};
-static const unsigned char FE4_WIDE_o2[] = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
-static const unsigned char FE4_WIDE_n2[] = {0,0,72,175,0,254,136,240,5,104,233,6,0,96,104,233,1,0,96,72,175,0,254,136,240,5,104,201,28,0,96,104,201,18,0,96};
+static const unsigned char FE4_WIDE_o2[] = {105,7,0,201,255,0};
+static const unsigned char FE4_WIDE_n2[] = {32,36,254,234,234,234};
+static const unsigned char FE4_WIDE_o3[] = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
+static const unsigned char FE4_WIDE_n3[] = {0,0,72,175,0,254,136,240,5,104,233,6,0,96,104,233,1,0,96,72,175,0,254,136,240,5,104,201,28,0,96,104,201,18,0,96,72,175,0,254,136,240,8,104,105,80,0,201,160,1,96,104,105,7,0,201,255,0,96};
 static const Fe4Patch FE4_WIDE[] = {
   { 0x08C8A5, 3, 3, FE4_WIDE_o0, FE4_WIDE_n0 },
   { 0x08C8C3, 3, 3, FE4_WIDE_o1, FE4_WIDE_n1 },
-  { 0x08FE00, 36, 36, FE4_WIDE_o2, FE4_WIDE_n2 },
+  { 0x08D0B7, 6, 6, FE4_WIDE_o2, FE4_WIDE_n2 },
+  { 0x08FE00, 59, 59, FE4_WIDE_o3, FE4_WIDE_n3 },
   { 0, 0, 0, 0, 0 }
 };

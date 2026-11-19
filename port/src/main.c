@@ -40,7 +40,7 @@
 #include "music.h"
 #include "fe4music_patch.h"
 
-#define PORT_VERSION "1.0"
+#define PORT_VERSION "1.0.1"
 #define GAME_TITLE "Fire Emblem: Genealogy of the Holy War"
 #define NAGA_SHA1 "2b6eb74646a527ba293b0e004db3e0134a28dc6c"
 
@@ -311,7 +311,7 @@ static int recompile(SDL_Window* win, Snes* snes) {
   // cache key: ROM hash + entry list
   char keySrc[64]; uint32_t eh = 2166136261u;
   for(int i = 0; i < L.n; i++) { eh = (eh ^ L.e[i].pc) * 16777619u; eh = (eh ^ L.e[i].fs) * 16777619u; }
-  snprintf(keySrc, sizeof keySrc, "%.12s_%08x%s%s%s", gameSha, eh, widePatched ? "_w2" : "", hoverPatched ? "_h2" : "", musicPatched ? "_m1" : "");
+  snprintf(keySrc, sizeof keySrc, "%.12s_%08x%s%s%s", gameSha, eh, widePatched ? "_w3" : "", hoverPatched ? "_h2" : "", musicPatched ? "_m1" : "");
   char srcPath[1200]; snprintf(srcPath, sizeof srcPath, "%sfe4_%s.c", cacheDir, keySrc);
   if(!file_exists(srcPath)) {
     set_title(win, "translating the game's code to C (first launch)...");

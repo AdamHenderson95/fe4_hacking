@@ -16,6 +16,7 @@ typedef struct PpuWideLine {
   bool ignoreWindows;  // ignore window masking in the redrawn area
   uint8_t layerMode[4];// per BG layer: normal tilemap / hidden outside 0..255 / virtual tiles
   int clipLo[4], clipHi[4]; // normal layers: outside 0..255 only show layer x in [lo, hi) (if hi > lo)
+  bool clipMirror[4];  // ...and beyond [lo, hi) show the art mirrored at its edge instead of nothing
 } PpuWideLine;
 typedef void (*PpuWidePolicy)(Ppu* ppu, int line, PpuWideLine* out, void* ctx);
 typedef uint16_t (*PpuWideTile)(Ppu* ppu, int layer, int px, int py, bool* opaque, void* ctx);

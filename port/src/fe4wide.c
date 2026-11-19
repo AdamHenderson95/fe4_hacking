@@ -12,6 +12,8 @@
 #define MAP_TILEDEFS  0x10000  // $7F:0000: 8 bytes per 16x16 map tile: TL, BL, TR, BR tilemap words
 #define MAP_GRID      0x12400  // $7F:2400: 16-bit map tile numbers, 64 per row
 #define MAP_GRID_ROW  0x80
+#define MAP_MASK      0x0596   // $7E:0596: the metatile mask the game's draw code ANDs each cell with ($3FF);
+                               // the bits above it are area flags (chapters 2-5 and 7-11 use them)
 #define CAM_LIMITS    0x0740   // $7E:0740: camera min x, max x, min y, max y (pixels)
 #define RANGE_GRID    0x179EE  // $7E:79EE + y*64 + x: 0 = none, $80 = attack border, else reachable
 
@@ -90,7 +92,7 @@ static void policy(Ppu* p, int line, PpuWideLine* out, void* ctx) {
     out->layerMode[0] = PPU_WIDE_HIDE;
     out->layerMode[1] = PPU_WIDE_NORMAL;
     // Battle backgrounds: sky/scenery rows are 400 pixels of art (x 56..455) with one filler tile repeated
-    // outside; ground rows are real art across the whole 512. Clip only rows whose outside is filler.
+    // outside; ground rows are real art across the whole 512. Only rows whose outside is filler are limited.
     const BgLayer* b2 = &p->bgLayer[1];
     int row = ((line + b2->vScroll) >> 3) & 31;
     uint16_t first = p->vram[(b2->tilemapAdr + row * 32 + 0) & 0x7fff];
@@ -100,7 +102,9 @@ static void policy(Ppu* p, int line, PpuWideLine* out, void* ctx) {
       uint16_t t = p->vram[(b2->tilemapAdr + (col >> 5) * 0x400 + row * 32 + (col & 31)) & 0x7fff];
       if(t != first) filler = false;
     }
-    if(filler) { out->clipLo[1] = 56; out->clipHi[1] = 456; }
+    // past the art's ends, show it mirrored (a seamless continuation) rather than black: the battle camera
+    // pans, so the extra area can reach past the 400 pixels of art
+    if(filler) { out->clipLo[1] = 56; out->clipHi[1] = 456; out->clipMirror[1] = true; }
     out->layerMode[2] = PPU_WIDE_HIDE;
     out->layerMode[3] = PPU_WIDE_HIDE;
     return;
@@ -123,11 +127,13 @@ static uint16_t map_tile(Ppu* p, int layer, int px, int py, bool* opaque, void* 
     *opaque = true;
     return 0x2000 | ((v & 0x80) ? 0x0C00 : 0x0800) | quad[((px >> 3) & 1) * 2 + ((py >> 3) & 1)];
   }
-  uint16_t idx = rd16(s, MAP_GRID + (py >> 4) * MAP_GRID_ROW + (px >> 4) * 2);
-  if(idx >= 0x400) return 0;
+  // as the game's own row drawing does ($88:8EBB): cell AND mask, tile words without the priority bit
+  uint16_t mask = rd16(s, MAP_MASK);
+  if(!mask || mask > 0x3FF) mask = 0x3FF;
+  uint16_t idx = rd16(s, MAP_GRID + (py >> 4) * MAP_GRID_ROW + (px >> 4) * 2) & mask;
   int q = ((px >> 3) & 1) * 2 + ((py >> 3) & 1);
   *opaque = true;
-  return rd16(s, MAP_TILEDEFS + idx * 8 + q * 2);
+  return rd16(s, MAP_TILEDEFS + idx * 8 + q * 2) & 0xDFFF;
 }
 
 // ROM changes that let the game itself draw units in the extra area: the unit window

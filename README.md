@@ -17,7 +17,7 @@ the Project Naga translation is recommended (headerless SHA-1
 
 ## Download and play
 
-1. Download **FE4Port-1.0.zip** from [Releases](../../releases) and unzip it anywhere.
+1. Download the latest **FE4Port** zip from [Releases](../../releases) and unzip it anywhere.
 2. Put your FE4 ROM next to `FE4.exe` and double-click `FE4.exe`.
 3. Read `START HERE.txt` in the folder for the keys and the menu (F1).
 

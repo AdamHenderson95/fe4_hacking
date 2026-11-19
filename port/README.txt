@@ -1,7 +1,11 @@
-Fire Emblem: Genealogy of the Holy War - PC port (fe4port) 1.0
-===============================================================
+Fire Emblem: Genealogy of the Holy War - PC port (fe4port) 1.0.1
+=================================================================
 
-Version 1.0, the first public release (test builds were numbered up to 0.15).
+Version 1.0.1. 1.0 was the first public release (test builds were numbered
+up to 0.15). 1.0.1 fixes widescreen: units in the extra area of the map (both
+armies) are drawn now, the extra area no longer goes black on maps with area
+flags (chapters 2-5 and 7-11), and battle backgrounds no longer show a black
+edge when the battle camera pans.
 New here? Read "START HERE.txt" first. Free software under the MIT license
 (see licenses\FE4Port-MIT.txt).
 
@@ -111,11 +115,12 @@ With widescreen on (the default) the picture is 400x224 instead of 256x224,
 about 16:9, and nothing is stretched. The extra area only ever shows what the
 game itself has:
   * Map: more of the map, drawn from the game's own map data and tiles,
-    including units (the game draws them; the port widens the area in which
-    it draws units) and the blue/orange movement range.
+    including every unit of every army (the game draws them; the port widens
+    the area in which it draws units) and the blue/orange movement range.
   * Battles: the battle backgrounds are about 400 pixels wide in the game's
     own art; the screen normally shows only the middle 256. Where the battle
-    camera is panned to one side and the art ends, that side shows black.
+    camera is panned to one side past the end of the sky art, the art
+    continues as its mirror image. The fighters are drawn wherever they are.
   * Everything else (menus, the title, story scenes, the status screen)
     stays 4:3 with black sides.
 Past the edge of the area the camera is allowed to show, the map side is

@@ -1,3 +1,19 @@
+# FE4 PC Port 1.0.1
+
+A fix release for the PC port's widescreen. The editor (Builder of the Holy War) is unchanged at 1.0.
+
+- **Units in the extra area:** the map now shows every unit in the widescreen area at the sides, enemies
+  included. Before, the game only drew units inside the original 4:3 area.
+- **No more black sides on some maps:** on chapters whose maps carry area flags (chapters 2–5 and 7–11),
+  the widescreen area could turn black, partly or completely. The map is now drawn there as everywhere else.
+- **Battles:** when the battle camera pans past the end of the background art, the art now continues as its
+  mirror image instead of a black edge.
+
+Download **FE4Port-1.0.1.zip** and replace your old FE4Port folder's files with it (your saves, settings,
+mods and music stay where they are). The first start translates the game again, which takes a few seconds.
+
+---
+
 # FE4 PC Port 1.0 and Builder of the Holy War 1.0
 
 The first public release of a native PC port of *Fire Emblem: Genealogy of the
