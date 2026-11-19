@@ -1,3 +1,42 @@
+# Builder of the Holy War 1.1
+
+Placing units and making events on a map now happen right on the **Maps** page, in small pop-up cards.
+The PC port is unchanged (1.0.1).
+
+- **Right-click anything on the map** for what you can do there. Each choice opens one card with the
+  values filled in from the nearest enemy; Enter confirms, Esc closes, and everything is one Ctrl+Z.
+- **Place enemies and allies:** class, level, up to three weapons or items (the ones the class can use are
+  listed first, and a class change picks one it can use), the name shown on the map, or a named character;
+  their army, what they do (the army's AI programs in words), army leader, and when they arrive.
+  Double-click an empty spot, or point and press E, for the same card.
+- **Reinforcements:** "Reinforcements arrive here…" makes a new group that comes in at the start of a turn
+  or when someone reaches an area you pick on the map. More units can join the group later.
+- **Shared soldiers:** many enemies share one record. Changing one asks whether to change just that one
+  (it gets its own copy) or all of them, and lists where the others are.
+- **Events from the map:** talks, recruiting by talking, battle and death quotes from a unit; area,
+  village and start-of-turn events from the ground. Type the words in the card (they are wrapped to the
+  game's text box) or write them later on the Events page.
+- **Copy, paste, duplicate and remove units** (Ctrl+C, Ctrl+V, Ctrl+D, Delete). Drag across the map to
+  select several; dragging one of them moves them all. Pasting into another chapter asks for the army and
+  when they arrive.
+- **Danger zones:** where an enemy can move (red) and hit (orange), for one unit or all of them, using the
+  game's own terrain costs.
+- **▶ Test this chapter** builds your game and opens the PC port with New Game going straight to the
+  chapter on screen. For chapters 1-5, press A through the earlier chapters' opening scenes and save at each
+  Save Game screen.
+- **More room:** up to 70 new groups of units (deploy lists 58-127) and about 100 new kinds of unit
+  (was about 30).
+- **Fix:** steps added to an event on the Events page (give an item, raise a stat, units arrive) now go
+  into the event's scene. Before, they were written after the event's action, where the game runs them on
+  every event check. Events that still have such steps show a warning: remove the extra steps and add them
+  again.
+
+Download **BuilderOfTheHolyWar-1.1.zip** and replace your old editor folder's files with it; your projects
+are kept. The PC port's zip still has editor 1.0 in its `fe4kit` folder: replace those files with this
+zip's to use 1.1 from there.
+
+---
+
 # FE4 PC Port 1.0.1
 
 A fix release for the PC port's widescreen. The editor (Builder of the Holy War) is unchanged at 1.0.

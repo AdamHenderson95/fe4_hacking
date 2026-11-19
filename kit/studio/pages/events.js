@@ -5,7 +5,7 @@ import { setMapChapter } from './maps.js';
 import { pickArea, areaPreview, forgetMaps } from './mappick.js';
 
 const st = { ch: null, sel: null, filter: 'all', q: '', codes: false };
-const COND = new Set([0x02, 0x04, 0x05, 0x07, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x16, 0x1A, 0x21]);
+const COND = new Set([0x01, 0x02, 0x04, 0x05, 0x07, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x16, 0x1A, 0x21]);
 const QUIET = new Set([0x00, 0x20, 0x25, 0x2E]);             // block ends and 2-byte no-ops
 const TAIL = new Set([0x20, 0x25, 0x2E]);                    // the structured end of a trigger list
 const STATS = ['HP', 'Strength', 'Magic', 'Skill', 'Speed', 'Defense', 'Resistance', 'Luck'];
@@ -110,13 +110,14 @@ export async function eventsPage(root) {
   function kindOf(c) {
     if (!c) return 'other';
     const op = bytesOf(c.hex)[0];
-    return { 0x02: 'turn', 0x04: 'talk', 0x16: 'talk', 0x0C: 'talk', 0x0A: 'visit', 0x0B: 'area', 0x0D: 'battle', 0x0E: 'battle', 0x1A: 'battle' }[op] || 'other';
+    return { 0x01: 'turn', 0x02: 'turn', 0x04: 'talk', 0x16: 'talk', 0x0C: 'talk', 0x0A: 'visit', 0x0B: 'area', 0x0D: 'battle', 0x0E: 'battle', 0x1A: 'battle' }[op] || 'other';
   }
 
   function condTitle(c) {
     if (!c) return 'Steps with no condition';
     const b = bytesOf(c.hex), w = i => b[i] | b[i + 1] << 8;
     switch (b[0]) {
+      case 0x01: return w(2) === 0xFFFF ? 'At the start of every turn' : `At the start of turn ${w(2) + 1}`;
       case 0x02: return w(2) ? `Turn ${w(4)}, army slot ${w(2)}'s phase` : `Turn ${w(4)}`;
       case 0x04: case 0x16: return `${unitName(w(2))} talks to ${unitName(w(4))}`;
       case 0x07: return `${w(2) === 0xFFFF ? '' : unitName(w(2)) + ': '}${locName(w(4))} is taken (guess)`;
@@ -130,7 +131,7 @@ export async function eventsPage(root) {
       default: return `Condition ${hex2(b[0])}`;
     }
   }
-  const KNOWN_COND = new Set([0x02, 0x04, 0x16, 0x0A, 0x0B, 0x0D, 0x1A]);
+  const KNOWN_COND = new Set([0x01, 0x02, 0x04, 0x16, 0x0A, 0x0B, 0x0D, 0x1A]);
 
   function groupTitle(g) { return g.kind === 'start' ? 'When the chapter starts' : condTitle(g.cond); }
 
@@ -248,6 +249,10 @@ export async function eventsPage(root) {
     }
     const then = h('section', { class: 'evthen' }, h('h3', {}, g.kind === 'start' ? 'Steps' : 'Then'));
     if (!g.visible.length) then.append(h('p', { class: 'hint' }, 'Nothing happens: this condition only marks the event as done.'));
+    if (g.cond && g.visible.length > 1) {
+      then.append(h('p', { class: 'tinote bad' }, 'The game runs only the first step when this event happens, and the steps after it on every event check. ',
+        'Remove the extra steps and add them again: the editor now puts them into the event\'s scene.'));
+    }
     for (const c of g.visible) {
       const el = step(c);
       if (g.cond && g.editable) el.querySelector('.evstep-head')?.append(h('button', { class: 'x', title: 'Remove this step', 'aria-label': 'Remove this step', onclick: () => removeLine(c, false) }, '×'));
@@ -433,6 +438,7 @@ export async function eventsPage(root) {
 
   // field specs per opcode: [label, kind, byte position, size]
   const SPEC = {
+    0x01: [['At the start of turn', 'turnstart', 2, 2]],
     0x02: [['Turn', 'num', 4, 2], ['Whose phase (army slot)', 'num', 2, 2]],
     0x04: [['Who talks', 'unit', 2, 2], ['To whom', 'unit', 4, 2]],
     0x16: [['Who talks', 'unit', 2, 2], ['To whom', 'unit', 4, 2]],
@@ -478,6 +484,13 @@ export async function eventsPage(root) {
       } else if (kind === 'item') {
         el = h('select', { class: 'in', 'aria-label': label }, (app.tables.item_instances?.rows || []).map(r => h('option', { value: r.instance, selected: Number(r.instance) === v }, `${r._item_name} (#${r.instance})`)));
         el.onchange = () => writeField(c, pos, size, Number(el.value), el);
+      } else if (kind === 'turnstart') {                 // $01 stores the turn before the one it starts
+        el = h('input', { class: 'in num', value: v === 0xFFFF ? 'every' : v + 1, inputmode: 'numeric', 'aria-label': label });
+        el.onchange = () => {
+          const t = el.value.trim().toLowerCase(), n = t === 'every' || t === 'any' ? 0xFFFF : Number(t) - 1;
+          if (!(n === 0xFFFF || (Number.isInteger(n) && n >= 1 && n <= 998))) { el.classList.add('bad'); toast('Enter a turn from 2 on, or "every".', true); return; }
+          writeField(c, pos, size, n, el);
+        };
       } else {
         el = h('input', { class: 'in num', value: v, inputmode: 'numeric', 'aria-label': label });
         el.onchange = () => {
@@ -544,6 +557,17 @@ export async function eventsPage(root) {
       box.append(fields(c, spec), rawBytes(c));
       if (sc?.messages.length) for (const k of sc.messages) box.append(convo(k));
       else box.append(h('p', { class: 'hint' }, 'This scene has no dialogue (camera moves, music, units walking…).'));
+      for (const x of sc?.extras || []) {
+        const what = x.kind === 'deploy' ? `Units arrive: deploy list ${x.list}`
+          : x.kind === 'item' ? `${x.unit == null ? 'The visitor' : unitName(x.unit)} gets ${itemName(x.instance)}`
+            : `${x.unit == null ? 'The visitor' : unitName(x.unit)}: ${STATS[x.stat] || 'stat ' + x.stat} +${x.amount}`;
+        box.append(h('div', { class: 'evextra' }, h('span', {}, what),
+          x.kind === 'deploy' ? h('button', { class: 'btn btn-line', onclick: () => { setMapChapter(E.ch, x.list); go('maps'); } }, 'See them on the map') : null,
+          h('button', { class: 'x', title: 'Remove this from the scene', 'aria-label': 'Remove this from the scene', onclick: async () => {
+            try { await api('delstep', { file: x.file, line: x.line }); await refreshSession(); toast('Removed'); await reloadKeepSelection(); }
+            catch (e) { toast(e.message, true); }
+          } }, '×')));
+      }
       return box;
     }
     if (op === 0x31 || op === 0x32) {

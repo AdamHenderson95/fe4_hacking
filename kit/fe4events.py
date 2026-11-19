@@ -51,7 +51,7 @@ CHAPTERS = ['prologue', 'ch01', 'ch02', 'ch03', 'ch04', 'ch05', 'ch06', 'ch07', 
 
 # Names ending in '?' are inferred from argument patterns, not yet confirmed in-game.
 EV_NAMES = {
-    0x00: 'BLOCK_END?', 0x02: 'COND_TURN', 0x04: 'COND_TALK', 0x05: 'COND_05?', 0x07: 'COND_07?',
+    0x00: 'BLOCK_END?', 0x01: 'COND_TURN_START', 0x02: 'COND_TURN', 0x04: 'COND_TALK', 0x05: 'COND_05?', 0x07: 'COND_07?',
     0x0A: 'COND_VISIT', 0x0B: 'COND_IN_AREA', 0x0C: 'COND_NEXT_TO?', 0x0D: 'COND_BATTLE',
     0x0E: 'COND_DEFEAT?', 0x0F: 'COND_UNIT?', 0x16: 'COND_TALK2', 0x1A: 'COND_DEATH',
     0x20: 'NOP2', 0x25: 'NOP2', 0x2E: 'NOP2', 0x21: 'ARMY_ORDER?', 0x2B: 'GOTO',
@@ -340,6 +340,8 @@ class Commenter:
         op = b[0]
         w = lambda i: b[i] | b[i + 1] << 8  # noqa: E731
         try:
+            if op == 0x01:
+                return 'start of every turn' if w(2) == 0xFFFF else 'start of turn %d' % (w(2) + 1)
             if op == 0x02:
                 return 'turn %d' % w(4)
             if op in (0x04, 0x16):

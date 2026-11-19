@@ -231,13 +231,29 @@ def _apply_deploy(rom, path, space):
             li, en = map(int, row['index'].strip().split('.'))
         except ValueError:
             raise SystemExit(f'{path}:{line}: index must look like list.entry, e.g. 0.12')
-        if not 0 <= li < L.DEPLOY_LISTS:
-            raise SystemExit(f'{path}:{line}: there are only lists 0-{L.DEPLOY_LISTS - 1} (new lists cannot be added)')
+        if not 0 <= li < L.DEPLOY_LISTS_MAX:
+            raise SystemExit(f'{path}:{line}: deploy lists are numbered 0-{L.DEPLOY_LISTS_MAX - 1}')
         if en in want.setdefault(li, {}):
             raise SystemExit(f'{path}:{line}: entry {li}.{en} is listed twice')
         want[li][en] = (line, row)
     ucount = L.unit_count(rom)
     changes = 0
+    # lists past the game's 58 need the directory moved to bank $81's free tail (one word per list,
+    # relative to the new directory; lists without entries point at a shared end marker)
+    if any(li >= L.DEPLOY_LISTS for li in want) and L.deploy_dir(rom)[1] == L.DEPLOY_LISTS:
+        n = L.DEPLOY_LISTS_MAX
+        fo, sn = space.alloc(0x810000, 2 * n + 2)
+        d = sn & 0xFFFF
+        empty = fo + 2 * n
+        rom[empty:empty + 2] = b'\xff\xff'
+        for li in range(n):
+            a = L.deploy_list_addr(rom, li) if li < L.DEPLOY_LISTS else empty
+            rom[fo + 2 * li:fo + 2 * li + 2] = ((0xC000 + a - L.DEPLOY_DIR - d) & 0xFFFF).to_bytes(2, 'little')
+        for r in L.DEPLOY_DIR_READERS:
+            assert rom[r - 1:r + 2] == b'\xa9\x00\xc0', 'deploy directory reader not as expected'
+            rom[r:r + 2] = d.to_bytes(2, 'little')
+        changes += 1
+    dfo, _, dbase = L.deploy_dir(rom)
     for li, ents in sorted(want.items()):
         old = existing.get(li, [])
         for en, (line, row) in ents.items():
@@ -267,8 +283,8 @@ def _apply_deploy(rom, path, space):
             fo = old[0]
         else:
             fo, _ = space.alloc(0x810000, len(data))
-            off = fo - L.DEPLOY_DIR
-            rom[L.DEPLOY_DIR + 2 * li:L.DEPLOY_DIR + 2 * li + 2] = off.to_bytes(2, 'little')
+            off = (fo - 0x010000 - dbase) & 0xFFFF
+            rom[dfo + 2 * li:dfo + 2 * li + 2] = off.to_bytes(2, 'little')
         rom[fo:fo + len(data)] = data
         changes += 1
     return changes

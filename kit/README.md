@@ -1,7 +1,9 @@
 # fe4kit: FE4 hacking toolkit (Project Naga ROM)
 
-**Builder of the Holy War 1.0**, the first public release (test builds were
-numbered up to v57; the "kit vNN" notes below refer to those). Free software
+**Builder of the Holy War 1.1** (1.0 was the first public release; test
+builds were numbered up to v57, and the "kit vNN" notes below refer to those).
+1.1 adds right-click cards on the Maps page for placing units, reinforcements
+and events, danger zones, and testing a chapter in the PC port. Free software
 under the MIT license (`licenses/`).
 
 Make hacks and randomized games of Fire Emblem: Genealogy of the Holy War
@@ -79,6 +81,46 @@ default browser). The editor runs on your PC only: nothing is sent anywhere.
    - **Select** (V): click a castle, village or unit to see it and change
      its position, AI orders or village gold; drag it to move it. Clicking
      the ground shows its terrain.
+   - **Right-click anything** on the map (1.1) for what you can do there.
+     Each choice opens one small card with sensible values already filled in;
+     **Enter** confirms and **Esc** closes.
+     - **Place an enemy here…** (or double-click an empty spot, or point and
+       press **E**): a soldier by class, level, up to three weapons or items
+       and the name shown on the map, or a named character; its army, what it
+       does (the army's AI programs in words), army leader, and when it
+       arrives. The card starts as a copy of the nearest enemy, offers the
+       weapons the class can use first, and says when a spot is taken or the
+       class can't stand there. A soldier with the same class, level, weapons
+       and name as one already in the game reuses it; otherwise the editor
+       makes a new kind of unit (about 100 fit).
+     - **Reinforcements arrive here…**: the same card, arriving as a new group
+       at the start of a turn (2 and on; they appear as your phase starts and
+       move in their army's phase) or when someone reaches an area you pick
+       on the map. Later units can join that group from the **Arrives** list.
+     - **Edit unit…** (or double-click it): many soldiers share one kind of
+       unit. When you change the class, level, weapons or name of one of them
+       the card lists the others and asks: **just this one** (it gets its own
+       copy) or **all of them**.
+     - Events from the map: **Talk event**, **Recruit by talking** (the second
+       unit joins your army), **Battle quote** and **Death quote** on a unit;
+       **Event when someone reaches here**, **Village visit event** and
+       **Message at the start of a turn** on the ground. Type the words in the
+       card (they are wrapped to the game's text box), or leave them for the
+       Events page.
+     - **Copy** (Ctrl+C), **Paste** (Ctrl+V where the pointer is, or
+       right-click a spot), **Duplicate** (Ctrl+D) and **Remove** (Delete).
+       Drag across the map to select several units, Ctrl+click to add or take
+       one away, Ctrl+A for all; dragging one of a selection moves them all.
+       Pasting into another chapter asks for the army and when they arrive.
+     - **Danger zones**: where an enemy can move (red) and hit (orange), for
+       one unit or all of them (the **Danger zones** button in the Units
+       panel). Movement follows the game's own terrain costs per movement type
+       (roads count half); units in the way and skills aren't counted, so it's
+       a guide.
+     - Everything is one undo step (Ctrl+Z).
+   - **▶ Test this chapter** builds the game and opens the PC port with New
+     Game going straight to the chapter on screen (see "Testing a chapter"
+     below for how each chapter is reached).
    - The terrain comes with the tile: painting water makes the cell water
      for the game too. **Show → Terrain** colours the map by terrain; the
      status line under the map names the terrain under the pointer.
@@ -1073,13 +1115,23 @@ At 500 points they become lovers.
 | `gold_base` | 2000 | |
 | `stat_cap` | 15 | highest inherited Str, Mag, Skl, Spd, Def and Res (not HP or Luck) |
 
-### Testing generation 2 quickly
+### Testing a chapter (and generation 2) quickly
 
-`dev/ch6start.py` makes a test copy of your built ROM whose New Game opens
-straight on chapter 6, with the generation-1 cast married as you choose:
+`fe4teststart.py` (1.1; `dev/ch6start.py` still works and does the same)
+makes a test copy of your built ROM whose New Game goes to one chapter. The
+Maps page's **▶ Test this chapter** does this for the chapter on screen and
+opens it in the PC port.
+
+- **Chapters 1-5:** New Game opens the Prologue, and every chapter before the
+  one you asked for ends right after its opening scene. Press A through the
+  scenes and save in any slot at each Save Game screen; the next chapter opens
+  with the army carried over. Units that join later in a chapter (talks,
+  visits) aren't there.
+- **Chapter 6 and on:** as below.
 
 ```
-python dev/ch6start.py myhack.smc test6.smc --marry Lewyn-Ayra,Lex-Erin --single Bridget
+python fe4teststart.py myhack.smc test3.smc --chapter 3
+python fe4teststart.py myhack.smc test6.smc --marry Lewyn-Ayra,Lex-Erin --single Bridget
 ```
 
 The children are born through the real transition, with your parent links and
@@ -1157,7 +1209,13 @@ number in a list, e.g. `0.34` and `0.35` after the Prologue's `0.33`.
 - Each list is spawned by an event `DEPLOY` command, so its units appear when
   that command runs. List 0 is the Prologue's opening army.
 - Lists that grow move into free space automatically (about 4.6 KB is free).
-  New list numbers can't be added.
+- New lists 58-127 (1.1): the build moves the list directory to bank
+  `$81`'s free space and points the game's four readers at it. Bring a new
+  list in from a scene (`4A 4E nn`, as the game does); the Maps page's
+  **Reinforcements arrive here…** writes the event and the scene for you.
+- Units of your own army (army slot 0) come from the army's members; a list
+  only places them. A soldier put in slot 0 doesn't appear, so the editor
+  keeps soldiers in the other armies.
 
 **New unit types.** Add rows to `units_generic.csv` with IDs from 769 up:
 769, 770, … (new children in `units_children.csv` share the same numbering).
@@ -1172,7 +1230,8 @@ number in a list, e.g. `0.34` and `0.35` after the Prologue's `0.33`.
   for a Verdane axe fighter. Menus take the name from `name_id`, and the
   battle screen takes it from name slot `char_id − 1`.
 - Then use the new ID in `deploy.csv`, `arena.csv` or `armies.csv`.
-- About 30 new units fit.
+- About 100 new units fit (1.1: the first ones go where the game's old unit
+  table was, the rest into bank `$83`'s free tail with the new table).
 
 **New script commands.** In any `.evt` file (`events/chNN_*.evt`,
 `events/scenes.evt`, `ai_orders.evt`), a line starting with `+` adds a

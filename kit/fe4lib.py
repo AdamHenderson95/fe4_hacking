@@ -352,18 +352,32 @@ def add_units(rom, types, space, reserve=True):
     pad = max(0, RESERVED_IDS - len(old)) if reserve else 0
     cnt = len(old) + pad + n
     u1 = rom[old[0]:old[0] + UNIT_SIZES[rom[old[0]]]]
-    size = 2 * cnt + len(u1) + sum(UNIT_SIZES[t] for t in types)
+    # the old pointer table is free once the new one is built: new records go there first
+    # (bank $83's tail alone holds the new table and only about 30 records)
+    old_tab = 0x38000 + _w16(rom, UNIT_DIR)
+    room, low, a = 2 * len(old) if len(old) == GAME_UNITS else 0, [], old_tab
+    for t in types:
+        if a + UNIT_SIZES[t] > old_tab + room:
+            break
+        low.append(a)
+        a += UNIT_SIZES[t]
+    high = types[len(low):]
+    size = 2 * cnt + len(u1) + sum(UNIT_SIZES[t] for t in high)
     fo, sn = space.alloc(0x830000, size + 1)
     base = (sn & 0xFFFF) - 0x8000
-    recs16 = [r - UNIT_BANK for r in old[1:]]
+    recs16 = [r - UNIT_BANK for r in old[1:] + low]
     if any(_ptr_for(base, r) is None for r in recs16):   # one-off carry edge case: shift by a byte
         fo, base = fo + 1, base + 1
     u1a = fo + 2 * cnt
     recs = [u1a] + old[1:] + [u1a] * pad
+    rom[old_tab:old_tab + room] = bytes(room)
     new = []
     a = u1a + len(u1)
     rom[u1a:a] = u1
-    for t in types:
+    for t, la in zip(types, low):
+        new.append(la)
+        rom[la:la + UNIT_SIZES[t]] = bytes([t]) + bytes(UNIT_SIZES[t] - 1)
+    for t in high:
         new.append(a)
         rom[a:a + UNIT_SIZES[t]] = bytes([t]) + bytes(UNIT_SIZES[t] - 1)
         a += UNIT_SIZES[t]
@@ -634,12 +648,35 @@ RAW_SKILL_COLUMNS = {'classes': ('class_skills_raw', 'unk29'), 'items': ('bonus_
                      'rings': ('skill_bits', None)}
 
 
+# The four places that load the deploy directory (`LDA #$C000; STA $24`, then $82:F4DE adds the
+# list's word to $24): $86:9146 (deploy for an AI regroup), $86:91B2 (event $4E), $86:91E0 (event
+# $4F) and $84:C7F0 (one entry of a list).  File offsets of their immediate words.  Moving the
+# directory (so it can hold more than 58 lists) means pointing all four at the new one.
+DEPLOY_DIR_READERS = (0x069147, 0x0691B3, 0x0691E1, 0x04C7F1)
+DEPLOY_LISTS_MAX = 128          # lists the moved directory holds (event $4E takes a byte)
+
+
+def deploy_dir(rom):
+    """(file offset of the directory, number of lists, bank-$81 address its words are relative to)."""
+    d = rom[DEPLOY_DIR_READERS[1]] | rom[DEPLOY_DIR_READERS[1] + 1] << 8
+    if d == 0xC000:
+        return DEPLOY_DIR, DEPLOY_LISTS, 0xC000
+    return 0x010000 + d, DEPLOY_LISTS_MAX, d
+
+
+def deploy_list_addr(rom, li):
+    """File offset of list li."""
+    fo, n, base = deploy_dir(rom)
+    w = rom[fo + 2 * li] | rom[fo + 2 * li + 1] << 8
+    return 0x010000 + ((base + w) & 0xFFFF)
+
+
 def deploy_rows(rom):
     names = unit_name_table(rom)
     addrs = unit_addrs(rom)
     rows = []
-    for li in range(DEPLOY_LISTS):
-        a = DEPLOY_DIR + (rom[DEPLOY_DIR + 2 * li] | rom[DEPLOY_DIR + 2 * li + 1] << 8)
+    for li in range(deploy_dir(rom)[1]):
+        a = deploy_list_addr(rom, li)
         n = 0
         end = DEPLOY_HARD_END if a < DEPLOY_HARD_END else 0x20000   # relocated lists live after it
         while a + 8 <= end:

@@ -95,6 +95,10 @@ substitutes, bosses, NPCs and generic enemies.
     in testing.
   - **Verified:** new unit 570 (Paladin, level 15, Javelin) deployed in the
     Prologue shows correctly on its status page.
+- **Room for new units (1.1, V):** once the table is rebuilt the old table
+  (1,138 bytes at `$83:ADF5`) is free; new records go there first (87 fit),
+  then the tail. Verified: records 769-770 in the old table and 808 in the
+  tail deploy with their class and items. About 107 new units fit in all.
 - **IDs 570–768 (V):** not units. The portrait table (`$8B:9A88`, read only by
   `$84:861C`) has 768 entries, and scripts use 570–768 for the portraits of
   people who only speak. A unit at 570 changes those portraits; in testing it
@@ -229,6 +233,31 @@ The directory holds 58 word offsets from `0x1C000`. Each list is a run of
   word, so a list can live anywhere in `$81:C000–$81:FFFF`. Grown lists move
   to the free tail (4,664 bytes from `$81:EDC8`). Verified: two extra Prologue
   entries, one of them new unit 570, spawn at their positions.
+- **More lists (V, 1.1):** four routines load the directory with `LDA #$C000;
+  STA $24` and then add a list's word through `$82:F4DE` (`$24` + word at
+  `$24` + 2n): `$86:9146` (AI regroup), `$86:91B2` (event `$4E`), `$86:91E0`
+  (`$4F`) and `$84:C7F0` (one entry). The build moves the directory to the
+  `$81` tail with 128 words relative to its new address and patches the four
+  immediates (`fe4lib.DEPLOY_DIR_READERS`); unused lists point at a shared
+  `FF FF`. `$0D7D` (the list number `$4E` stores) is only written. Verified:
+  list 58 deployed from the Prologue's opening scene, and from new turn
+  events.
+- **Your army (V):** entries with army slot 0 only place units the player
+  army already has (Arden's `0.25`); a generic unit there doesn't appear.
+- **Bringing a list in (V):** as the game does, from a scene (`4A 4E nn`).
+  Deploying from the opening script before its scene does nothing (the map
+  isn't set up yet). A bare `4E nn` as a second command after a trigger's
+  `RUN_SCENE` runs on every event check (25 copies of the list, then a
+  crash; see "One action per trigger"), so the editor never writes one.
+- **Start-of-turn events (V, 1.1):** condition `$01 [flag] [turn word]`
+  (mode `$20`) is checked as each turn starts (`$81:AD08`), with `$0EBD` =
+  `$0D8F` *before* the turn counter goes up, so `01 xx 02 00` fires as turn 3
+  starts (verified: its list came in then); `FF FF` = every turn. The `$02`
+  turn condition (mode 1) is checked from an army's phase task (`$87:C1E8`,
+  `$0EBD` = the army slot from `$1017,X`, `$0EBF` = its turn from `$0FD7,X`);
+  in the Prologue tests mode 1 never came up through turn 3, so neither the
+  game's own `02` triggers there nor new ones ran. The editor writes `$01`,
+  first in the trigger list (see "One action per trigger").
 
 ### Runtime RAM, for debugging
 
@@ -308,13 +337,27 @@ and 785 messages, with every script decoded to its end.
 - **Chapter headers:** 13 three-byte pointers at `$86:C739`. Each header is
   `[chapter word][opening-script ptr24][trigger-list ptr24]`.
   - The opening script runs once.
-  - The trigger list is a run of `[condition][actions…]`.
+  - The trigger list is a run of `[condition][action]`: one action each.
   - Condition flag byte: `$FF` = none; `$00–$4F` = fire once, then set the
     flag (`$86:99D6` sets, `$86:9A50` tests); `$80|n` = needs flag n, then
     clears it. Each condition handler also checks the event mode in `$0EBC`
     (talk = `$0A`).
   - Ops `$20`/`$25`/`$2E`/`$21` start the list's structured tail; the editor
     adds new events before it.
+  - **One action per trigger, first match wins (V, 1.1):** every condition
+    goes through `$86:84ED`. When it matches (mode, flag, its own test), the
+    flag is set, the VM runs the *one* command after it (`$86:83E6`) and then
+    skips to the next `20 66 66` (`$86:8C37`), past the rest of the simple
+    triggers. When it doesn't, the command after it is called with carry set
+    (handlers start with `BCS` = step over) and the VM goes on. So a trigger
+    is a condition plus one action (the game's are a `RUN_SCENE` or a
+    `TALK`); a second command would run on *every* check (a `DEPLOY` there
+    spawned its list 25 times). The editor puts extra steps into the event's
+    scene (`4A` + the command) and new start-of-turn triggers first in the
+    list; a second reinforcement or message for a turn that already starts
+    with one of those goes into its scene, after its last `YIELD` (story
+    scenes can end in event calls that leave the scene, like the Prologue's
+    turn-2 scene's `4A 6D, 4A 34 00, 4A 78`).
   - Scenes 10 and up include 88 that are empty and unused; the editor
     writes new conversations there.
   - Per-chapter info pointers at `$86:C760` (12) and the army table at
@@ -322,7 +365,8 @@ and 785 messages, with every script decoded to its end.
 
 | Op | Meaning | Evidence |
 |---|---|---|
-| `$02` | turn condition `[phase][word][turn word]` | Prologue turns 1 and 2 |
+| `$01` | start of a turn `[flag][turn word]`: fires as turn n+1 starts (mode `$20`) | V (1.1) |
+| `$02` | turn condition `[flag][army slot word][turn word]`, checked by an army's phase task (mode 1) | |
 | `$0B` | unit in rectangle `[?][unit][x1 y1 x2 y2][?]` | |
 | `$04` | talk: unit A talks to unit B `[flag][unit A word][unit B word][FFFF]` | V: Quan → Finn runs scene 426, Finn's talk boosts |
 | `$16` | talk, same layout as `$04`; used from chapter 6 on (also enemy recruits) | V: Lana → Julia runs Lana's "Julia, right? Hello there!" |
@@ -793,6 +837,13 @@ Map headers are 12 records of 27 bytes. The pointer table is at `$88:9FC3` (file
 | +20 / +22 | words: map right / bottom edge in pixels; `$0742` = +20 − 256, `$0746` = +22 − 224 (camera max). The Prologue's +22 is `$200`: its map is 64 × 32 and the layout's lower half is unused |
 | +24 | ptr24, terrain type per metatile, compressed (1 KB) |
 
+- **Movement costs:** `$83:8008` is a word T; the row for movement type m
+  (class byte `$1A`, `group` in classes.csv; `$87:A689`) is at
+  `$83:(word[$83:8000 + T + 2m] + T + $8000)`, one byte per terrain type (26
+  types; 128 = can't enter). `$87:B394` writes `$7E:9388` = row[terrain] + 1
+  for all 64 × 64 cells (+8 where a unit stands). Plains are 1 (2 in the
+  grid), roads and bridges 0 (1). The editor's danger zones spend 2 × Move
+  per path on those grid values; the game's own range code wasn't traced.
 - **Map size (kit v57):** `$88:92B5` copies +12–+22 at map load (both loader paths); `$88:BD3D` / `$88:BE8B`
   stop the camera at the bounds and the cursor stays on screen; the port's widescreen (fe4wide.c) draws
   only inside them. Movement costs are computed over all 64 × 64 cells (`$87:B394`: `$7E:9388` = 1 + cost

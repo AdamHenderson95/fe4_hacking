@@ -1,6 +1,7 @@
 // Maps: paint chapter maps with the game's own tiles; drag castles, villages and units into place.
-import { api, h, app, toast, refreshSession, go, setField } from '../app.js';
+import { api, h, app, toast, refreshSession, go, setField, watchJob } from '../app.js';
 import { openEventAt } from './events.js';
+import { mapActions } from './mapcards.js';
 
 const TOOLS = [
   ['select', 'Select', 'V', 'Select and drag castles, villages and units', 'M4 3l11 6-5 1.5L8 16z'],
@@ -22,7 +23,7 @@ export const FOOT = { castle: [-1, -1, 1, 2], village: [-1, -1, 1, 0], site1: [0
 const st = {
   ch: null, tool: 'select', zoom: 2, stamp: { w: 1, h: 1, tiles: [0] }, palZoom: 1,
   layers: { grid: true, terrain: false, areas: false, sites: true, units: true, events: true },
-  hidden: new Set(), terrainFilter: '', sel: null,
+  hidden: new Set(), terrainFilter: '', sel: null, multi: new Set(),
 };
 
 export function setMapChapter(ch, list) {
@@ -43,6 +44,18 @@ export async function mapsPage(root) {
   let atlas = null;             // the chapter's 1024 tiles as an image
   let hover = null;             // {x, y}
   let drag = null;              // what the pointer is doing
+  const acts = mapActions({
+    M: () => M, ch: () => st.ch, reload: () => reloadData(), redraw: () => drawOverlay(),
+    select: rows => {
+      st.multi = new Set(rows.length > 1 ? rows : []);
+      st.sel = rows.length === 1 ? { type: 'unit', row: rows[0] } : null;
+      drawObjects(); drawInspector(); drawOverlay();
+    },
+  });
+  const selectedUnits = () => {
+    const rows = st.multi.size ? [...st.multi] : st.sel?.type === 'unit' ? [st.sel.row] : [];
+    return rows.map(r => acts.unitAt(r)).filter(Boolean);
+  };
 
   // ------------------------------------------------------------ layout
   const chapterSel = h('select', { class: 'in', 'aria-label': 'Chapter' },
@@ -63,7 +76,8 @@ export async function mapsPage(root) {
       [['grid', 'Grid'], ['terrain', 'Terrain'], ['areas', 'Area flags'], ['sites', 'Castles & villages'], ['units', 'Units'], ['events', 'Event areas']].map(([k, label]) =>
         h('button', { class: 'chip', 'aria-pressed': String(st.layers[k]), onclick: e => { st.layers[k] = !st.layers[k]; e.currentTarget.setAttribute('aria-pressed', String(st.layers[k])); drawOverlay(); drawObjects(); } }, label))),
     h('button', { class: 'btn btn-line mtileset', title: 'How much of the 64 × 64 layout the chapter uses', onclick: () => sizeDialog() }, 'Map size…'),
-    h('button', { class: 'btn btn-line mtileset2', title: 'Draw the whole map as one picture, or give the chapter a whole new set of tiles', onclick: () => tilesetDialog() }, 'Map picture & tile set…'));
+    h('button', { class: 'btn btn-line mtileset2', title: 'Draw the whole map as one picture, or give the chapter a whole new set of tiles', onclick: () => tilesetDialog() }, 'Map picture & tile set…'),
+    h('button', { class: 'btn btn-gilt mtest', title: 'Build the game and open the PC port with New Game going straight to this chapter', onclick: () => testChapter() }, '▶ Test this chapter'));
 
   const base = h('canvas', { class: 'mbase' });
   const over = h('canvas', { class: 'mover' });
@@ -156,6 +170,7 @@ export async function mapsPage(root) {
       }
       ctx.globalAlpha = 1;
     }
+    acts.drawDanger(ctx, s);
     // outside the chapter's map area (kit v57): the game never shows it and nothing can enter it
     if (M.area && (M.area[2] < M.width || M.area[3] < M.height)) {
       const [ax, ay, aw, ah] = M.area;
@@ -175,7 +190,7 @@ export async function mapsPage(root) {
     }
     // what the pointer would do
     let r = null;
-    if (drag?.kind === 'pick') r = rectOf(drag.x0, drag.y0, drag.x, drag.y);
+    if (drag?.kind === 'pick' || drag?.kind === 'box') r = rectOf(drag.x0, drag.y0, drag.x, drag.y);
     else if (hover && (st.tool === 'brush')) r = { x: anchorX(hover.x), y: anchorY(hover.y), w: st.stamp.w, h: st.stamp.h };
     else if (hover && st.tool !== 'select') r = { x: hover.x, y: hover.y, w: 1, h: 1 };
     else if (hover) r = { x: hover.x, y: hover.y, w: 1, h: 1, faint: true };
@@ -221,7 +236,7 @@ export async function mapsPage(root) {
       const x = Number(L.x) + f[0], y = Number(L.y) + f[1], w = f[2] - f[0] + 1, hh = f[3] - f[1] + 1;
       const label = L.kind === 'castle' ? (L.name || 'Castle') : L.kind === 'village' ? 'Village' : L.kind;
       const e = h('div', { class: `msite ${L.kind}`, title: `${label} (${L.kind} ${L.index}) at ${L.x}, ${L.y}`,
-        style: `left:${x * s}px;top:${y * s}px;width:${w * s}px;height:${hh * s}px`,
+        style: `left:${x * s}px;top:${y * s}px;width:${w * s}px;height:${hh * s}px`, 'data-row': L._row,
         'aria-selected': String(st.sel?.type === 'site' && st.sel.row === L._row) },
       h('span', {}, label));
       e.onpointerdown = ev => startMove(ev, { type: 'site', row: L._row }, Number(L.x), Number(L.y));
@@ -230,12 +245,19 @@ export async function mapsPage(root) {
     for (const u of visibleUnits()) {
       const slot = Number(u.army_slot) || 0;
       const e = h('div', { class: 'munit' + (u.leader ? ' leader' : ''), title: `${u.name}${u.class ? ', ' + u.class : ''}${u.level ? ' Lv ' + u.level : ''} (list ${u.list})`,
-        style: `left:${Number(u.x) * s}px;top:${Number(u.y) * s}px;width:${s}px;height:${s}px;--c:${ARMY_COLORS[slot % ARMY_COLORS.length]}`,
-        'aria-selected': String(st.sel?.type === 'unit' && st.sel.row === u._row) },
+        style: `left:${Number(u.x) * s}px;top:${Number(u.y) * s}px;width:${s}px;height:${s}px;--c:${ARMY_COLORS[slot % ARMY_COLORS.length]}`, 'data-row': u._row,
+        'aria-selected': String((st.sel?.type === 'unit' && st.sel.row === u._row) || st.multi.has(u._row)) },
       u.portrait != null ? h('img', { src: `/gfx/portrait/${u.portrait}.png?s=1`, alt: '', draggable: 'false' })
         : h('b', {}, (u.class || u.name || '?').slice(0, 2)));
       e.onpointerdown = ev => startMove(ev, { type: 'unit', row: u._row }, Number(u.x), Number(u.y));
       objs.append(e);
+    }
+  }
+
+  function markSelected() {
+    for (const e of objs.querySelectorAll('.munit, .msite')) {
+      const row = Number(e.dataset.row), unit = e.classList.contains('munit');
+      e.setAttribute('aria-selected', String(unit ? (st.sel?.type === 'unit' && st.sel.row === row) || st.multi.has(row) : st.sel?.type === 'site' && st.sel.row === row));
     }
   }
 
@@ -267,7 +289,9 @@ export async function mapsPage(root) {
   }
 
   function drawLists() {
-    listsBox.replaceChildren();
+    listsBox.replaceChildren(h('div', { class: 'mlist-tools' },
+      h('button', { class: 'btn btn-gilt', title: 'Place an enemy in the middle of the view (or right-click any spot)', onclick: () => { const c = viewCenter(); acts.unitCard({ x: c.x, y: c.y }); } }, '+ Place an enemy'),
+      h('button', { class: 'chip', 'aria-pressed': String(acts.danger.all), title: 'Where every enemy can move (red) and attack (orange)', onclick: () => { acts.toggleDanger('all'); drawLists(); } }, 'Danger zones')));
     if (!M.deploy.length) { listsBox.append(h('p', { class: 'hint' }, 'No enemy or allied units are placed on this map by its deploy lists.')); return; }
     listsBox.append(h('p', { class: 'hint' }, 'Units come onto the map in groups (deploy lists) as the chapter goes on. Show the ones you\'re working on.'));
     for (const l of M.deploy) {
@@ -278,8 +302,8 @@ export async function mapsPage(root) {
       const slots = [...new Set(l.units.map(u => Number(u.army_slot) || 0))];
       listsBox.append(h('label', { class: 'mlist' }, cb,
         h('span', { class: 'mlist-dots' }, slots.map(sl => h('i', { style: `background:${ARMY_COLORS[sl % ARMY_COLORS.length]}` }))),
-        h('span', {}, h('b', {}, `List ${l.list}`), ` · ${l.units.length} unit${l.units.length === 1 ? '' : 's'}`,
-          armies.length ? h('span', { class: 'sub' }, ' · ' + armies.slice(0, 3).join(', ')) : null,
+        h('span', {}, h('b', {}, l.when || `List ${l.list}`), ` · ${l.units.length} unit${l.units.length === 1 ? '' : 's'}`,
+          h('span', { class: 'sub' }, ` · list ${l.list}`), armies.length ? h('span', { class: 'sub' }, ' · ' + armies.slice(0, 3).join(', ')) : null,
           l.sure ? null : h('span', { class: 'sub', title: 'No chapter script names this list; it is shown with the chapter whose lists come just before it.' }, ' (probably)'))));
     }
     listsBox.append(h('div', { class: 'row', style: 'display:flex;gap:8px;margin-top:8px' },
@@ -309,8 +333,24 @@ export async function mapsPage(root) {
         numIn('X', u.x, v => moveTo(sel, Number(v), Number(u.y))),
         numIn('Y', u.y, v => moveTo(sel, Number(u.x), Number(v))),
         numIn('AI orders', u.orders, v => setMany([['deploy', u._row, 'orders', v]]))),
+      h('div', { class: 'mins-actions' },
+        h('button', { class: 'btn btn-gilt', onclick: () => acts.unitCard({ edit: u }) }, 'Edit unit…'),
+        h('button', { class: 'chip', 'aria-pressed': String(acts.danger.rows.has(u._row)), onclick: e => { acts.toggleDanger([u._row]); e.currentTarget.setAttribute('aria-pressed', String(acts.danger.rows.has(u._row))); } }, 'Danger zone'),
+        h('button', { class: 'btn btn-line danger', onclick: () => acts.remove([u]) }, 'Remove')),
       h('p', { class: 'hint' }, u.table === 'units_generic' ? 'A generic unit: its stats come from its class and level.' :
         'Stats, items and skills are on the Characters page.'));
+      return;
+    }
+    if (st.multi.size > 1) {
+      const us = selectedUnits();
+      inspector.append(h('h3', {}, `${us.length} units selected`),
+        h('p', { class: 'note', style: 'margin:0 0 8px' }, us.slice(0, 8).map(x => x.name).join(', ') + (us.length > 8 ? '…' : '')),
+        h('div', { class: 'mins-actions' },
+          h('button', { class: 'btn btn-line', onclick: () => acts.copy(us) }, 'Copy'),
+          h('button', { class: 'btn btn-line', onclick: () => acts.duplicate(us) }, 'Duplicate'),
+          h('button', { class: 'chip', onclick: () => acts.toggleDanger(us.map(x => x._row)) }, 'Danger zones'),
+          h('button', { class: 'btn btn-line danger', onclick: () => acts.remove(us) }, 'Remove')),
+        h('p', { class: 'hint' }, 'Drag one of them to move them all. Right-click for more; Ctrl+C copies, Delete removes.'));
       return;
     }
     if (sel?.type === 'site') {
@@ -339,7 +379,7 @@ export async function mapsPage(root) {
     }
     inspector.append(h('h3', {}, M.title),
       h('p', { class: 'hint', style: 'margin:0' }, `${M.area ? `${M.area[2]} × ${M.area[3]}` : `${M.width} × ${M.height}`} cells${M.area && (M.area[0] || M.area[1]) ? ` from (${M.area[0]}, ${M.area[1]})` : ''} · ${M.locations.length} castles and villages · ${M.deploy.reduce((n, l) => n + l.units.length, 0)} deployed units`),
-      h('p', { class: 'hint', style: 'margin:6px 0 0' }, 'Click a castle, village or unit to edit it, or drag it to a new spot. Paint (B) changes the ground; right-click picks the tile under the pointer.'));
+      h('p', { class: 'hint', style: 'margin:6px 0 0' }, 'Right-click anything on the map for what you can do there: place enemies, reinforcements, talks, quotes, village and area events. Double-click an empty spot to place an enemy; drag across units to select several. Paint (B) changes the ground.'));
   }
 
   // ------------------------------------------------------------ one tile: terrain and drawing
@@ -623,29 +663,64 @@ export async function mapsPage(root) {
   function startMove(ev, sel, x, y) {
     if (st.tool !== 'select' || ev.button !== 0) return;
     ev.stopPropagation(); ev.preventDefault();
-    st.sel = sel;
+    if (sel.type === 'unit' && (ev.ctrlKey || ev.metaKey)) {          // add to / take from the selection
+      if (!st.multi.size && st.sel?.type === 'unit') st.multi.add(st.sel.row);
+      st.multi.has(sel.row) ? st.multi.delete(sel.row) : st.multi.add(sel.row);
+      st.sel = st.multi.size === 1 ? { type: 'unit', row: [...st.multi][0] } : null;
+      if (st.multi.size === 1) st.multi.clear();
+      drawObjects(); drawInspector(); drawOverlay();
+      return;
+    }
+    const group = sel.type === 'unit' && st.multi.has(sel.row) && st.multi.size > 1 ? [...st.multi] : null;
+    if (!group) st.multi.clear();
+    st.sel = group ? null : sel;
     const c = cellOf(ev);
-    drag = { kind: 'move', sel, ox: c.x - x, oy: c.y - y, x, y, x0: x, y0: y, el: ev.currentTarget };
+    drag = { kind: 'move', sel, ox: c.x - x, oy: c.y - y, x, y, x0: x, y0: y, el: ev.currentTarget, group };
     ev.currentTarget.setPointerCapture(ev.pointerId);
     ev.currentTarget.onpointermove = e => {
       const p = cellOf(e), nx = p.x - drag.ox, ny = p.y - drag.oy;
       if (!inMap(nx, ny) || (nx === drag.x && ny === drag.y)) return;
       const s = 16 * st.zoom;
-      drag.el.style.left = (parseFloat(drag.el.style.left) + (nx - drag.x) * s) + 'px';
-      drag.el.style.top = (parseFloat(drag.el.style.top) + (ny - drag.y) * s) + 'px';
+      const els = drag.group ? [...objs.querySelectorAll('.munit[aria-selected="true"]')] : [drag.el];
+      for (const el of els) {
+        el.style.left = (parseFloat(el.style.left) + (nx - drag.x) * s) + 'px';
+        el.style.top = (parseFloat(el.style.top) + (ny - drag.y) * s) + 'px';
+      }
       drag.x = nx; drag.y = ny;
       status.textContent = `Moving to ${nx}, ${ny}`;
     };
     ev.currentTarget.onpointerup = async e => {
       const d = drag; drag = null;
       e.currentTarget.onpointermove = e.currentTarget.onpointerup = null;
-      if (d.x !== d.x0 || d.y !== d.y0) {
+      if (d.group && (d.x !== d.x0 || d.y !== d.y0)) {
+        const dx = d.x - d.x0, dy = d.y - d.y0;
+        try {
+          await api('mapunit', { op: 'editmany', ch: st.ch, edits: selectedUnits().map(u => ({ row: u._row, x: Number(u.x) + dx, y: Number(u.y) + dy })) });
+          await reloadData();
+        } catch (err) { toast(err.message, true); await reloadData(); }
+      } else if (d.x !== d.x0 || d.y !== d.y0) {
         try { await moveTo(d.sel, d.x, d.y); } catch (err) { toast(err.message, true); await reloadData(); }
-      } else { drawObjects(); drawInspector(); drawOverlay(); }
+      } else { markSelected(); drawInspector(); drawOverlay(); }   // keep the elements: a double-click follows
     };
   }
 
-  view.addEventListener('contextmenu', e => { if (st.tool !== 'select') e.preventDefault(); });
+  view.addEventListener('contextmenu', e => {
+    e.preventDefault();
+    if (st.tool !== 'select' || !M) return;
+    const c = cellOf(e);
+    if (!inMap(c.x, c.y)) return;
+    const u = visibleUnits().find(v => Number(v.x) === c.x && Number(v.y) === c.y);
+    if (u && !st.multi.has(u._row)) { st.multi.clear(); st.sel = { type: 'unit', row: u._row }; drawObjects(); drawInspector(); }
+    acts.menu(e, { x: c.x, y: c.y, unit: u, rows: u && st.multi.has(u._row) ? [...st.multi] : [] });
+  });
+  stage.addEventListener('dblclick', e => {           // a unit: edit it; an empty spot: place an enemy
+    if (st.tool !== 'select' || !M) return;
+    const c = cellOf(e);
+    if (!inMap(c.x, c.y)) return;
+    const u = visibleUnits().find(v => Number(v.x) === c.x && Number(v.y) === c.y);
+    if (u) acts.unitCard({ edit: u });
+    else acts.unitCard({ x: c.x, y: c.y });
+  });
   stage.addEventListener('pointerdown', ev => {
     if (!M) return;
     const c = cellOf(ev);
@@ -660,7 +735,7 @@ export async function mapsPage(root) {
     }
     if (ev.button !== 0) return;
     stage.setPointerCapture(ev.pointerId);
-    if (st.tool === 'select') { st.sel = { type: 'cell', x: c.x, y: c.y }; drawObjects(); drawInspector(); drawOverlay(); return; }
+    if (st.tool === 'select') { drag = { kind: 'box', x0: c.x, y0: c.y, x: c.x, y: c.y }; drawOverlay(); return; }
     if (st.tool === 'brush') {
       drag = { kind: 'paint', ax: c.x, ay: c.y, stroke: new Map() };
       stampAt(drag.stroke, c.x, c.y);
@@ -679,7 +754,7 @@ export async function mapsPage(root) {
     hover = inMap(c.x, c.y) ? c : null;
     if (!moved) return;
     if (drag?.kind === 'paint' && hover) stampAt(drag.stroke, anchorX(c.x), anchorY(c.y));
-    if (drag?.kind === 'pick' && hover) { drag.x = c.x; drag.y = c.y; }
+    if ((drag?.kind === 'pick' || drag?.kind === 'box') && hover) { drag.x = c.x; drag.y = c.y; }
     showStatus(); drawOverlay();
   });
   stage.addEventListener('pointerleave', () => { if (!drag) { hover = null; showStatus(); drawOverlay(); } });
@@ -689,6 +764,17 @@ export async function mapsPage(root) {
     drag = null;
     if (d.kind === 'paint') commit(d.stroke);
     if (d.kind === 'pick') { pickRect(rectOf(d.x0, d.y0, d.x, d.y)); setTool('brush'); }
+    if (d.kind === 'box') {
+      const r = rectOf(d.x0, d.y0, d.x, d.y);
+      if (r.w * r.h === 1) { st.multi.clear(); st.sel = { type: 'cell', x: d.x0, y: d.y0 }; }
+      else {
+        const inBox = visibleUnits().filter(u => Number(u.x) >= r.x && Number(u.x) < r.x + r.w && Number(u.y) >= r.y && Number(u.y) < r.y + r.h).map(u => u._row);
+        st.multi = new Set(inBox.length > 1 ? inBox : []);
+        st.sel = inBox.length === 1 ? { type: 'unit', row: inBox[0] } : null;
+        if (inBox.length) status.textContent = `${inBox.length} unit${inBox.length > 1 ? 's' : ''} selected`;
+      }
+      drawObjects(); drawInspector();
+    }
     drawOverlay();
   });
 
@@ -745,15 +831,47 @@ export async function mapsPage(root) {
 
   const onKey = e => {
     if (!document.body.contains(root) || !root.querySelector('.mapedit')) { removeEventListener('keydown', onKey); return; }
-    if (e.ctrlKey || e.metaKey || e.altKey || document.activeElement?.matches('input, select, textarea')) return;
+    if (document.querySelector('.modal') || document.activeElement?.matches('input, select, textarea')) return;
+    if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey) {
+      const k = e.key.toLowerCase(), us = selectedUnits();
+      if (k === 'c' && us.length) { acts.copy(us); e.preventDefault(); }
+      else if (k === 'd' && us.length) { acts.duplicate(us); e.preventDefault(); }
+      else if (k === 'v') {
+        e.preventDefault();
+        if (!acts.hasClip()) toast('Nothing copied yet: select units and press Ctrl+C.', true);
+        else { const c = hover || (st.sel?.type === 'cell' ? st.sel : viewCenter()); acts.paste(c.x, c.y); }
+      } else if (k === 'a' && st.tool === 'select') {
+        e.preventDefault();
+        const all = visibleUnits().map(u => u._row);
+        st.multi = new Set(all); st.sel = null; drawObjects(); drawInspector();
+      }
+      return;
+    }
+    if (e.altKey) return;
+    if ((e.key === 'Delete' || e.key === 'Backspace') && selectedUnits().length) { acts.remove(selectedUnits()); e.preventDefault(); return; }
+    if (e.key === 'Enter' && selectedUnits().length === 1) { acts.unitCard({ edit: selectedUnits()[0] }); e.preventDefault(); return; }
+    if (e.key.toLowerCase() === 'e' && hover && st.tool === 'select') { acts.unitCard({ x: hover.x, y: hover.y }); e.preventDefault(); return; }
+    if (e.ctrlKey || e.metaKey) return;
     const k = e.key.toLowerCase();
     const t = { v: 'select', b: 'brush', g: 'fill', i: 'pick' }[k];
     if (t) { setTool(t); e.preventDefault(); }
     else if (k === '+' || k === '=') zoomBy(1);
     else if (k === '-') zoomBy(-1);
-    else if (k === 'escape') { st.sel = null; drawObjects(); drawInspector(); drawOverlay(); }
+    else if (k === 'escape') { st.sel = null; st.multi.clear(); acts.closeMenu(); drawObjects(); drawInspector(); drawOverlay(); }
   };
   addEventListener('keydown', onKey);
+
+  function viewCenter() {
+    const s = 16 * st.zoom;
+    const x = Math.floor((view.scrollLeft + view.clientWidth / 2) / s), y = Math.floor((view.scrollTop + view.clientHeight / 2) / s);
+    const [ax, ay, aw, ah] = M.area || [0, 0, M.width, M.height];
+    return { x: Math.max(ax, Math.min(ax + aw - 1, x)), y: Math.max(ay, Math.min(ay + ah - 1, y)) };
+  }
+
+  async function testChapter() {
+    try { await watchJob(await api('testchapter', { ch: st.ch }), null, true); }
+    catch (e) { toast(e.message, true); }
+  }
 
   view.dataset.tool = st.tool;
   try { await load(); } catch (e) { view.replaceChildren(h('div', { class: 'empty' }, e.message)); }

@@ -21,8 +21,9 @@ the Project Naga translation is recommended (headerless SHA-1
 2. Put your FE4 ROM next to `FE4.exe` and double-click `FE4.exe`.
 3. Read `START HERE.txt` in the folder for the keys and the menu (F1).
 
-The editor is in the `fe4kit` folder of the port's zip, and also on its own as
-**BuilderOfTheHolyWar-1.0.zip**. Run `BuilderOfTheHolyWar.exe`; its manual is `README.html`.
+The editor is in the `fe4kit` folder of the port's zip, and the newest one is on
+its own as the latest **BuilderOfTheHolyWar** zip (1.1). Run
+`BuilderOfTheHolyWar.exe`; its manual is `README.html`.
 
 Both are Windows programs. They aren't signed yet, so Windows may show
 "Windows protected your PC": click **More info**, then **Run anyway**.

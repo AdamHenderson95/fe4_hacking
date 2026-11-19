@@ -52,7 +52,7 @@ import fe4skillanim                # noqa: E402
 from fe4project import Project, load_settings, save_settings   # noqa: E402
 
 APP = 'Builder of the Holy War'
-VERSION = '1.0'
+VERSION = '1.1'
 STATIC = os.path.join(KIT, 'studio')
 
 # ---------------------------------------------------------------- state
@@ -2377,6 +2377,39 @@ def api_testplay(b, q):
     return job_json_of(run_job('Building for test play', go))
 
 
+def api_testchapter(b, q):
+    """Build, make a copy whose New Game goes to chapter `ch` (fe4teststart), and open the PC port."""
+    import fe4teststart
+    p = need_project()
+    rom = rom_path()
+    if not rom:
+        raise ValueError('Choose your FE4 ROM first.')
+    exe = port_exe()
+    if not exe:
+        raise ValueError('The FE4 PC port wasn\'t found. Choose where FE4.exe is (Settings).')
+    ch = int(b.get('ch', 0))
+    p.save()
+    d = os.path.join(p.path, '_testplay')
+    os.makedirs(d, exist_ok=True)
+    out = os.path.join(d, os.path.basename(os.path.normpath(p.path)) + f'_ch{ch:02d}.smc')
+    hover = bool(settings.get('hover_stats', False))
+    args = [exe, '--play', out]
+    if fe4music.music_files(p.path) and port_knows(exe, b'--music'):
+        args += ['--music', os.path.join(p.path, fe4music.FOLDER)]
+
+    def go():
+        fe4hack.build(rom, p.path, out, None, hover)
+        copier, data = L.load_rom(out)
+        msg = fe4teststart.apply(data, ch)
+        L.save_rom(out, copier, data)
+        print(msg)
+        subprocess.Popen(args, cwd=os.path.dirname(exe))
+        print('started the PC port: choose New Game')
+        return out
+    title = CHAPTER_TITLES[ch].split(':')[0] if ch < len(CHAPTER_TITLES) else f'chapter {ch}'
+    return job_json_of(run_job(f'Building to test {title}', go))
+
+
 PREVIEW = {'start': 25300, 'end': 26250, 'from': 25200, 'events_from': 25000, 'item': 0x3E,
            'freeze': [('0D5C', '35'), ('0D60', '3E'), ('0D69', '74')]}   # Gandolf: Fire Mage, Fire, magic
 
@@ -2525,9 +2558,16 @@ def deploy_chapters(evdir):
     """Deploy list -> chapter, from the chapter scripts and the scenes they run."""
     import re
     scene_lists, cur = {}, None
+    proj = project()
+    same = proj is not None and os.path.normpath(evdir) == os.path.normpath(os.path.join(proj.path, 'events'))
+
+    def lines(f):                  # the open project's files as edited, else the files on disk
+        if same and proj.evt(f) is not None:
+            return proj.evt(f).lines
+        return open(os.path.join(evdir, f), encoding='utf-8', errors='replace')
     p = os.path.join(evdir, 'scenes.evt')
     if os.path.exists(p):
-        for line in open(p, encoding='utf-8', errors='replace'):
+        for line in lines('scenes.evt'):
             m = re.match(r'== scene (\d+)', line)
             if m:
                 cur = int(m.group(1))
@@ -2542,7 +2582,7 @@ def deploy_chapters(evdir):
             if not m:
                 continue
             ch = int(m.group(1))
-            for line in open(os.path.join(evdir, f), encoding='utf-8', errors='replace'):
+            for line in lines(f):
                 for m2 in re.finditer(r'deploy list (\d+)', line):
                     out.setdefault(int(m2.group(1)), ch)
                 for m2 in re.finditer(r'scene (\d+)', line):
@@ -2608,6 +2648,8 @@ def api_map(b, q):
             if use.startswith(f'ch{ch}/slot'):
                 armies[use.split('slot')[1]] = r.get('_name') or ('Army ' + r.get('army', ''))
     units = unit_lookup()
+    itb = p.table('item_instances')
+    inst = {_num(r.get('instance'), -1): _num(r.get('item_type'), 255) for r in (itb.rows if itb else [])}
     for i, r in enumerate(dt.rows if dt else []):
         lst, _, ent = (r.get('index') or '').partition('.')
         if not lst.isdigit():
@@ -2627,14 +2669,22 @@ def api_map(b, q):
             else:
                 portrait = unit_portrait(t, ur)
         L_ = lists.setdefault(int(lst), {'list': int(lst), 'sure': sure, 'units': []})
-        L_['units'].append({'_row': i, 'entry': ent, 'char_id': cid, 'name': (ur or {}).get('_name') or r.get('_name') or f'Unit {cid}',
+        ur_ = ur or {}
+        L_['units'].append({'_row': i, 'entry': ent, 'char_id': cid, 'name': ur_.get('_name') or r.get('_name') or f'Unit {cid}',
                             'table': t, 'class': cls, 'level': lvl, 'portrait': portrait, 'x': r.get('x'), 'y': r.get('y'),
+                            'cls': _num(ur_.get('class'), -1), 'nameId': _num(ur_.get('name_id'), -1),
+                            'items': [v for v in (_num(ur_.get(k), 255) for k in ('item1', 'item2', 'item3')) if v != 255]
+                            if t == 'units_generic' else [inst.get(v, 255) for v in (_num(ur_.get(k), 255) for k in ('item1', 'item2', 'item3')) if v != 255],
                             'army_slot': r.get('army_slot'), 'army': armies.get(str(r.get('army_slot')), ''),
                             'leader': r.get('leader_flag') not in ('', '0', None), 'orders': r.get('orders')})
+    try:
+        whens = chapter_lists(ch)
+    except KeyError:
+        whens = {}
     return {'ch': ch, 'title': CHAPTER_TITLES[ch] if ch < len(CHAPTER_TITLES) else '', 'width': m.WIDTH,
             'height': (len(m.words) + m.WIDTH - 1) // m.WIDTH, 'words': m.words, 'terrain': terrain,
             'terrainNames': {str(k): v for k, v in TERRAIN_NAMES.items()}, 'impassable': sorted(IMPASSABLE),
-            'locations': locs, 'deploy': [lists[k] for k in sorted(lists)], 'areas': chapter_areas(ch),
+            'locations': locs, 'deploy': [dict(lists[k], when=whens.get(k, {}).get('when', '')) for k in sorted(lists)], 'areas': chapter_areas(ch),
             'tilesVer': tiles_version(ch), 'area': list(map_area(ch))}
 
 
@@ -2880,7 +2930,14 @@ def api_events(b, q):
             for sid in scene_refs(name, cmd_bytes(c)):
                 sc = idx['scenes'].get(sid)
                 if sc:
-                    scenes[sid] = {'messages': sc['messages'], 'runs': sc['runs']}
+                    extras = []                     # gifts and arrivals inside the scene (and the ones it starts)
+                    for g in scene_gifts(sid, idx):
+                        extras.append(dict(g))
+                    for c2 in sc['block']['cmds']:
+                        b2 = cmd_bytes(c2)
+                        if len(b2) >= 3 and b2[0] == 0x4A and b2[1] == 0x4E:
+                            extras.append({'kind': 'deploy', 'list': b2[2], 'file': 'scenes.evt', 'line': c2['line']})
+                    scenes[sid] = {'messages': sc['messages'], 'runs': sc['runs'], 'extras': extras}
     tt = p.table('talks')
     talks = [list(k[1:]) for k in (_talk_key(r) for r in (tt.rows if tt else [])) if k and k[0] == ch]
     return {'ch': ch, 'title': CHAPTER_TITLES[ch] if ch < len(CHAPTER_TITLES) else name, 'file': name,
@@ -3026,7 +3083,7 @@ def api_dsearch(b, q):
 
 
 # ---------------------------------------------------------------- items, shops and villages
-COND_OPS = {0x02, 0x04, 0x05, 0x07, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x16, 0x1A, 0x21}
+COND_OPS = {0x01, 0x02, 0x04, 0x05, 0x07, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x16, 0x1A, 0x21}
 
 
 def gift_of(name, c):
@@ -3318,6 +3375,37 @@ def trigger_insert_line(name):
     return blk['cmds'][-1]['line']
 
 
+SMART = {'\u2019': "'", '\u2018': "'", '\u201c': '"', '\u201d': '"', '\u2026': '...', '\u2014': '-', '\u2013': '-'}
+
+
+def wrap_words(text, default):
+    """Plain words as FE4 dialogue: lines that fit the box ({02}), a button wait ({08}) every
+    three lines.  Empty text gives `default`."""
+    text = ' '.join(''.join(SMART.get(c, c) for c in str(text or '')).split())
+    if not text:
+        return default
+    rom = rom_data()
+    width = lambda w: sum(rom[TEXT_WIDTHS + fe4events._CH_INV[c] - 0x10] if rom is not None and 0x10 <= fe4events._CH_INV[c] < 0x100 else 6 for c in w)  # noqa: E731
+    bad = sorted({c for c in text if c not in fe4events._CH_INV and c != ' '})
+    if bad:
+        raise ValueError('The game\'s font has no ' + ' '.join(repr(c) for c in bad) + '.')
+    lines, cur = [], ''
+    for word in text.split(' '):
+        t = (cur + ' ' + word) if cur else word
+        if cur and width(t) > TEXT_BOX_WIDTH:
+            lines.append(cur)
+            cur = word
+        else:
+            cur = t
+    lines.append(cur)
+    out = ''
+    for i, ln in enumerate(lines):
+        out += ln
+        if i < len(lines) - 1:
+            out += '{08}' if i % 3 == 2 else '{02}'
+    return out
+
+
 def api_newevent(b, q):
     """A new trigger in a chapter: {ch, kind, ...}. One undo step; returns the condition's line."""
     p = need_project()
@@ -3331,9 +3419,22 @@ def api_newevent(b, q):
     if kind == 'talk':
         a, t = u('a', lord), u('b')
         flag = free_flag(name)
-        msg = new_message_op('{06}{00 3D}%s{07}{00 3D}%s{06}{09}Write the first line here.{07}{00 1D 10}And the reply here.{08}{01}'
-                             % (portrait_code(a), portrait_code(t)), f'{name[:4]} new talk', ops)
+        msg = new_message_op('{06}{00 3D}%s{07}{00 3D}%s{06}{09}%s{07}{00 1D 10}%s{08}{01}'
+                             % (portrait_code(a), portrait_code(t), wrap_words(b.get('line1'), 'Write the first line here.'),
+                                wrap_words(b.get('line2'), 'And the reply here.')), f'{name[:4]} new talk', ops)
         sid = new_scene_ops(talk_scene(msg, t), ops)
+        cond = _hx('04' if ch < 6 else '16', '%02X' % flag, _w(a), _w(t), 'FF FF')
+        steps = ['30 FF ' + _w(sid)]
+        talk_row_ops(ch, flag, a, t, True, ops)
+    elif kind == 'recruit':                  # a talk whose scene moves the second unit into your army
+        a, t = u('a', lord), u('b')
+        if t == 0xFFFF:
+            raise ValueError('Choose who joins.')
+        flag = free_flag(name)
+        msg = new_message_op('{06}{00 3D}%s{07}{00 3D}%s{06}{09}%s{07}{00 1D 10}%s{08}{01}'
+                             % (portrait_code(a), portrait_code(t), wrap_words(b.get('line1'), 'Write what is said here.'),
+                                wrap_words(b.get('line2'), 'And the reply: they join you.')), f'{name[:4]} new recruit', ops)
+        sid = new_scene_ops(talk_scene(msg, t, gifts=['4A 53 %s 00' % _w(t)]), ops)
         cond = _hx('04' if ch < 6 else '16', '%02X' % flag, _w(a), _w(t), 'FF FF')
         steps = ['30 FF ' + _w(sid)]
         talk_row_ops(ch, flag, a, t, True, ops)
@@ -3343,33 +3444,33 @@ def api_newevent(b, q):
             cb = cmd_bytes(cnd)
             if cb[0] == 0x0A and cb[4] | cb[5] << 8 == loc:
                 raise ValueError('That village already has a visit event: open it and add to it.')
-        msg = new_message_op(say(VILLAGER, 'Welcome, traveler! Please, take this.'), f'{name[:4]} new village', ops)
+        msg = new_message_op(say(VILLAGER, wrap_words(b.get('line'), 'Welcome, traveler! Please, take this.')), f'{name[:4]} new village', ops)
         sid = new_scene_ops(map_scene(msg), ops)
         cond = _hx('0A FF FF FF', _w(loc))
         steps = ['30 FF ' + _w(sid)]
     elif kind == 'turn':
         turn, who = int(b['turn']), u('who', lord)
-        if not 1 <= turn <= 99:
-            raise ValueError('Turn is 1 to 99.')
-        msg = new_message_op(say(who, 'Write what is said here.'), f'{name[:4]} new turn {turn}', ops)
-        # the game plays one scene at a time: a turn that already has a scene gets the message in it
-        for cnd, steps in chapter_triggers(name):
-            cb = cmd_bytes(cnd)
-            if cb[0] == 0x02 and cb[2:4] == b'\0\0' and cb[4] | cb[5] << 8 == turn:
-                sid = next((cmd_bytes(c)[2] | cmd_bytes(c)[3] << 8 for c in steps if cmd_bytes(c)[:1] == b'\x30'), None)
-                if sid is not None:
-                    add_text_to_scene(sid, msg, ops)
-                    p.edit(ops['list'])
-                    return {'ok': True, 'file': name, 'line': cnd['line'], 'merged': True}
+        if not 2 <= turn <= 99:
+            raise ValueError('Turn is 2 to 99 (for turn 1, add to the chapter\'s opening on the Events page).')
+        msg = new_message_op(say(who, wrap_words(b.get('line'), 'Write what is said here.')), f'{name[:4]} new turn {turn}', ops)
+        # one event per check: a turn that already starts with a scene gets the message in it
+        sid = turn_scene(name, turn)
+        if sid is not None:
+            add_text_to_scene(sid, msg, ops)
+            p.edit(ops['list'])
+            line = next(c['line'] for c, st_ in chapter_triggers(name) if scene_of(st_) == sid)
+            return {'ok': True, 'file': name, 'line': line, 'merged': True}
         sid = new_scene_ops(map_scene(msg), ops)
-        cond = _hx('02', '%02X' % free_flag(name), '00 00', _w(turn))
-        steps = ['30 FF ' + _w(sid)]
+        line = first_trigger_ops(name, [turn_cond(name, turn), '30 FF ' + _w(sid)], ops)
+        p.edit(ops['list'])
+        return {'ok': True, 'file': name, 'line': line}
     elif kind == 'area':
         unit = u('unit', lord)
         x1, y1, x2, y2 = (int(b[k]) for k in ('x1', 'y1', 'x2', 'y2'))
         if not all(0 <= v < 64 for v in (x1, y1, x2, y2)):
             raise ValueError('Corners are 0 to 63.')
-        msg = new_message_op(say(unit if unit != 0xFFFF else lord, 'Write what is said here.'), f'{name[:4]} new area', ops)
+        msg = new_message_op(say(int(b['who']) if b.get('who') not in (None, '') else unit if unit != 0xFFFF else lord,
+                                 wrap_words(b.get('line'), 'Write what is said here.')), f'{name[:4]} new area', ops)
         sid = new_scene_ops(map_scene(msg), ops)
         cond = _hx('0B', '%02X' % free_flag(name), _w(unit), '%02X %02X %02X %02X' % (min(x1, x2), min(y1, y2), max(x1, x2), max(y1, y2)), 'FF')
         steps = ['30 FF ' + _w(sid)]
@@ -3377,14 +3478,14 @@ def api_newevent(b, q):
         a, t = u('a'), u('b')
         if t == 0xFFFF:
             raise ValueError('Choose who the quote is for (the second unit speaks).')
-        msg = new_message_op(say(t, 'Write the battle quote here.'), f'{name[:4]} new battle quote', ops)
+        msg = new_message_op(say(t, wrap_words(b.get('line'), 'Write the battle quote here.')), f'{name[:4]} new battle quote', ops)
         cond = _hx('0D FF 00 00', _w(a), 'FF FF', _w(t))
         steps = ['31 %02X @%s 00' % (free_flag(name), msg)]
     elif kind == 'death':
         unit = u('unit')
         if unit == 0xFFFF:
             raise ValueError('Choose who dies.')
-        msg = new_message_op(say(unit, 'Write the last words here.'), f'{name[:4]} new death quote', ops)
+        msg = new_message_op(say(unit, wrap_words(b.get('line'), 'Write the last words here.')), f'{name[:4]} new death quote', ops)
         cond = _hx('1A', '%02X' % free_flag(name), _w(unit), 'FF FF')
         steps = ['31 FF @%s 01' % msg]
     else:
@@ -3456,9 +3557,16 @@ def api_addstep(b, q):
     ops = {'list': []}
     ch = int(name[2:4])
     lord = LORDS[1] if ch >= 6 else LORDS[0]
+    # A trigger is a condition and ONE action ($86:84ED: on a match the VM runs the next command and
+    # skips to the list's `20 66 66`; otherwise it steps over that one command, and a second command
+    # would run on every pass).  So more steps go into the event's scene, as the game's own do.
+    steps = next(st_ for c, st_ in chapter_triggers(name) if c['line'] == line)
+    sid0 = scene_of(steps)
     if kind == 'message':
         who = int(b.get('who') or lord)
         if cb[0] in (0x0D, 0x0E, 0x1A):            # battle screen: a quote
+            if steps:
+                raise ValueError('A battle or death quote shows one message. Make another quote event for more.')
             msg = new_message_op(say(who, 'Write what is said here.'), f'{name[:4]} new quote', ops)
             step = '31 FF @%s %s' % (msg, '01' if cb[0] == 0x1A else '00')
         else:
@@ -3470,6 +3578,8 @@ def api_addstep(b, q):
                 add_text_to_scene(sid, msg, ops)
                 p.edit(ops['list'])
                 return {'ok': True, 'file': name, 'line': line}
+            if steps:
+                raise ValueError('This event already does something that isn\'t a scene, so it can\'t show more. Make another event.')
             step = '30 FF ' + _w(new_scene_ops(map_scene(msg), ops))
     elif kind == 'item':
         inst = int(b['instance'])
@@ -3489,6 +3599,18 @@ def api_addstep(b, q):
         step = '4E %02X' % n
     else:
         raise ValueError(f'unknown step {kind}')
+    if kind in ('item', 'stat', 'deploy'):
+        cmd = '4A ' + step
+        if sid0 is not None:
+            if kind == 'deploy':
+                add_cmds_to_scene(sid0, [cmd], ops)
+            else:                                  # gifts are given as the event starts
+                prepend_to_scene(sid0, [cmd], ops)
+            p.edit(ops['list'])
+            return {'ok': True, 'file': name, 'line': line}
+        if steps:
+            raise ValueError('This event already does something that isn\'t a scene, so it can\'t do more. Make another event.')
+        step = '30 FF ' + _w(new_scene_ops([cmd, 'FF FF'], ops))
     z = rng[1]
     ops['list'].append(('lines', name, z, [], _plus(name, [step])))
     p.edit(ops['list'])
@@ -3523,6 +3645,579 @@ def api_eventinfo(b, q):
     """Spare scenes left, for the new-event dialog."""
     need_project()
     return {'spareScenes': len(spare_scenes())}
+
+
+# ---------------------------------------------------------------- units and events placed from the map (1.1)
+# A generic unit's record (units_generic.csv) holds its class, level, weapons and shown name; deploy
+# list entries (deploy.csv) put a record on the map.  Many entries share one record, so the map
+# editor finds an identical record or makes a new one, and asks before changing a shared one.
+GEN_FIELDS = ('name_id', 'class', 'unk6', 'level', 'authority', 'unk9', 'item1', 'item2', 'item3', 'portrait')
+NEW_UNITS_MAX = 1023 - L.RESERVED_IDS     # saves keep unit IDs in 10 bits once units are added
+
+
+def _num(v, d=0):
+    try:
+        return int(str(v).strip(), 0)
+    except (TypeError, ValueError):
+        return d
+
+
+def unit_label(cid):
+    """A unit's name from the project (new units too), else from the ROM."""
+    t, r = unit_lookup().get(cid, (None, None))
+    if r is not None and r.get('_name'):
+        return r['_name']
+    if cid in (0, 0xFFFF):
+        return 'anyone'
+    try:
+        return commenter().unit(cid).rsplit('(', 1)[0].strip()
+    except Exception:
+        return f'Unit {cid}'
+
+
+def army_names(ch):
+    """{army slot: name shown on the map} for a chapter; slot 0 is the player's."""
+    p = need_project()
+    at = p.table('armies')
+    names = castle_names()
+    out = {}
+    for slot, army in _chapter_slots(ch).items():
+        row = next((r for r in at.rows if r.get('army') == str(army)), None) if at else None
+        nm = _num(row.get('name'), 255) if row else 255
+        out[slot] = (names[nm] if nm < 0x40 else '') or f'Army {army}'
+    out[0] = 'your army'
+    return out
+
+
+def scene_lists(sid, idx, seen=None):
+    """Deploy lists a scene (and the scenes it starts) brings onto the map."""
+    seen = seen if seen is not None else set()
+    if sid in seen or sid not in idx['scenes']:
+        return set()
+    seen.add(sid)
+    out = set()
+    for c in idx['scenes'][sid]['block']['cmds']:
+        b = cmd_bytes(c)
+        if len(b) >= 3 and b[0] == 0x4A and b[1] == 0x4E:
+            out.add(b[2])
+    for t in idx['scenes'][sid]['runs']:
+        out |= scene_lists(t, idx, seen)
+    return out
+
+
+def cmd_lists(c, idx):
+    """Deploy lists one chapter-script command brings in (directly, or through the scene it runs)."""
+    b = cmd_bytes(c)
+    if len(b) >= 2 and b[0] == 0x4E:
+        return {b[1]}
+    if len(b) >= 4 and b[0] == 0x30:
+        return scene_lists(b[2] | b[3] << 8, idx)
+    return set()
+
+
+def loc_label(ch, n):
+    lt = need_project().table('locations')
+    for r in lt.rows if lt else []:
+        if r.get('chapter') == str(ch) and _num(r.get('index'), -1) == n:
+            return (r.get('_castle_name') or f'castle {n}') if r.get('kind') == 'castle' else f'village {n}'
+    return f'location {n}'
+
+
+def cond_words(b, ch):
+    """A trigger condition in words."""
+    w = lambda i: b[i] | b[i + 1] << 8 if i + 1 < len(b) else 0  # noqa: E731
+    op = b[0]
+    if op == 0x01:
+        return 'At the start of every turn' if w(2) == 0xFFFF else f'At the start of turn {w(2) + 1}'
+    if op == 0x02:
+        ph = w(2)
+        return f'Turn {w(4)}' + (f", {army_names(ch).get(ph, 'army slot %d' % ph)}'s phase" if ph else '')
+    if op in (0x04, 0x16):
+        return f'{unit_label(w(2))} talks to {unit_label(w(4))}'
+    if op == 0x0C:
+        return f'{unit_label(w(2))} comes next to {unit_label(w(4))}'
+    if op == 0x0A:
+        return f'Someone visits {loc_label(ch, w(4))}'
+    if op == 0x0B:
+        return f'{unit_label(w(2))} reaches ({b[4]}, {b[5]})–({b[6]}, {b[7]})'
+    if op == 0x0D:
+        return f'{unit_label(w(4))} fights {unit_label(w(8))}'
+    if op == 0x0E:
+        return f'After {unit_label(w(4))} fights {unit_label(w(8))}'
+    if op == 0x1A:
+        return f'{unit_label(w(2))} dies'
+    if op == 0x07:
+        return f'{loc_label(ch, w(4))} is taken'
+    return f'A story event (condition {op:02X})'
+
+
+def chapter_lists(ch):
+    """{list: {list, when, line, start}}: when each deploy list of the chapter comes onto the map."""
+    p = need_project()
+    name = chapter_file(ch)
+    idx = story_index()
+    f = p.evt(name)
+    out = {}
+
+    def add(n, when, line, start=False):
+        out.setdefault(n, {'list': n, 'when': when, 'line': line, 'start': start})
+    for blk in f.blocks():
+        if blk['label'] == 'init':
+            for c in blk['cmds']:
+                for n in cmd_lists(c, idx):
+                    add(n, 'At the start of the chapter', None, True)
+    for cnd, steps in chapter_triggers(name):
+        for c in steps:
+            for n in cmd_lists(c, idx):
+                add(n, cond_words(cmd_bytes(cnd), ch), cnd['line'])
+    for blk in f.blocks():                      # the story events of the list's structured tail
+        for c in blk['cmds']:
+            for n in cmd_lists(c, idx):
+                add(n, 'During the chapter (a story event)', None)
+    return out
+
+
+def move_costs():
+    """Per movement type: the bytes the game reads as cost per terrain ($87:B394: row + terrain;
+    128 = can't enter).  Terrain types past 25 read on into the next row, as in the game."""
+    rom = rom_data()
+    if rom is None:
+        return []
+    B = 0x30000
+    w = lambda a: rom[a] | rom[a + 1] << 8  # noqa: E731
+    t = w(B + 0x8008)
+    out = []
+    for mt in range(16):
+        row = (w(B + 0x8000 + t + 2 * mt) + t + 0x8000) & 0xFFFF
+        out.append(list(rom[B + row:B + row + 64]))
+    return out
+
+
+def new_unit_ids():
+    """IDs of units the project adds (units_generic.csv and units_children.csv rows past the game's)."""
+    p = need_project()
+    cnt = L.unit_count(rom_data()) if rom_data() is not None else L.GAME_UNITS
+    out = []
+    for t in ('units_generic', 'units_children'):
+        tb = p.table(t)
+        for r in tb.rows if tb else []:
+            i = _num(r.get('index'), 0)
+            if i > cnt:
+                out.append(i)
+    return sorted(out)
+
+
+def new_units_left():
+    """How many more units fit: the old pointer table (1,138 bytes) and bank $83's tail
+    (2,108 bytes, which also holds the new table) -- see fe4lib.add_units."""
+    n = len(new_unit_ids())
+    low = 1138 // 13
+    for k in range(NEW_UNITS_MAX - n, -1, -1):
+        tot = n + k
+        high = max(0, tot - low)
+        if 2 * (L.RESERVED_IDS + tot) + 38 + 1 + 13 * high <= 2108 - 32 - 16 - 1:
+            return k
+    return 0
+
+
+def unit_in_events(cid):
+    """True when a chapter script names the unit in a condition or a gift."""
+    p = need_project()
+    for name in p.evt_files():
+        if name == 'scenes.evt':
+            continue
+        for blk in p.evt(name).blocks():
+            for c in blk['cmds']:
+                b = cmd_bytes(c)
+                w = lambda i: b[i] | b[i + 1] << 8 if i + 1 < len(b) else -1  # noqa: E731
+                pos = {0x04: (2, 4), 0x16: (2, 4), 0x0C: (2, 4), 0x0B: (2,), 0x0D: (4, 8), 0x0E: (4, 8),
+                       0x1A: (2,), 0x0F: (2,), 0x57: (1,)}.get(b[0] if b else -1, ())
+                if any(w(i) == cid for i in pos):
+                    return True
+    tk = p.table('talks')
+    return any(_num(r.get('to'), -1) == cid or _num(r.get('from'), -1) == cid for r in (tk.rows if tk else []))
+
+
+def _gen_norm(r):
+    return tuple(str(_num(r.get(k), 255 if k in ('item1', 'item2', 'item3', 'unk9') else 0)) for k in GEN_FIELDS)
+
+
+def generic_for(spec, deploy_rows, ops):
+    """The char ID of a generic record with exactly these fields: an existing one, a new record the
+    project added that nothing uses any more (rewritten), or a new one.  Adds the ops it needs."""
+    p = need_project()
+    gt = p.table('units_generic')
+    want = _gen_norm(spec)
+    for r in gt.rows:
+        if _gen_norm(r) == want:
+            return _num(r['index'])
+    used = {_num(r.get('char_id'), -1) for r in deploy_rows}
+    cnt = L.unit_count(rom_data()) if rom_data() is not None else L.GAME_UNITS
+    cls = p.table('classes')
+    items = p.table('items')
+    cname = lambda k: cls.rows[k]['_name'] if cls and 0 <= k < len(cls.rows) else ''  # noqa: E731
+    iname = lambda k: items.rows[k]['_name'] if items and 0 <= k < len(items.rows) else ''  # noqa: E731
+    label = {'_class_name': cname(_num(spec['class'])),
+             '_items': ' / '.join(x for x in (iname(_num(spec.get(f), 255)) for f in ('item1', 'item2', 'item3')) if x)}
+    gname = next((r.get('_name') for r in gt.rows if r.get('name_id') == str(_num(spec.get('name_id')))), '')
+    for i, r in enumerate(gt.rows):
+        cid = _num(r['index'])
+        if cid > cnt and cid not in used and cid not in ops.get('_made', ()) and not unit_in_events(cid):
+            for k, v in zip(GEN_FIELDS, want):
+                if r.get(k, '') != v:
+                    ops['list'].append(('cell', 'units_generic', i, k, r.get(k, ''), v))
+            for k, v in list(label.items()) + [('_name', gname)]:
+                if k in gt.fields and r.get(k, '') != v:
+                    ops['list'].append(('cell', 'units_generic', i, k, r.get(k, ''), v))
+            ops.setdefault('_made', set()).add(cid)
+            ops.setdefault('_labels', {})[cid] = gname
+            return cid
+    if new_units_left() <= len(ops.get('_new', [])):
+        raise ValueError('There is no room for another kind of unit: the game\'s unit table is full. '
+                         'Give this unit the same class, level and weapons as one already on a map.')
+    ids = new_unit_ids() + ops.get('_new', [])
+    cid = (max(ids) + 1) if ids else L.first_new_id(rom_data())
+    row = {f_: '' for f_ in gt.fields}
+    row.update(dict(zip(GEN_FIELDS, want)))
+    row.update({'index': str(cid), 'char_id': str(cid), '_name': gname, **{k: v for k, v in label.items() if k in gt.fields}})
+    ops['list'].append(('rows', 'units_generic', len(gt.rows) + len(ops.get('_new', [])), [], [row]))
+    ops.setdefault('_labels', {})[cid] = gname
+    ops.setdefault('_new', []).append(cid)
+    ops.setdefault('_made', set()).add(cid)
+    return cid
+
+
+def _renumber(rows):
+    """Deploy rows ordered by list, with each list's entries numbered 0, 1, ... in their order."""
+    def key(r):
+        a, _, e = r['index'].partition('.')
+        return (_num(a), _num(e))
+    rows = sorted(rows, key=key)
+    seen = {}
+    for r in rows:
+        a = r['index'].partition('.')[0]
+        n = seen.get(a, 0)
+        seen[a] = n + 1
+        r['index'] = f'{a}.{n}'
+    return rows
+
+
+def free_list():
+    """A deploy list number nothing uses: no deploy entries, no script brings it in."""
+    p = need_project()
+    used = {_num(r['index'].partition('.')[0]) for r in p.table('deploy').rows}
+    for name in p.evt_files():
+        for line in p.evt(name).lines:
+            for m in re.finditer(r'deploy list (\d+)', line):
+                used.add(int(m.group(1)))
+    for n in range(L.DEPLOY_LISTS, L.DEPLOY_LISTS_MAX):
+        if n not in used:
+            return n
+    raise ValueError('All the deploy lists are used.')
+
+
+def scene_of(steps):
+    return next((cmd_bytes(c)[2] | cmd_bytes(c)[3] << 8 for c in steps if cmd_bytes(c)[:1] == b'\x30'), None)
+
+
+def add_cmds_to_scene(sid, cmds, ops):
+    """Commands after a scene's last wait for the player (YIELD), so they run once its dialogue is
+    over but before the commands that close it (some story scenes end with event calls that leave
+    the scene, so anything after them would never run); before END when it has no YIELD."""
+    sc = story_index()['scenes'].get(sid)
+    if sc is None:
+        raise KeyError(f'no scene {sid}')
+    cs = sc['block']['cmds']
+    end = next(i for i, c in enumerate(cs) if c['hex'] == 'FF FF')
+    ys = [i for i, c in enumerate(cs[:end]) if c['hex'] == 'FD']
+    at = cs[ys[-1] + 1]['line'] if ys else cs[end]['line']
+    ops['list'].append(('lines', 'scenes.evt', at, [], _plus('scenes.evt', cmds)))
+
+
+def prepend_to_scene(sid, cmds, ops):
+    """Commands at the very start of a scene (the first command keeps the scene's address)."""
+    sc = story_index()['scenes'].get(sid)
+    if sc is None:
+        raise KeyError(f'no scene {sid}')
+    first = sc['block']['cmds'][0]
+    f = need_project().evt('scenes.evt')
+    old = f.lines[first['line']]
+    lead = '%s: %-24s ; %s' % (first['addr'], cmds[0], _comment('scenes.evt', cmds[0]))
+    rest = _plus('scenes.evt', cmds[1:] + [first['hex']])
+    ops['list'].append(('lines', 'scenes.evt', first['line'], [old], [lead] + rest))
+
+
+def turn_cond(name, turn):
+    """`01 [flag] [turn word]`: the check the game makes as each turn starts ($81:AD08, mode $20, with
+    the turn number from before the turn goes up), so it fires at the start of turn n + 1 (verified:
+    `01 .. 02 00` brought its list in as turn 3 started).  The `02` turn condition is checked by an
+    army's phase task (mode 1) that didn't run in testing, so the editor doesn't write it."""
+    return _hx('01', '%02X' % free_flag(name), _w(turn - 1))
+
+
+def turn_scene(name, turn):
+    """The scene of an existing start-of-turn event for that turn, or None."""
+    for cnd, steps in chapter_triggers(name):
+        cb = cmd_bytes(cnd)
+        if cb[0] == 0x01 and len(cb) >= 4 and (cb[2] | cb[3] << 8) == turn - 1:
+            sid = scene_of(steps)
+            if sid is not None:
+                return sid
+    return None
+
+
+def first_trigger_ops(name, cmds, ops):
+    """New trigger lines at the start of the chapter's trigger list: on each check the VM runs the
+    first trigger that matches and skips the rest ($86:84ED), so one further down could lose to an
+    earlier one for good."""
+    f = need_project().evt(name)
+    blk = next((x for x in f.blocks() if x['label'].startswith('triggers')), None)
+    if blk is None or not blk['cmds']:
+        raise ValueError('This chapter has no trigger list.')
+    first = blk['cmds'][0]
+    lead = '%s: %-24s ; %s' % (first['addr'], cmds[0], _comment(name, cmds[0]))
+    ops['list'].append(('lines', name, first['line'], [f.lines[first['line']]],
+                        [lead] + _plus(name, cmds[1:] + [first['hex']])))
+    return first['line']
+
+
+def reinforce_ops(ch, lst, when, ops, say_who=None):
+    """The event that brings deploy list `lst` onto the map: {kind: 'turn', turn, slot} or
+    {kind: 'area', unit, x1, y1, x2, y2}.  Returns a description of when."""
+    p = need_project()
+    name = chapter_file(ch)
+    kind = when.get('kind')
+    deploy = '4A 4E %02X' % lst
+    msg_cmds = []
+    if say_who is not None:
+        msg = new_message_op(say(int(say_who), 'Write what is said here.'), f'{name[:4]} reinforcements', ops)
+        msg_cmds = ['12 F7 7F', '0C @' + msg, 'FD', '12 E8 00', 'FD']
+    if kind == 'turn':
+        turn = int(when['turn'])
+        if not 2 <= turn <= 99:
+            raise ValueError('Reinforcements arrive at the start of turn 2 to 99 (turn 1 is the chapter\'s start).')
+        sid = turn_scene(name, turn)
+        if sid is not None:                    # that turn already starts with an event: join its scene
+            add_cmds_to_scene(sid, msg_cmds + [deploy], ops)
+            return f'At the start of turn {turn}'
+        cond = turn_cond(name, turn)
+    elif kind == 'area':
+        unit = int(when.get('unit', 0xFFFF))
+        x1, y1, x2, y2 = (int(when[k]) for k in ('x1', 'y1', 'x2', 'y2'))
+        if not all(0 <= v < 64 for v in (x1, y1, x2, y2)):
+            raise ValueError('Corners are 0 to 63.')
+        cond = _hx('0B', '%02X' % free_flag(name), _w(unit),
+                   '%02X %02X %02X %02X' % (min(x1, x2), min(y1, y2), max(x1, x2), max(y1, y2)), 'FF')
+    else:
+        raise ValueError('Choose when the units arrive.')
+    sid = new_scene_ops(msg_cmds + [deploy, 'FF FF'], ops)
+    first_trigger_ops(name, [cond, '30 FF ' + _w(sid)], ops)
+    return cond_words(bytes(int(x, 16) for x in cond.split()), ch)
+
+
+def api_mapinfo(b, q):
+    """What the map's unit and event cards offer for a chapter."""
+    p = need_project()
+    ch = int(q.get('ch', ['0'])[0])
+    ct, it, gt = p.table('classes'), p.table('items'), p.table('units_generic')
+    ranks = ('sword', 'lance', 'axe', 'bow', 'staff', 'fire', 'thunder', 'wind', 'light', 'dark')   # weapon_type order
+    classes = [{'id': _num(r['index']), 'name': r.get('_name', ''), 'move': _num(r.get('move')),
+                'group': _num(r.get('group')), 'flier': _num(r.get('flier')),
+                'ranks': [(r.get('rank_' + k) or '-').strip() for k in ranks]} for r in (ct.rows if ct else [])]
+    items = [{'id': _num(r['index']), 'name': r.get('_name', ''), 'type': _num(r.get('weapon_type'), 255),
+              'cat': _num(r.get('category')), 'min': _num(r.get('min_range')), 'max': _num(r.get('max_range')),
+              'rank': (r.get('rank') or '').strip()}
+             for r in (it.rows if it else [])]
+    gnames, name_of = {}, {}
+    for r in gt.rows if gt else []:
+        nm = r.get('_name') or ''
+        if nm and r.get('name_id', '').isdigit():
+            gnames.setdefault(nm, int(r['name_id']))
+            name_of[r['name_id']] = nm
+    lists = chapter_lists(ch)
+    counts = {}
+    for i, r, lst, ent, sure in chapter_deploy(ch):
+        counts[lst] = counts.get(lst, 0) + 1
+        lists.setdefault(lst, {'list': lst, 'when': 'Not brought in by this chapter\'s script', 'line': None, 'start': False})
+    for k, v in lists.items():
+        v['units'] = counts.get(k, 0)
+    share = {}
+    for r in p.table('deploy').rows:
+        cid = _num(r.get('char_id'), -1)
+        share[cid] = share.get(cid, 0) + 1
+    return {'ch': ch, 'classes': classes, 'items': items,
+            'names': sorted([[k, v] for k, v in gnames.items()], key=lambda x: x[0].lower()), 'nameOf': name_of,
+            'armies': [[k, v] for k, v in sorted(army_names(ch).items())],
+            'lists': [lists[k] for k in sorted(lists)], 'costs': move_costs(),
+            'newUnitsLeft': new_units_left(), 'spareScenes': len(spare_scenes()), 'shared': share,
+            'lord': LORDS[1] if ch >= 6 else LORDS[0]}
+
+
+def api_unitshare(b, q):
+    """Every deploy entry that uses one unit record: [{ch, title, list, entry, x, y, row}]."""
+    p = need_project()
+    cid = int(q.get('cid', ['0'])[0])
+    dch = deploy_chapters(os.path.join(p.path, 'events'))
+    out = []
+    for i, r in enumerate(p.table('deploy').rows):
+        if _num(r.get('char_id'), -1) == cid:
+            lst, _, ent = r['index'].partition('.')
+            c = dch.get(_num(lst))
+            out.append({'row': i, 'list': _num(lst), 'entry': _num(ent), 'x': r.get('x'), 'y': r.get('y'),
+                        'ch': c, 'title': (CHAPTER_TITLES[c].split(':')[0] if c is not None and c < len(CHAPTER_TITLES) else 'another chapter')})
+    return {'uses': out, 'inEvents': unit_in_events(cid)}
+
+
+def _gen_spec(src, base=None):
+    """A generic record's fields from a card ({class, level, items, name_id, portrait}), defaults from base."""
+    base = base or {}
+    spec = {k: base.get(k, '') for k in GEN_FIELDS}
+    if not base:
+        spec.update({'unk6': '255', 'authority': '0', 'unk9': '255', 'portrait': str(fe4gfx.NO_PORTRAIT)})
+    for k in ('class', 'level', 'name_id', 'portrait'):
+        if src.get(k) not in (None, ''):
+            spec[k] = str(int(src[k]))
+    its = list(src.get('items') or [])
+    if 'items' in src:
+        its = [int(x) for x in its if str(x) not in ('', '255')][:3]
+        for k, v in zip(('item1', 'item2', 'item3'), its + [255, 255, 255]):
+            spec[k] = str(v)
+    if not str(spec['name_id']).strip().isdigit():
+        raise ValueError('Choose the name the unit shows.')
+    lv = _num(spec['level'], 1)
+    if not 1 <= lv <= 30:
+        raise ValueError('Level is 1 to 30.')
+    return spec
+
+
+def api_mapunit(b, q):
+    """Place, change, copy or remove units on a chapter's map, as one undo step.
+    {op: 'add', ch, x, y, list | 'new', when?, slot, orders, leader, char_id | generic}
+    {op: 'edit', row, x?, y?, slot?, orders?, leader?, list?, char_id?, generic?, scope: 'one' | 'all'}
+    {op: 'remove', rows}   {op: 'paste', ch, list, units: [{char_id, x, y, slot, orders, leader}]}"""
+    p = need_project()
+    dt, gt = p.table('deploy'), p.table('units_generic')
+    old = [dict(r) for r in dt.rows]
+    rows = [dict(r) for r in dt.rows]
+    ops = {'list': []}
+    op = b.get('op')
+    m = None
+    note = ''
+    units = unit_lookup()
+
+    def check_xy(ch, x, y):
+        ax, ay, aw, ah = map_area(ch)
+        if not (ax <= x < ax + aw and ay <= y < ay + ah):
+            raise ValueError(f'Keep it on the map: x {ax}–{ax + aw - 1}, y {ay}–{ay + ah - 1}.')
+
+    def generic(cid):
+        return cid in ops.get('_made', ()) or units.get(cid, (None,))[0] == 'units_generic'
+
+    def entry(lst, cid, x, y, slot, orders, leader):
+        if int(slot) == 0 and generic(cid):
+            raise ValueError('Units in your army come from its members (Armies page); a deploy list only places them. '
+                             'Put this unit in another army.')
+        return {'index': f'{lst}.9999', '_name': ops.get('_labels', {}).get(cid) or unit_label(cid), 'char_id': str(cid), 'x': str(int(x)), 'y': str(int(y)),
+                'leader_flag': '1' if leader else '0', 'orders': str(int(orders or 0)), 'army_slot': str(int(slot)), 'slot': '0'}
+
+    def unit_of(src):
+        if src.get('char_id') not in (None, ''):
+            cid = int(src['char_id'])
+            if cid not in units and cid not in ops.get('_made', ()):
+                raise ValueError(f'There is no unit {cid}.')
+            return cid
+        return generic_for(_gen_spec(src['generic']), rows, ops)
+
+    if op in ('add', 'paste', 'pastemany'):
+        ch = int(b['ch'])
+        groups = b['groups'] if op == 'pastemany' else [{'list': b.get('list'), 'units': b['units'] if op == 'paste' else [b]}]
+        made = []
+        for g in groups:
+            lst = g.get('list')
+            if lst == 'new':
+                lst = free_list()
+                note = reinforce_ops(ch, lst, b.get('when') or {}, ops, b.get('sayWho'))
+            lst = int(lst)
+            if not 0 <= lst < L.DEPLOY_LISTS_MAX:
+                raise ValueError('Choose when the unit arrives.')
+            for s in g['units']:
+                x, y = int(s['x']), int(s['y'])
+                check_xy(ch, x, y)
+                cid = unit_of(s)
+                e = entry(lst, cid, x, y, s.get('slot', 1), s.get('orders', 0), s.get('leader'))
+                rows.append(e)
+                made.append(e)
+        rows = _renumber(rows)
+        m = [rows.index(e) for e in made]
+    elif op == 'editmany':
+        moved = []
+        for ed in b.get('edits', []):
+            r = rows[int(ed['row'])]
+            if 'slot' in ed:
+                if int(ed['slot']) == 0 and generic(_num(r['char_id'])):
+                    raise ValueError('Generic units can\'t be in your army (the game only places your army\'s own members).')
+                r['army_slot'] = str(int(ed['slot']))
+            if 'orders' in ed:
+                r['orders'] = str(int(ed['orders']))
+            if 'x' in ed or 'y' in ed:
+                x, y = int(ed.get('x', r['x'])), int(ed.get('y', r['y']))
+                check_xy(int(b['ch']), x, y)
+                r['x'], r['y'] = str(x), str(y)
+            if 'list' in ed and str(ed['list']) != r['index'].partition('.')[0]:
+                r['index'] = f"{int(ed['list'])}.9999"
+            moved.append(r)
+        rows = _renumber(rows)
+        m = [rows.index(r) for r in moved]
+    elif op == 'edit':
+        i = int(b['row'])
+        r = rows[i]
+        cid = _num(r['char_id'], -1)
+        t, ur = units.get(cid, (None, None))
+        if 'generic' in b:
+            if t != 'units_generic':
+                raise ValueError('Only generic units take a class and level here; named units are on the Characters page.')
+            spec = _gen_spec(b['generic'], {k: ur.get(k, '') for k in GEN_FIELDS})
+            if b.get('scope') == 'all':
+                gi = gt.rows.index(ur)
+                for k in GEN_FIELDS:
+                    if ur.get(k, '') != spec[k]:
+                        ops['list'].append(('cell', 'units_generic', gi, k, ur.get(k, ''), spec[k]))
+                cls = p.table('classes')
+                if cls and 0 <= _num(spec['class']) < len(cls.rows) and '_class_name' in gt.fields:
+                    ops['list'].append(('cell', 'units_generic', gi, '_class_name', ur.get('_class_name', ''), cls.rows[_num(spec['class'])]['_name']))
+            else:
+                others = [x for x in rows if x is not r]
+                r['char_id'] = str(generic_for(spec, others, ops))
+        elif b.get('char_id') not in (None, ''):
+            r['char_id'] = str(unit_of(b))
+        if 'x' in b or 'y' in b:
+            x, y = int(b.get('x', r['x'])), int(b.get('y', r['y']))
+            if 'ch' in b:
+                check_xy(int(b['ch']), x, y)
+            r['x'], r['y'] = str(x), str(y)
+        for k, f_ in (('slot', 'army_slot'), ('orders', 'orders')):
+            if k in b:
+                r[f_] = str(int(b[k]))
+        if 'leader' in b:
+            r['leader_flag'] = '1' if b['leader'] else '0'
+        if int(r['army_slot']) == 0 and generic(_num(r['char_id'])):
+            raise ValueError('Generic units can\'t be in your army (the game only places your army\'s own members).')
+        r['_name'] = ops.get('_labels', {}).get(_num(r['char_id'])) or unit_label(_num(r['char_id']))
+        if 'list' in b and str(b['list']) != r['index'].partition('.')[0]:
+            r['index'] = f"{int(b['list'])}.9999"
+        rows = _renumber(rows)
+        m = [rows.index(r)]
+    elif op == 'remove':
+        gone = {int(i) for i in b.get('rows', [])}
+        rows = _renumber([r for i, r in enumerate(rows) if i not in gone])
+        m = []
+    else:
+        raise ValueError(f'unknown map unit action {op}')
+    if rows != old:
+        ops['list'].insert(0, ('rows', 'deploy', 0, old, rows))
+    if ops['list']:
+        p.edit(ops['list'])
+    return {'ok': True, 'rows': m, 'note': note, 'new': ops.get('_new', [])}
 
 
 
@@ -4723,7 +5418,7 @@ API = {('GET', 'session'): api_session, ('POST', 'ping'): api_ping, ('GET', 'tab
        ('GET', 'chapters'): api_chapters, ('GET', 'scene'): api_scene, ('POST', 'messages'): api_messages,
        ('POST', 'msg'): api_msg, ('POST', 'evtcmd'): api_evtcmd, ('GET', 'dsearch'): api_dsearch, ('GET', 'villages'): api_villages, ('GET', 'itemuse'): api_itemuse, ('POST', 'newevent'): api_newevent, ('POST', 'talkmenu'): api_talkmenu, ('POST', 'delstep'): api_delstep,
        ('POST', 'addstep'): api_addstep, ('GET', 'eventinfo'): api_eventinfo, ('GET', 'maps'): api_maps, ('GET', 'map'): api_map, ('POST', 'paint'): api_paint,
-       ('GET', 'armies'): api_armies, ('GET', 'portraits'): api_portraits, ('GET', 'mapsprites'): api_mapsprites, ('GET', 'skills'): api_skills, ('POST', 'gen2check'): api_gen2check, ('POST', 'newchild'): api_newchild, ('POST', 'skillcheck'): api_skillcheck, ('POST', 'skilledit'): api_skilledit, ('POST', 'spriteentry'): api_spriteentry, ('GET', 'tileinfo'): api_tileinfo, ('POST', 'tiledraw'): api_tiledraw, ('POST', 'mapsprite'): api_mapsprite, ('POST', 'mapwalk'): api_mapwalk, ('GET', 'mapbattle'): api_mapbattle, ('GET', 'mbplayer'): api_mbplayer, ('GET', 'mapspells'): api_mapspells, ('POST', 'mapspellset'): api_mapspellset, ('POST', 'mapspellsheet'): api_mapspellsheet, ('POST', 'mapspellbg'): api_mapspellbg, ('POST', 'mapspellcolour'): api_mapspellcolour, ('POST', 'mapspellpreview'): api_mapspellpreview, ('POST', 'mapbattleset'): api_mapbattleset, ('POST', 'mapbattlesheet'): api_mapbattlesheet, ('POST', 'mapbattlepreview'): api_mapbattlepreview, ('POST', 'portrait'): api_portrait, ('POST', 'aicmd'): api_aicmd, ('POST', 'airecipe'): api_airecipe, ('GET', 'music'): api_music, ('POST', 'musicfile'): api_musicfile,
+       ('GET', 'armies'): api_armies, ('GET', 'portraits'): api_portraits, ('GET', 'mapsprites'): api_mapsprites, ('GET', 'skills'): api_skills, ('POST', 'gen2check'): api_gen2check, ('POST', 'newchild'): api_newchild, ('GET', 'mapinfo'): api_mapinfo, ('GET', 'unitshare'): api_unitshare, ('POST', 'mapunit'): api_mapunit, ('POST', 'testchapter'): api_testchapter, ('POST', 'skillcheck'): api_skillcheck, ('POST', 'skilledit'): api_skilledit, ('POST', 'spriteentry'): api_spriteentry, ('GET', 'tileinfo'): api_tileinfo, ('POST', 'tiledraw'): api_tiledraw, ('POST', 'mapsprite'): api_mapsprite, ('POST', 'mapwalk'): api_mapwalk, ('GET', 'mapbattle'): api_mapbattle, ('GET', 'mbplayer'): api_mbplayer, ('GET', 'mapspells'): api_mapspells, ('POST', 'mapspellset'): api_mapspellset, ('POST', 'mapspellsheet'): api_mapspellsheet, ('POST', 'mapspellbg'): api_mapspellbg, ('POST', 'mapspellcolour'): api_mapspellcolour, ('POST', 'mapspellpreview'): api_mapspellpreview, ('POST', 'mapbattleset'): api_mapbattleset, ('POST', 'mapbattlesheet'): api_mapbattlesheet, ('POST', 'mapbattlepreview'): api_mapbattlepreview, ('POST', 'portrait'): api_portrait, ('POST', 'aicmd'): api_aicmd, ('POST', 'airecipe'): api_airecipe, ('GET', 'music'): api_music, ('POST', 'musicfile'): api_musicfile,
        ('GET', 'title'): api_title, ('POST', 'titleset'): api_title_set,
        ('POST', 'skillicon'): api_skillicon,
        ('GET', 'tileset'): api_tileset, ('POST', 'tilesetset'): api_tileset_set, ('POST', 'mapsize'): api_mapsize}
