@@ -63,7 +63,7 @@ SECTIONS = [
         ('Randomizer', ':rando'),
     ]),
 ]
-ADDABLE = {'units_generic', 'units_children', 'deploy'}
+ADDABLE = {'units_generic', 'units_children', 'units_playable', 'deploy'}
 
 HELP = {
     'units_playable': 'Gen-1 characters and the gen-2 substitutes. Stats are bonuses on top of the class; hp and lck are absolute.',
@@ -348,7 +348,7 @@ class TablePage(ttk.Frame):
         n = max(ids) + 1 if ids else 1
         p = self.app.project
         allids = []
-        for t in ('units_generic', 'units_children'):
+        for t in ('units_generic', 'units_children', 'units_playable'):
             tt = p.table(t)
             if tt:
                 allids += [int(r['index']) for r in tt.rows if r['index'].isdigit()]

@@ -23,6 +23,7 @@ import fe4sprites as SPR
 import fe4walk as WK
 import fe4music as MU
 import fe4title as TITLE
+import fe4chaptitle as CT
 import fe4mapbattle as MBT
 import fe4mapfx as MFX
 import fe4battle as BA
@@ -130,7 +131,7 @@ def _put_fields(rec, fields, row, path, line, tname=None):
             raise SystemExit(f'{path}:{line}: column {col!r}: {e}')
 
 
-NEW_UNIT_FILES = (('units_generic', 3), ('units_children', 1))
+NEW_UNIT_FILES = (('units_generic', 3), ('units_children', 1), ('units_playable', 0))
 
 
 def _free_name_ids(rom):
@@ -144,7 +145,8 @@ def _free_name_ids(rom):
 
 
 def _add_units(rom, proj, space):
-    """New rows in units_generic.csv / units_children.csv (IDs after the last unit) become new units.
+    """New rows in units_generic.csv / units_children.csv / units_playable.csv (IDs after the last unit)
+    become new units.
     Returns the set of new IDs."""
     first = L.first_new_id(rom)
     cnt = L.unit_count(rom)
@@ -171,7 +173,7 @@ def _add_units(rom, proj, space):
         print(f'note: new units {ids[0]}-{ids[-1]} share their ids with dialogue speakers 570-768 '
               f'(their portraits); numbering new units from {L.RESERVED_IDS + 1} avoids that')
     if ids != list(range(first, first + len(ids))):
-        raise SystemExit(f'new units (in units_generic.csv and units_children.csv together) must use IDs '
+        raise SystemExit(f'new units (in units_generic.csv, units_children.csv and units_playable.csv together) must use IDs '
                          f'{first}, {first + 1}, ... with no gaps (got {ids}); 570-768 are the game\'s '
                          f'dialogue speakers')
     addrs = L.add_units(rom, [new[i] for i in ids], space, reserve=not legacy)
@@ -308,7 +310,7 @@ def apply_project(rom, proj, space=None, far=None):
             for line, row in enumerate(csv.DictReader(f), start=2):
                 key = row['index'].strip()
                 if key not in rows:
-                    raise SystemExit(f'{path}:{line}: unknown index {key!r} (only units_generic.csv, units_children.csv and deploy.csv can gain rows)')
+                    raise SystemExit(f'{path}:{line}: unknown index {key!r} (only units_generic.csv, units_children.csv, units_playable.csv and deploy.csv can gain rows)')
                 a, size = rows[key]
                 if int(key) in added:                  # new unit: blank cells keep the defaults
                     row = {k: v for k, v in row.items() if (v or '').strip() != ''}
@@ -406,6 +408,7 @@ def build(rom_path, proj, out_path, ips=None, hover=False, msu=False):
     n += MP.apply_sizes(rom, proj)                    # last: the others compare sizes with the ROM's
     n += GFX.apply_portraits(rom, os.path.join(proj, 'portraits'), far)
     n += TITLE.apply(rom, proj, far, space)
+    n += CT.apply(rom, proj, far, space)
     n += SPR.apply(rom, proj, space)
     n += WK.apply(rom, proj, far)
     n += MBT.apply(rom, proj, far, 72)

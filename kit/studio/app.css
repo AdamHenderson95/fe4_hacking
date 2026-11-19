@@ -835,3 +835,14 @@ textarea.fe4box.bad { border-color: #E1606F; }
 .mtileset-dlg.loading .btn { pointer-events: none; opacity: .55; }
 .mcard .mcard-warn { color: var(--blood); margin: 4px 0 0; }
 .mcard .mcard-warn:empty { display: none; }
+.msite.ends > span { background: #B8862B; color: #1E2443; }
+.mtitle-cv { display: block; width: 100%; max-width: 512px; aspect-ratio: 512 / 112; image-rendering: pixelated; border-radius: 6px; margin: 0 auto 12px; background: #100808; }
+.mcard-wide .mcard-box { width: min(760px, calc(100vw - 32px)); }
+.opsteps { margin: 0 0 12px; padding: 0 0 0 22px; max-height: 260px; overflow: auto; }
+.opstep { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 3px 0; border-bottom: 1px solid var(--line, #0001); }
+.opstep.game > span:first-child { color: var(--muted, #776); font-style: italic; }
+.opstep-btns { display: flex; gap: 2px; flex: none; }
+.opadd { display: grid; gap: 6px; margin-bottom: 10px; }
+.opadd-row { display: flex; gap: 8px; align-items: end; flex-wrap: wrap; }
+.opadd-row .lbl { flex: 1 1 140px; margin: 0; }
+.opadd-row textarea { width: 100%; }

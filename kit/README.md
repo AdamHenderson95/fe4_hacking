@@ -1,9 +1,11 @@
 # fe4kit: FE4 hacking toolkit (Project Naga ROM)
 
-**Builder of the Holy War 1.1** (1.0 was the first public release; test
+**Builder of the Holy War 1.2** (1.0 was the first public release; test
 builds were numbered up to v57, and the "kit vNN" notes below refer to those).
-1.1 adds right-click cards on the Maps page for placing units, reinforcements
-and events, danger zones, and testing a chapter in the PC port. Free software
+1.1 added right-click cards on the Maps page for placing units, reinforcements
+and events, danger zones, and testing a chapter in the PC port. 1.2 adds what
+a whole new chapter needs: its win condition, title card, opening scene,
+castles and villages, new armies and new first-generation characters. Free software
 under the MIT license (`licenses/`).
 
 Make hacks and randomized games of Fire Emblem: Genealogy of the Holy War
@@ -22,7 +24,9 @@ default browser). The editor runs on your PC only: nothing is sent anywhere.
    a name; the editor reads the whole game into that project folder. Open
    an existing project with **Open a project folder…** or from **Recent**.
 2. **Characters** shows every unit as a portrait (read from your ROM). Pick
-   one to open their sheet, laid out like the game's status screen:
+   one to open their sheet, laid out like the game's status screen
+   (**+ New character** adds a first-generation character, 1.2: see "Adding
+   new things"):
    - name, class, level, gender, leadership stars and gold;
    - **Fighting skill**: each stat's total (the class base plus the unit's
      own value) with a bar, the unit's own value and its growth;
@@ -117,7 +121,38 @@ default browser). The editor runs on your PC only: nothing is sent anywhere.
        panel). Movement follows the game's own terrain costs per movement type
        (roads count half); units in the way and skills aren't counted, so it's
        a guide.
+     - **Add a castle here…** / **Add a village here…** on an empty cell, and
+       **Remove this castle/village** on one (1.2; also in the castle's
+       panel). A new castle gets a name from the game's list and an army that
+       holds it; either kind can copy the map tiles of one of the chapter's
+       own castles or villages so it looks right at once. Up to 16 per
+       chapter. They are numbered without gaps, so removing one that isn't
+       the last gives the last one its number, and that one's events, army
+       and enemy orders follow. The removed one's own events stop playing.
      - Everything is one undo step (Ctrl+Z).
+   - **★ Win condition…** (1.2, also on the right-click menu and a castle's
+     panel): the chapter ends when you take a castle (any of its castles) or
+     when a turn starts (survive until turn N). The chapter's own ending
+     scene still plays, then the Save Game screen and the next chapter. A
+     castle's label shows ★ when taking it wins. Chapter 2 ends through its
+     story sequence and can't be changed here.
+   - **Chapter title…** (1.2): the title card shown as the chapter starts
+     ("Prologue / Birth of a Crusader") is a picture Project Naga drew. Type a
+     new title (up to 30 letters); the editor draws it in a font from your
+     computer styled like the game's (light letters with a black outline) and
+     shows the card as the game will. Font, size and width can be changed.
+     The title is also written into the game's text (the chapter name the
+     save screen and the end-of-game record show). The chapter list on the
+     Maps page shows it too.
+   - **Opening scene…** (1.2): what plays when the chapter starts, as steps:
+     **Music**, **Camera** (the cell to look at), **Units arrive** (a group
+     of units, as the Maps page shows them), **Conversation** (two people,
+     their portraits over the map: one line each, `2:` at the start of the
+     second person's lines), **Pause** and **Fade music**. Either the steps
+     *are* the opening (the game's own story animations are left out; its
+     map set-up is always kept), or the game's opening plays and then your
+     steps. Keep the game's "Units arrive" steps, or its enemies never
+     appear.
    - **▶ Test this chapter** builds the game and opens the PC port with New
      Game going straight to the chapter on screen (see "Testing a chapter"
      below for how each chapter is reached).
@@ -239,7 +274,8 @@ default browser). The editor runs on your PC only: nothing is sent anywhere.
    - **Arena**: the seven opponents per chapter for melee and ranged
      fighters, with each opponent's class and level.
 9. **Armies & AI**, per chapter: the armies the chapter sets up, by slot
-   (slot 0 is yours).
+   (slot 0 is yours). **+ New army** (1.2) adds one in the chapter's next free
+   slot, working like an army you pick (side, colour, AI programs).
    - **The army**: its name on the map, the castles it holds and its
      members (units that join when it's set up).
    - **What its units do**: each AI program in words (*Seize Jungby*,
@@ -767,7 +803,16 @@ Same-army talks need both; the editor's **+ New event** writes both.
   - Shops can be longer than the original; extra space comes from free space
     in the same ROM bank (about 300–2,500 bytes per chapter group).
 - **Village gold** only changes the first-visit payout. Brigands still loot it as normal.
-- **Limits:** rows can't be added yet, and a castle can't become a village.
+- **New and removed rows (1.2):** add a row with the chapter's next index to
+  add a castle or village; leave out the last ones to remove them. Indexes
+  must run 0, 1, 2, … without gaps (16 at most). A chapter whose list changes
+  gets a new list and new records in its info block's bank. The Maps page's
+  right-click menu does this for you, renumbers what refers to the places,
+  and copies map tiles. A new castle belongs to whichever army lists it in
+  `armies.csv`'s `castles`.
+- **Verified (1.2):** a village and a castle added to the Prologue: the new
+  village got its gold (brigands raided it too) and the chapter played two
+  full turns.
 
 ### What a village gives besides gold
 
@@ -1199,6 +1244,31 @@ chapter records), to check a hack's ending, its text and its music.
   `events/dialogue.txt`.
 
 ## Adding new things
+
+**New first-generation characters (1.2).** The game keeps 24 places for
+characters (`slot` in `units_playable.csv`), one per first-generation character
+and shared with a second-generation child or stand-in, and every place is
+used. A new character takes the place of someone your story leaves out: add a
+row to `units_playable.csv` with the next new unit number and that person's
+`slot` (the **+ New character** button on the Characters page copies their row
+and gives it a free name). Their love, children and stand-in rules come with
+the place, so don't have both in your army. "In Sigurd's army from the
+Prologue" also swaps them into Sigurd's army and the Prologue's opening group.
+Verified: a new Cavalier in Arden's place started in Sigurd's army and played
+two turns. Like new children, the name can be blank in unit lists that have
+no room left for drawn names.
+
+**New armies (1.2).** Rows in `armies.csv` past army 71 are new armies: `name`
+(a castle name), `unk1`/`unk2` (copy them from an army on the same side) and
+`orders_like` (an existing army whose AI programs it uses; they are shared,
+so changing one changes both). The build moves the army table to free space
+and points the game's lookup (`$86:C55A`) at it. A chapter uses an army when
+its opening sets it into a slot: `4B slot army`, its relations to the other
+slots (`4D 01 a b` enemies, `4D 02 a b` allies) and `50 slot 00 00 00 00`.
+The **+ New army** button on the Armies & AI page writes all of that (the new
+army gets the relations of the army it copies and is allied with it). Then
+place units in it on the Maps page. Verified: units in a new army in the
+Prologue through two turns.
 
 **New enemies in a chapter.** Add rows to `deploy.csv` with the next entry
 number in a list, e.g. `0.34` and `0.35` after the Prologue's `0.33`.

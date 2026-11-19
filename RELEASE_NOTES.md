@@ -1,3 +1,33 @@
+# Builder of the Holy War 1.2
+
+Everything a brand-new chapter needs, from the **Maps** page and its right-click menu. Each change is one
+Ctrl+Z. The PC port is unchanged (1.0.1).
+
+- **★ Win condition:** the chapter ends when you take a castle you pick, or when a turn starts ("survive
+  until turn 8"). The chapter's own ending scene, the Save Game screen and the next chapter follow as before.
+  Castles that win show a ★.
+- **Chapter title:** type a new title and the editor draws the title card in the game's style (light letters,
+  black outline), with a preview of the card. The name in the game's text changes too.
+- **Opening scene:** build what plays when the chapter starts from simple steps: music, camera, units
+  arrive, a conversation over the map, a pause, fade the music. Replace the game's opening (its map set-up is
+  kept) or play your steps after it.
+- **Add and remove castles and villages:** right-click an empty cell. A new one can copy the map tiles of one
+  of the chapter's own; a castle gets a name and the army that holds it. Removing one keeps the numbering in
+  order and moves events, armies and enemy orders along with it.
+- **New first-generation characters:** **+ New character** on the Characters page. The game has 24
+  character places and all are used, so a new character takes the place of someone your story leaves out
+  (their love and children rules come with it). It can start in Sigurd's army instead of them.
+- **New armies:** **+ New army** on the Armies & AI page adds an army to the chapter in the next free slot,
+  working like one you pick (side, relations, AI programs).
+- **Fix:** new things written to free space never start at an address ending in `0000` (the game reads that
+  as "nothing" in places).
+- The step-by-step guide "Your first chapter" now uses all of these.
+
+Download **BuilderOfTheHolyWar-1.2.zip** and replace your old editor folder's files with it; your projects
+are kept.
+
+---
+
 # Builder of the Holy War 1.1
 
 Placing units and making events on a map now happen right on the **Maps** page, in small pop-up cards.

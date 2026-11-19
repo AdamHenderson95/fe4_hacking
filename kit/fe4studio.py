@@ -44,6 +44,7 @@ import fe4mapfx                    # noqa: E402
 import fe4maptiles                 # noqa: E402
 import fe4mapset                  # noqa: E402
 import fe4title                    # noqa: E402
+import fe4chaptitle                 # noqa: E402
 import fe4skillmenu                # noqa: E402
 import fe4music                    # noqa: E402
 import fe4battle                  # noqa: E402
@@ -52,7 +53,7 @@ import fe4skillanim                # noqa: E402
 from fe4project import Project, load_settings, save_settings   # noqa: E402
 
 APP = 'Builder of the Holy War'
-VERSION = '1.1'
+VERSION = '1.2'
 STATIC = os.path.join(KIT, 'studio')
 
 # ---------------------------------------------------------------- state
@@ -380,6 +381,52 @@ def api_title_set(b, q):
     note = fe4title.converted(p.path, name, data)[1]       # ValueError: the reason it doesn't fit
     p.set_blob(rel, data)
     return {'ok': True, 'note': note}
+
+
+def chaptitle_data():
+    p = project()
+    blob = p.blob(fe4chaptitle.FILE).data if p else None
+    return fe4chaptitle.parse(blob)
+
+
+def api_chaptitle(b, q):
+    """A chapter's title card: the game's label and title pictures, the project's new title."""
+    rom = rom_data()
+    if rom is None:
+        raise ValueError('Open a ROM first.')
+    if not fe4chaptitle.known(rom):
+        raise ValueError("This ROM's chapter title card is not the one the editor knows.")
+    ch = int(q.get('ch', ['0'])[0])
+    out = fe4chaptitle.info(rom, chaptitle_data(), ch)
+    out.update(out.pop('chapters')[0])
+    return out
+
+
+def api_chaptitle_set(b, q):
+    """{ch, text, px} (px: 256x24 colour numbers 0-8 as a string), or {ch, reset: true}.  One undo step."""
+    p = need_project()
+    rom = rom_data()
+    ch = int(b.get('ch', -1))
+    if not 0 <= ch < fe4chaptitle.CHAPTERS:
+        raise ValueError('No such chapter.')
+    data = chaptitle_data()
+    if b.get('reset'):
+        data.pop(ch, None)
+    else:
+        text = ' '.join(str(b.get('text', '')).split())
+        if not text:
+            raise ValueError('Type the title first.')
+        if len(text) > fe4chaptitle.TEXT_MAX:
+            raise ValueError(f'Titles can be at most {fe4chaptitle.TEXT_MAX} letters long.')
+        fe4chaptitle.encode(text)                              # ValueError: a letter the game lacks
+        px = str(b.get('px', ''))
+        sheet, mp = fe4chaptitle.read(rom)
+        fe4chaptitle.build_card(sheet, mp, ch, px)              # ValueError: doesn't fit
+        data[ch] = {'text': text, 'px': px}
+        if b.get('look'):
+            data[ch]['look'] = {k: b['look'][k] for k in ('font', 'size', 'width') if k in b['look']}
+    p.set_blob(fe4chaptitle.FILE, fe4chaptitle.dump(data))
+    return {'ok': True}
 
 
 def title_image(which, src, scale):
@@ -2542,6 +2589,16 @@ def api_quit(b, q):
     return {'ok': True}
 
 # ---------------------------------------------------------------- maps
+def chapter_title(ch):
+    """'Chapter 3: <title>' with the project's own title when it has one."""
+    t = CHAPTER_TITLES[ch]
+    try:
+        own = chaptitle_data().get(ch, {}).get('text')
+    except Exception:
+        own = None
+    return t.split(':')[0] + ': ' + own if own else t
+
+
 CHAPTER_TITLES = ['Prologue: Birth of a Crusader', "Chapter 1: The Spirit Forest's Maiden", 'Chapter 2: Crisis in Agustria',
                   'Chapter 3: Eldigan the Lionheart', 'Chapter 4: Dance in the Skies', 'Chapter 5: Threshold of Fate',
                   'Chapter 6: Heirs to the Light', 'Chapter 7: Beyond the Desert',
@@ -2609,7 +2666,7 @@ def api_maps(b, q):
     out = []
     for f in p.map_files():
         ch = int(f[2:4])
-        out.append({'ch': ch, 'file': f, 'title': CHAPTER_TITLES[ch] if ch < len(CHAPTER_TITLES) else f})
+        out.append({'ch': ch, 'file': f, 'title': chapter_title(ch) if ch < len(CHAPTER_TITLES) else f})
     return {'maps': out}
 
 
@@ -2679,12 +2736,14 @@ def api_map(b, q):
                             'leader': r.get('leader_flag') not in ('', '0', None), 'orders': r.get('orders')})
     try:
         whens = chapter_lists(ch)
+        endings = chapter_endings(ch)
     except KeyError:
-        whens = {}
-    return {'ch': ch, 'title': CHAPTER_TITLES[ch] if ch < len(CHAPTER_TITLES) else '', 'width': m.WIDTH,
+        whens, endings = {}, []
+    return {'ch': ch, 'title': chapter_title(ch) if ch < len(CHAPTER_TITLES) else '', 'width': m.WIDTH,
             'height': (len(m.words) + m.WIDTH - 1) // m.WIDTH, 'words': m.words, 'terrain': terrain,
             'terrainNames': {str(k): v for k, v in TERRAIN_NAMES.items()}, 'impassable': sorted(IMPASSABLE),
             'locations': locs, 'deploy': [dict(lists[k], when=whens.get(k, {}).get('when', '')) for k in sorted(lists)], 'areas': chapter_areas(ch),
+            'endings': endings,
             'tilesVer': tiles_version(ch), 'area': list(map_area(ch))}
 
 
@@ -3297,7 +3356,7 @@ def spare_scenes():
 def _comment(name, hexs):
     if '@' in hexs:
         op = int(hexs.split()[0], 16)
-        nm = {0x0C: 'TEXT', 0x31: 'TALK', 0x32: 'TALK_SCENE'}.get(op, 'OP_%02X' % op)
+        nm = {0x0C: 'TEXT', 0x14: 'TEXT_WINDOW', 0x31: 'TALK', 0x32: 'TALK_SCENE'}.get(op, 'OP_%02X' % op)
         return '%-14s (new message)' % nm
     b = bytes(int(x, 16) for x in hexs.split())
     com = commenter()
@@ -3730,8 +3789,9 @@ def cond_words(b, ch):
     if op == 0x01:
         return 'At the start of every turn' if w(2) == 0xFFFF else f'At the start of turn {w(2) + 1}'
     if op == 0x02:
-        ph = w(2)
-        return f'Turn {w(4)}' + (f", {army_names(ch).get(ph, 'army slot %d' % ph)}'s phase" if ph else '')
+        who = w(2)
+        return ('You take' if who == 0 else 'Anyone takes' if who == 0xFFFF else
+                f"{army_names(ch).get(who, 'army slot %d' % who)} takes") + f' {loc_label(ch, w(4))}'
     if op in (0x04, 0x16):
         return f'{unit_label(w(2))} talks to {unit_label(w(4))}'
     if op == 0x0C:
@@ -3798,7 +3858,7 @@ def new_unit_ids():
     p = need_project()
     cnt = L.unit_count(rom_data()) if rom_data() is not None else L.GAME_UNITS
     out = []
-    for t in ('units_generic', 'units_children'):
+    for t in ('units_generic', 'units_children', 'units_playable'):
         tb = p.table(t)
         for r in tb.rows if tb else []:
             i = _num(r.get('index'), 0)
@@ -4013,6 +4073,257 @@ def reinforce_ops(ch, lst, when, ops, say_who=None):
     sid = new_scene_ops(msg_cmds + [deploy, 'FF FF'], ops)
     first_trigger_ops(name, [cond, '30 FF ' + _w(sid)], ops)
     return cond_words(bytes(int(x, 16) for x in cond.split()), ch)
+
+
+def scene_ends(sid, idx, seen=None):
+    """True when the scene (or one it starts) ends the chapter: event $78 (`4A 78`)."""
+    seen = seen if seen is not None else set()
+    if sid in seen or sid not in idx['scenes']:
+        return False
+    seen.add(sid)
+    for c in idx['scenes'][sid]['block']['cmds']:
+        b = cmd_bytes(c)
+        if len(b) >= 2 and b[0] == 0x4A and b[1] == 0x78:
+            return True
+    return any(scene_ends(t, idx, seen) for t in idx['scenes'][sid]['runs'])
+
+
+def chapter_endings(ch):
+    """The chapter's ending events: triggers whose action is the chapter clear ($78) or a scene that
+    reaches it.  kind 'seize' = `02 flag [army slot][location]` (the game's own: you take a castle),
+    'turn' = `01 flag [turn - 1]` (survive until a turn starts), 'other' = anything else."""
+    name = chapter_file(ch)
+    idx = story_index()
+    out = []
+    for cnd, steps in chapter_triggers(name):
+        if not steps:
+            continue
+        sb = cmd_bytes(steps[0])
+        ends = sb[:1] == b'\x78' or (sb[:1] == b'\x30' and len(sb) >= 4 and scene_ends(sb[2] | sb[3] << 8, idx))
+        if not ends:
+            continue
+        cb = cmd_bytes(cnd)
+        w = lambda i: cb[i] | cb[i + 1] << 8 if i + 1 < len(cb) else 0  # noqa: E731
+        e = {'line': cnd['line'], 'hex': cnd['hex'], 'words': cond_words(cb, ch), 'kind': 'other'}
+        if cb[0] == 0x02:
+            e.update(kind='seize', loc=w(4), who=w(2))
+        elif cb[0] == 0x01 and w(2) != 0xFFFF:
+            e.update(kind='turn', turn=w(2) + 1)
+        out.append(e)
+    return out
+
+
+def api_wincond(b, q):
+    """GET ?ch: how the chapter is won and what can win it.  POST {ch, line, kind: 'seize', loc} or
+    {ch, line, kind: 'turn', turn}: rewrites that ending's condition (its flag and action stay)."""
+    p = need_project()
+    ch = int((b or {}).get('ch', q.get('ch', ['0'])[0]))
+    name = chapter_file(ch)
+    lt, at = p.table('locations'), p.table('armies')
+    holders = {}
+    names = army_names(ch)
+    for slot, army in _chapter_slots(ch).items():
+        row = next((r for r in at.rows if r.get('army') == str(army)), None) if at else None
+        for c in (row.get('castles') or '').split(';') if row else []:
+            if c.strip().isdigit():
+                holders[int(c)] = names.get(slot, f'army slot {slot}')
+    castles = [{'index': _num(r['index']), 'name': r.get('_castle_name') or f"castle {r['index']}", 'x': r.get('x'), 'y': r.get('y'),
+                'holder': holders.get(_num(r['index']), '')}
+               for r in (lt.rows if lt else []) if r.get('chapter') == str(ch) and r.get('kind') == 'castle']
+    if not b or 'kind' not in b:
+        return {'endings': chapter_endings(ch), 'castles': castles}
+    line = int(b['line'])
+    e = next((x for x in chapter_endings(ch) if x['line'] == line), None)
+    if e is None:
+        raise ValueError('That isn\'t one of this chapter\'s ending events.')
+    flag = e['hex'].split()[1]
+    if b['kind'] == 'seize':
+        loc = int(b['loc'])
+        if loc not in [c['index'] for c in castles]:
+            raise ValueError('Choose one of this chapter\'s castles.')
+        for c2, _st in chapter_triggers(name):          # the first matching trigger plays, the rest don't
+            b2 = cmd_bytes(c2)
+            if c2['line'] != line and b2[0] == 0x02 and (b2[2] | b2[3] << 8) in (0, 0xFFFF) and (b2[4] | b2[5] << 8) == loc:
+                raise ValueError(f'Taking {loc_label(ch, loc)} already plays another event ({cond_words(b2, ch)}), and only '
+                                 'one plays. Delete that event on the Events page first, or choose another castle.')
+        new = _hx('02', flag, '00 00', _w(loc))
+    elif b['kind'] == 'turn':
+        turn = int(b['turn'])
+        if not 2 <= turn <= 99:
+            raise ValueError('The chapter can end at the start of turn 2 to 99.')
+        sid = turn_scene(name, turn)
+        if sid is not None:
+            raise ValueError(f'Turn {turn} already starts with another event, and only one plays. Choose another turn.')
+        new = _hx('01', flag, _w(turn - 1))
+    else:
+        raise ValueError('Choose how the chapter is won.')
+    f = p.evt(name)
+    old = f.lines[line]
+    addr = old.split(':', 1)[0]
+    text = '%s: %-24s ; %s' % (addr, new, _comment(name, new))
+    p.edit([('lines', name, line, [old], [text])])
+    return {'ok': True, 'endings': chapter_endings(ch)}
+
+
+SITE_FOOT = {'castle': (-1, -1, 1, 2), 'village': (-1, -1, 1, 0)}     # x0, y0, x1, y1 around the record's x, y
+
+
+def _site_rows(ch):
+    lt = need_project().table('locations')
+    return sorted(((i, r) for i, r in enumerate(lt.rows) if r.get('chapter') == str(ch)), key=lambda t: _num(t[1]['index']))
+
+
+def _loc_refs(ch, loc):
+    """[(file, line, bytes, position of the location byte(s), size)] for what names location loc in chapter ch:
+    the chapter's "takes castle" / "visits" conditions and its armies' AI commands."""
+    p = need_project()
+    out = []
+    name = chapter_file(ch)
+    for blk in p.evt(name).blocks():
+        for c in blk['cmds']:
+            bb = cmd_bytes(c)
+            if len(bb) >= 6 and bb[0] in (0x02, 0x0A) and (bb[4] | bb[5] << 8) == loc:
+                out.append((name, c['line'], bb, 4, 2))
+    armies = set(_chapter_slots(ch).values())
+    try:
+        blocks = _ai_blocks()
+    except KeyError:
+        blocks = {}
+    for (army, _k), blk in blocks.items():
+        if army not in armies:
+            continue
+        for c in blk['cmds']:
+            bb = cmd_bytes(c)
+            if len(bb) >= 2 and bb[0] in (0x06, 0x07, 0x08) and bb[1] == loc:
+                out.append((AI, c['line'], bb, 1, 1))
+    return out
+
+
+def _relocate_ops(ch, old, new):
+    """Ops that point what names location old at location new."""
+    p = need_project()
+    ops = []
+    for fname, line, bb, pos, size in _loc_refs(ch, old):
+        nb = bytearray(bb)
+        nb[pos:pos + size] = new.to_bytes(size, 'little')
+        f = p.evt(fname)
+        hexs = ' '.join('%02X' % x for x in nb)
+        mc = EVT_COMMENT.search(f.lines[line])
+        com = re.sub(r'location \d+(\s*\([^)]*\))?', 'location %d' % new if new != 0xFF else 'no location (removed)',
+                     mc.group(1) if mc else '')
+        ops.append(('lines', fname, line, [f.lines[line]], [f.set_command(line, hexs, com)]))
+    return ops
+
+
+EVT_COMMENT = re.compile(r';\s*(.*)$')
+
+
+def api_sites(b, q):
+    """Add a castle or village to a chapter ({ch, add: 'castle'|'village', x, y, castle_id?, army?, look?}),
+    or take one away ({ch, remove: index}).  One undo step.
+
+    A new site gets the next index.  Taking one away that isn't the last moves the last one into its
+    number (its events, its army and its armies' AI orders follow), so the numbers stay 0, 1, 2, ..."""
+    p = need_project()
+    ch = int(b.get('ch', -1))
+    lt, at = p.table('locations'), p.table('armies')
+    if lt is None:
+        raise KeyError('This project has no locations.csv.')
+    rows = _site_rows(ch)
+    m = p.map(ch)
+    ops = []
+    if b.get('add'):
+        kind = b['add']
+        if kind not in SITE_FOOT:
+            raise ValueError('Add a castle or a village.')
+        if len(rows) >= fe4locations.MAX_SITES:
+            raise ValueError(f'A chapter can have at most {fe4locations.MAX_SITES} castles and villages.')
+        x, y = int(b['x']), int(b['y'])
+        if not (0 <= x < 64 and 0 <= y < 64):
+            raise ValueError('That cell is outside the map.')
+        for _, r in rows:
+            if _num(r['x']) == x and _num(r['y']) == y:
+                raise ValueError('Another castle or village is already there.')
+        idx = len(rows)
+        new = {k: '' for k in lt.fields}
+        new.update({'chapter': str(ch), 'index': str(idx), 'kind': kind, 'x': str(x), 'y': str(y)})
+        if kind == 'castle':
+            cid = int(b.get('castle_id', 0))
+            new.update({'castle_id': str(cid), '_castle_name': castle_names()[cid] if 0 <= cid < 0x40 else '', 'facilities': '-', 'shop': ''})
+        else:
+            new.update({'castle_id': '0', 'gold': str(int(b.get('gold') or 5000))})
+        pos = (rows[-1][0] + 1) if rows else len(lt.rows)
+        ops.append(('rows', 'locations', pos, [], [new]))
+        if kind == 'castle' and b.get('army') not in (None, ''):
+            slot = int(b['army'])
+            army = _chapter_slots(ch).get(slot)
+            row = next((i for i, r in enumerate(at.rows) if r.get('army') == str(army)), None) if at and army is not None else None
+            if row is not None:
+                old = at.rows[row].get('castles') or ''
+                lst = [c for c in old.split(';') if c.strip()] + [str(idx)]
+                ops.append(('cell', 'armies', row, 'castles', old, ';'.join(lst)))
+        look = b.get('look')
+        if look is not None and m is not None:          # copy the tiles around another site of the chapter
+            src = next((r for _, r in rows if _num(r['index']) == int(look)), None)
+            if src is not None:
+                x0, y0, x1, y1 = SITE_FOOT[src.get('kind')] if src.get('kind') in SITE_FOOT else SITE_FOOT[kind]
+                sx, sy = _num(src['x']), _num(src['y'])
+                for dy in range(y0, y1 + 1):
+                    for dx in range(x0, x1 + 1):
+                        if 0 <= sx + dx < 64 and 0 <= sy + dy < 64 and 0 <= x + dx < 64 and 0 <= y + dy < 64:
+                            i_src, i_dst = (sy + dy) * 64 + sx + dx, (y + dy) * 64 + x + dx
+                            if m.words[i_dst] != m.words[i_src]:
+                                ops.append(('map', ch, i_dst, m.words[i_dst], m.words[i_src]))
+        p.edit(ops)
+        return {'ok': True, 'index': idx}
+    if 'remove' in b:
+        idx = int(b['remove'])
+        byidx = {_num(r['index']): (i, r) for i, r in rows}
+        if idx not in byidx:
+            raise ValueError('No such castle or village in this chapter.')
+        last = len(rows) - 1
+        gone = [r for r in _loc_refs(ch, idx) if r[0] == AI]
+        if gone:
+            raise ValueError('Enemy orders still name this place (Armies & AI: '
+                             + ', '.join(sorted({'army %s' % l for l in _ai_armies_naming(ch, idx)})) + '). Change those orders first.')
+        ops += _relocate_ops(ch, idx, 0xFF)                    # its own events: never again
+        if idx != last:
+            ops += _relocate_ops(ch, last, idx)
+        if at is not None:
+            for ar in set(_chapter_slots(ch).values()):
+                row = next((i for i, r in enumerate(at.rows) if r.get('army') == str(ar)), None)
+                if row is None:
+                    continue
+                old = at.rows[row].get('castles') or ''
+                lst = []
+                for c in old.split(';'):
+                    c = c.strip()
+                    if not c.isdigit() or int(c) == idx:
+                        continue
+                    lst.append(str(idx) if int(c) == last and idx != last else c)
+                if ';'.join(lst) != old:
+                    ops.append(('cell', 'armies', row, 'castles', old, ';'.join(lst)))
+        ri, rr = byidx[idx]
+        li, lr = byidx[last]
+        if idx != last:
+            moved = dict(lr)
+            moved['index'] = str(idx)
+            ops.append(('rows', 'locations', ri, [dict(rr)], [moved]))
+        ops.append(('rows', 'locations', li, [dict(lr)], []))
+        p.edit(ops)
+        return {'ok': True, 'moved': last if idx != last else None}
+    raise ValueError('Nothing to do.')
+
+
+def _ai_armies_naming(ch, loc):
+    out = []
+    for (army, _k), blk in _ai_blocks().items():
+        if army in set(_chapter_slots(ch).values()):
+            for c in blk['cmds']:
+                bb = cmd_bytes(c)
+                if len(bb) >= 2 and bb[0] in (0x06, 0x07, 0x08) and bb[1] == loc:
+                    out.append(army)
+    return out
 
 
 def api_mapinfo(b, q):
@@ -4286,6 +4597,13 @@ def _ai_blocks():
         m = re.match(r'army (\d+) orders (\d+)$', blk['label'])
         if m:
             out[(int(m.group(1)), int(m.group(2)))] = blk
+    at = need_project().table('armies')
+    for r in at.rows if at else []:                # new armies share the programs of the army they copy
+        like = (r.get('orders_like') or '').strip()
+        if like.isdigit():
+            for (a, k), blk in list(out.items()):
+                if a == int(like):
+                    out[(_num(r['army']), k)] = blk
     return out
 
 
@@ -5349,7 +5667,7 @@ def api_newchild(b, q):
         idx = int(r['index'])
         if idx <= cnt:
             raise ValueError('Only children you added can be deleted.')
-        top = max([int(x['index']) for t in (kids, gen) for x in t.rows if x['index'].isdigit()])
+        top = max(new_unit_ids() or [0])
         if idx != top:
             raise ValueError('Delete the newest added unit first (new units are numbered without gaps).')
         ops = [('rows', 'units_children', i, [dict(r)], [])]
@@ -5368,8 +5686,7 @@ def api_newchild(b, q):
         raise ValueError(str(e))
     if w > fe4names.KINDS['character'][2]:
         raise ValueError(f'"{name}" is too wide for a name ({w} tiles; {fe4names.KINDS["character"][2]} fit).')
-    ids = [int(x['index']) for t in (kids, gen) for x in t.rows if x['index'].isdigit()]
-    new_ids = [i for i in ids if i > cnt]
+    new_ids = new_unit_ids()
     nid_unit = (max(new_ids) + 1) if new_ids else L.first_new_id(rom)
     used = {x.get('name_id') for t in ('units_playable', 'units_children', 'units_npc', 'units_generic')
             for x in (p.table(t).rows if p.table(t) else [])}
@@ -5403,8 +5720,358 @@ def api_newchild(b, q):
     return {'ok': True, 'row': len(kids.rows) - 1, 'index': nid_unit}
 
 
+def api_newarmy(b, q):
+    """A new enemy (or other) army in a chapter, as one undo step: an armies.csv row past the game's 72 and
+    a SET_ARMY ($4B) in the chapter's opening for the next free slot.
+    {ch, name: castle name id, like: army id (copied: look, side and AI programs)}"""
+    p = need_project()
+    ch = int(b.get('ch', -1))
+    at = p.table('armies')
+    if at is None:
+        raise KeyError('This project has no armies.csv.')
+    like = str(int(b.get('like', -1)))
+    base = next((r for r in at.rows if r.get('army') == like), None)
+    if base is None or int(like) >= 72:
+        raise ValueError('Choose an army to copy.')
+    slots = _chapter_slots(ch)
+    slot = next((s for s in range(1, 16) if s not in slots), None)
+    if slot is None:
+        raise ValueError('This chapter has no free army slot.')
+    if slot > 0x0B:
+        raise ValueError('This chapter already uses 12 army slots, as many as any chapter of the game.')
+    ids = [_num(r['army']) for r in at.rows]
+    aid = max(ids) + 1
+    if aid > 255:
+        raise ValueError('No more armies fit.')
+    name = int(b.get('name', base.get('name') or 255))
+    row = {k: '' for k in at.fields}
+    row.update({'army': str(aid), 'name': str(name), '_name': castle_names()[name] if name < 0x40 else '',
+                'unk1': base.get('unk1', '0'), 'unk2': base.get('unk2', '0'), 'members': '', 'castles': '',
+                'orders_like': like, '_orders': base.get('_orders', '')})
+    ops = [('rows', 'armies', len(at.rows), [], [row])]
+    if 'orders_like' not in at.fields:
+        at.fields.append('orders_like')
+    # the opening's set-up: $4B slot = army, $4D relations between slots (1 = enemies, 2 = allies),
+    # $50 slot = set the army up. The new slot copies the relations of the army it works like (whose slot
+    # it finds from that army's $4B) and is allied with it.
+    name_f = chapter_file(ch)
+    f = p.evt(name_f)
+    base_slot = next((s_ for s_, a_ in slots.items() if str(a_) == like), None)
+    last = {}
+    rel = []
+    for blk in f.blocks():
+        for c in blk['cmds']:
+            bb = cmd_bytes(c)
+            if bb[:1] == b'\x4B' and len(bb) == 3:
+                last[0x4B] = c['line']
+            elif bb[:1] == b'\x4D' and len(bb) == 4:
+                last[0x4D] = c['line']
+                rel.append(bb)
+            elif bb[:1] == b'\x50' and len(bb) == 6:
+                last[0x50] = c['line']
+        if last:
+            break
+    if 0x4B not in last:
+        raise ValueError('This chapter\'s opening sets up no armies, so the editor can\'t add one.')
+    adds = {0x4B: ['4B %02X %02X' % (slot, aid)]}
+    new_rel = []
+    if base_slot is not None:
+        for bb in rel:
+            r, x, y = bb[1], bb[2], bb[3]
+            if x == base_slot and y != slot:
+                new_rel.append((r, slot, y))
+            elif y == base_slot and x != slot:
+                new_rel.append((r, x, slot))
+        new_rel.append((2, slot, base_slot))
+    else:
+        new_rel.append((1, slot, 0))
+    adds[0x4D] = ['4D %02X %02X %02X' % t for t in new_rel]
+    adds[0x50] = ['50 %02X 00 00 00 00' % slot]
+    for op in sorted(adds, key=lambda o: -last.get(o, last[0x4B])):
+        at_line = last.get(op, last[0x4B]) + 1
+        ops.append(('lines', name_f, at_line, [], _plus(name_f, adds[op])))
+    p.edit(ops)
+    return {'ok': True, 'army': aid, 'slot': slot}
+
+
+# ---------------------------------------------------------------- opening scene (1.2)
+# The scene a chapter's opening runs ($30 RUN_SCENE in its init block), as simple steps:
+#   music     0E nn, FD                               (the scene's song)
+#   camera    3A x y, 3B 80, 34 02 00, FD            (the first: 3A = the view's top-left cell, set before the
+#             40 x y 04, FD                           map fades in with SC_46 04; later ones scroll there, SC_40)
+#   units     4A 4E nn                                (a deploy list comes onto the map)
+#   talk      0C msg, FD, 34 14 00, FD               (portraits over the map, as the game's map scenes do)
+#   wait      34 nn nn, FD                            (frames)
+#   fade      12 E0 00, 34 23 00, FD                  (music fades out)
+# Anything else is a game step, kept as it is unless taken out.
+JUMP_OPS = {0x02, 0x03, 0x04, 0x05, 0x06}
+
+
+def _opening_scene(ch):
+    name = chapter_file(ch)
+    for blk in need_project().evt(name).blocks():
+        if blk['label'] == 'init':
+            for c in blk['cmds']:
+                bb = cmd_bytes(c)
+                if len(bb) == 4 and bb[0] == 0x30:
+                    return bb[2] | bb[3] << 8
+    return None
+
+
+def _opening_steps(sid):
+    blk = story_index()['scenes'][sid]['block']
+    d = need_project().dialogue()
+    cmds = blk['cmds']
+    out, i, complex_ = [], 0, False
+
+    def hx(k):
+        return cmds[k]['hex'] if k < len(cmds) else ''
+    while i < len(cmds):
+        c = cmds[i]
+        h_ = c['hex']
+        bb = cmd_bytes(c)
+        if h_ == 'FD':
+            i += 1
+            continue
+        if bb[:2] == b'\xff\xff':
+            break
+        if bb[0] == 0x4A and bb[1:2] != b'\x4e' and all(x['kind'] == 'setup' for x in out):
+            out.append({'kind': 'setup', 'hex': h_, 'what': c.get('comment', '')})   # the map's set-up: always kept
+        elif bb[0] == 0x0E and len(bb) == 2:
+            out.append({'kind': 'music', 'song': bb[1]})
+        elif bb[0] == 0x3A and len(bb) == 3:
+            out.append({'kind': 'camera', 'x': bb[1] + 8, 'y': bb[2] + 7})
+            while hx(i + 1) in ('3B 80', '34 02 00', 'FD'):
+                i += 1
+        elif bb[0] == 0x40 and len(bb) == 4:
+            out.append({'kind': 'camera', 'x': bb[1] + 8, 'y': bb[2] + 7})
+        elif bb[:2] == b'\x4a\x4e' and len(bb) == 3:
+            out.append({'kind': 'units', 'list': bb[2]})
+        elif h_.startswith('0C @'):
+            key = h_.split('@', 1)[1].split()[0]
+            out.append({'kind': 'talk', 'key': key, 'text': (d.text.get(key, '') if d else '')})
+        elif bb[0] == 0x34 and len(bb) == 3 and h_ != '34 23 00':
+            out.append({'kind': 'wait', 'frames': bb[1] | bb[2] << 8})
+        elif h_ == '12 E0 00':
+            out.append({'kind': 'fade'})
+            while hx(i + 1) in ('34 23 00', 'FD'):
+                i += 1
+        else:
+            if bb[0] in JUMP_OPS or '@L' in h_:
+                complex_ = True
+            out.append({'kind': 'game', 'hex': h_, 'what': c.get('comment', '')})
+        i += 1
+    return out, complex_
+
+
+def _talk_text(st):
+    """{a, b, lines: [{who: 'a'|'b', text}]} -> a message with the two portraits."""
+    a = int(st.get('a', 0xFFFF))
+    b2 = st.get('b')
+    b2 = int(b2) if b2 not in (None, '', 0xFFFF, '65535') else None
+    lines = [ln for ln in st.get('lines') or [] if str(ln.get('text', '')).strip()]
+    if not lines:
+        lines = [{'who': 'a', 'text': 'Write what is said here.'}]
+    head = '{06}{00 3D}%s' % portrait_code(a)
+    if b2 is not None:
+        head += '{07}{00 3D}%s' % portrait_code(b2)
+    out, prev = head, None
+    merged = []
+    for ln in lines:                               # one window per run of lines by the same person
+        who = 'b' if ln.get('who') == 'b' and b2 is not None else 'a'
+        if merged and merged[-1][0] == who:
+            merged[-1][1].append(str(ln['text']))
+        else:
+            merged.append((who, [str(ln['text'])]))
+    for k, (who, texts) in enumerate(merged):
+        out += ('{06}' if who == 'a' else '{07}') + ('{09}' if k == 0 else '{00 1D 10}')
+        out += '{08}'.join(wrap_words(t, '...') for t in texts)
+    return out + '{08}{01}'
+
+
+def api_opening(b, q):
+    """GET ?ch: the chapter's opening scene as steps.  POST {ch, steps, mode: 'replace'|'after'}: write them
+    (replace: the scene becomes the steps; after: the steps play once the game's opening is done).  One undo step."""
+    p = need_project()
+    ch = int((q.get('ch', ['0'])[0]) if not b else b.get('ch', 0))
+    sid = _opening_scene(ch)
+    if sid is None:
+        raise ValueError('This chapter\'s opening runs no scene the editor can change.')
+    if not b:
+        steps, complex_ = _opening_steps(sid)
+        lists = [{'list': k, 'when': v.get('when', '')} for k, v in sorted(chapter_lists(ch).items())]
+        return {'ch': ch, 'scene': sid, 'steps': steps, 'complex': complex_, 'lists': lists,
+                'songs': [[n, fe4music.NAMED.get(n, '')] for n in range(1, fe4music.SONGS + 1)]}
+    mode = b.get('mode', 'replace')
+    ops = {'list': []}
+    cmds = []
+    for st in b.get('steps') or []:
+        k = st.get('kind')
+        if k == 'music':
+            n = int(st['song'])
+            if not 1 <= n <= fe4music.SONGS:
+                raise ValueError('Choose a song.')
+            cmds += ['0E %02X' % n, 'FD']
+        elif k == 'camera':
+            x, y = min(63, max(0, int(st['x']) - 8)), min(63, max(0, int(st['y']) - 7))
+            if not any(c.startswith(('3A ', '40 ')) for c in cmds):     # the first: placed before the map fades in
+                cmds += ['3A %02X %02X' % (x, y), '3B 80', '34 02 00', 'FD']
+            else:                                                          # later ones scroll there (SC_40, speed 4)
+                cmds += ['40 %02X %02X 04' % (x, y), 'FD']
+        elif k == 'units':
+            cmds += ['4A 4E %02X' % int(st['list'])]
+        elif k == 'talk':
+            key = st.get('key')
+            if not key or st.get('lines'):
+                key = new_message_op(_talk_text(st), f'{chapter_file(ch)[:4]} opening', ops)
+            cmds += ['0C @' + key, 'FD', '34 14 00', 'FD']
+        elif k == 'wait':
+            n = max(1, min(600, int(st.get('frames', 60))))
+            cmds += ['34 %02X %02X' % (n & 0xFF, n >> 8), 'FD']
+        elif k == 'fade':
+            cmds += ['12 E0 00', '34 23 00', 'FD']
+        elif k == 'setup':
+            h_ = ' '.join(str(st['hex']).split()).upper()
+            if not re.fullmatch(r'4A( [0-9A-F]{2})+', h_):
+                raise ValueError('A set-up step has bad bytes.')
+            cmds += [h_]
+        elif k == 'game':
+            h_ = ' '.join(str(st['hex']).split()).upper()
+            if not re.fullmatch(r'[0-9A-F]{2}( [0-9A-F]{2})*|[0-9A-F]{2}( [0-9A-F]{2})* @[A-Z0-9]+', h_) and '@' not in h_:
+                raise ValueError('A game step has bad bytes.')
+            if int(h_.split()[0], 16) in JUMP_OPS or '@L' in h_:
+                raise ValueError('This opening jumps around inside itself; the editor can only replace it as a whole '
+                                 '(take out the game\'s steps) or play your steps before it.')
+            cmds += [h_]
+        else:
+            raise ValueError('Unknown step.')
+    if not cmds:
+        raise ValueError('Add at least one step.')
+    if mode == 'after':
+        # after the game's own opening, before its END: the map is up and running there (verified: a
+        # conversation over the map with the camera scrolled to it, on the Prologue)
+        cmds = [('40 %s 04' % c[3:]) if c.startswith('3A ') else c for c in cmds]
+        cmds = [c for c in cmds if c not in ('3B 80', '34 02 00')]
+        blk = story_index()['scenes'][sid]['block']
+        endc = next((c for c in reversed(blk['cmds']) if cmd_bytes(c)[:2] == b'\xff\xff'), None)
+        if endc is None:
+            raise ValueError('The game\'s opening for this chapter has no end the editor can find.')
+        ops['list'].append(('lines', 'scenes.evt', endc['line'], [], _plus('scenes.evt', cmds)))
+    else:
+        # the map starts dark: SC_46 04 brings it in (the openings do it after placing the camera), and
+        # SC_2A waits for it before anything else happens
+        if not any(c.split()[0] == '46' for c in cmds):
+            lead = 0
+            while lead < len(cmds) and cmds[lead].startswith('4A ') and not cmds[lead].startswith('4A 4E'):
+                lead += 1
+            at = next((i + 4 for i, c in enumerate(cmds) if c.startswith('3A ')), lead)
+            cmds[at:at] = ['46 04', '2A', 'FD', '34 19 00', 'FD']
+        blk = story_index()['scenes'][sid]['block']
+        f = p.evt('scenes.evt')
+        first = blk['cmds'][0]['line']
+        end = first
+        while end + 1 < len(f.lines) and not f.lines[end + 1].startswith('=='):
+            end += 1
+        while end > first and not f.lines[end].strip():
+            end -= 1
+        old = f.lines[first:end + 1]
+        cmds += ['FF FF']
+        lead = '%s: %-24s ; %s' % (blk['cmds'][0]['addr'], cmds[0], _comment('scenes.evt', cmds[0]))
+        ops['list'].append(('lines', 'scenes.evt', first, old, [lead] + _plus('scenes.evt', cmds[1:])))
+    p.edit(ops['list'])
+    return {'ok': True, 'scene': sid}
+
+
+def api_newchar(b, q):
+    """Add a new first-generation character as one undo step: a units_playable row (a copy of the character
+    whose place it takes: the game keeps 24 character places, and every one is used) and its name.
+    {name, takes: unit id, class?, level?, portrait?, start?: true = in Sigurd's army from the Prologue}
+    or delete the newest one: {delete: row}."""
+    import fe4names
+    p = need_project()
+    rom = rom_data()
+    if rom is None:
+        raise ValueError('Choose your FE4 ROM on the Project page first.')
+    up, names, at = p.table('units_playable'), p.table('names'), p.table('armies')
+    cnt = L.unit_count(rom)
+    if 'delete' in b:
+        i = int(b['delete'])
+        r = up.rows[i]
+        idx = int(r['index'])
+        if idx <= cnt:
+            raise ValueError('Only characters you added can be deleted.')
+        if idx != max(new_unit_ids() or [0]):
+            raise ValueError('Delete the newest added unit first (new units are numbered without gaps).')
+        ops = [('rows', 'units_playable', i, [dict(r)], [])]
+        nid = r.get('name_id', '')
+        for k, nr in enumerate(names.rows):
+            if nr['kind'] == 'character' and nr['id'] == nid and nr['name']:
+                ops.append(('cell', 'names', k, 'name', nr['name'], ''))
+        for k, ar in enumerate(at.rows if at else []):
+            mem = [m for m in (ar.get('members') or '').split(';') if m.strip()]
+            if str(idx) in mem:
+                ops.append(('cell', 'armies', k, 'members', ar['members'], ';'.join(m for m in mem if m != str(idx))))
+        p.edit(ops)
+        return {'ok': True}
+    name = str(b.get('name', '')).strip()
+    if not name:
+        raise ValueError('Give the character a name.')
+    try:
+        _, w = fe4names.render(name)
+    except ValueError as e:
+        raise ValueError(str(e))
+    if w > fe4names.KINDS['character'][2]:
+        raise ValueError(f'"{name}" is too wide for a name ({w} tiles; {fe4names.KINDS["character"][2]} fit).')
+    takes = str(int(b.get('takes', 0)))
+    base = next((r for r in up.rows if r['index'] == takes), None)
+    if base is None or int(takes) > cnt:
+        raise ValueError('Choose whose place the new character takes.')
+    new_ids = new_unit_ids()
+    uid = (max(new_ids) + 1) if new_ids else L.first_new_id(rom)
+    used = {x.get('name_id') for t in ('units_playable', 'units_children', 'units_npc', 'units_generic')
+            for x in (p.table(t).rows if p.table(t) else [])}
+    slot = next((nr for nr in names.rows if nr['kind'] == 'character' and 570 <= int(nr['id']) <= 575
+                 and not nr['name'] and nr['id'] not in used), None)
+    if slot is None:
+        raise ValueError('All six free name slots (570-575) are taken by other new units.')
+    row = dict(base)
+    row.update({'index': str(uid), '_name': name, 'char_id': str(uid), 'name_id': slot['id']})
+    if b.get('class') not in (None, ''):
+        row['class'] = str(int(b['class']))
+        ct = p.table('classes')
+        if ct and int(b['class']) < len(ct.rows) and '_class_name' in row:
+            row['_class_name'] = ct.rows[int(b['class'])].get('_name', '')
+    if b.get('level') not in (None, ''):
+        if not 1 <= int(b['level']) <= 30:
+            raise ValueError('Level must be 1 to 30.')
+        row['level'] = str(int(b['level']))
+    if b.get('portrait') not in (None, ''):
+        row['portrait'] = str(int(b['portrait']))
+    if b.get('gender') not in (None, '') and 'gender' in row:
+        row['gender'] = '1' if str(b['gender']) in ('1', 'female') else '0'
+    ops = [('rows', 'units_playable', len(up.rows), [], [row]), ('cell', 'names', names.rows.index(slot), 'name', '', name)]
+    if b.get('start') and at is not None:
+        k = next((i for i, r in enumerate(at.rows) if r.get('army') == '0'), None)
+        if k is not None:
+            mem = [m for m in (at.rows[k].get('members') or '').split(';') if m.strip()]
+            if takes in mem:
+                mem[mem.index(takes)] = str(uid)
+            else:
+                mem.append(str(uid))
+            ops.append(('cell', 'armies', k, 'members', at.rows[k].get('members') or '', ';'.join(mem)))
+        dt = p.table('deploy')                 # and where they are placed in your army
+        for k, r in enumerate(dt.rows if dt else []):
+            if r.get('char_id') == takes and r.get('army_slot') == '0':
+                ops.append(('cell', 'deploy', k, 'char_id', takes, str(uid)))
+                if '_name' in r:
+                    ops.append(('cell', 'deploy', k, '_name', r['_name'], name))
+    p.edit(ops)
+    return {'ok': True, 'row': len(up.rows) - 1, 'index': uid}
+
+
 API = {('GET', 'session'): api_session, ('POST', 'ping'): api_ping, ('GET', 'table'): api_table,
        ('POST', 'tables'): api_tables, ('POST', 'set'): api_set, ('POST', 'undo'): api_undo,
+       ('GET', 'chaptitle'): api_chaptitle, ('POST', 'sites'): api_sites, ('POST', 'newchar'): api_newchar, ('POST', 'newarmy'): api_newarmy, ('GET', 'opening'): api_opening, ('POST', 'opening'): api_opening, ('POST', 'chaptitle'): api_chaptitle_set,
        ('POST', 'redo'): api_redo, ('POST', 'save'): api_save, ('POST', 'open'): api_open,
        ('POST', 'rom'): api_set_rom, ('POST', 'new'): api_new_project, ('GET', 'job'): api_job,
        ('POST', 'build'): api_build, ('GET', 'battleanims'): api_battleanims, ('GET', 'battleinfo'): api_battleinfo,
@@ -5418,7 +6085,7 @@ API = {('GET', 'session'): api_session, ('POST', 'ping'): api_ping, ('GET', 'tab
        ('GET', 'chapters'): api_chapters, ('GET', 'scene'): api_scene, ('POST', 'messages'): api_messages,
        ('POST', 'msg'): api_msg, ('POST', 'evtcmd'): api_evtcmd, ('GET', 'dsearch'): api_dsearch, ('GET', 'villages'): api_villages, ('GET', 'itemuse'): api_itemuse, ('POST', 'newevent'): api_newevent, ('POST', 'talkmenu'): api_talkmenu, ('POST', 'delstep'): api_delstep,
        ('POST', 'addstep'): api_addstep, ('GET', 'eventinfo'): api_eventinfo, ('GET', 'maps'): api_maps, ('GET', 'map'): api_map, ('POST', 'paint'): api_paint,
-       ('GET', 'armies'): api_armies, ('GET', 'portraits'): api_portraits, ('GET', 'mapsprites'): api_mapsprites, ('GET', 'skills'): api_skills, ('POST', 'gen2check'): api_gen2check, ('POST', 'newchild'): api_newchild, ('GET', 'mapinfo'): api_mapinfo, ('GET', 'unitshare'): api_unitshare, ('POST', 'mapunit'): api_mapunit, ('POST', 'testchapter'): api_testchapter, ('POST', 'skillcheck'): api_skillcheck, ('POST', 'skilledit'): api_skilledit, ('POST', 'spriteentry'): api_spriteentry, ('GET', 'tileinfo'): api_tileinfo, ('POST', 'tiledraw'): api_tiledraw, ('POST', 'mapsprite'): api_mapsprite, ('POST', 'mapwalk'): api_mapwalk, ('GET', 'mapbattle'): api_mapbattle, ('GET', 'mbplayer'): api_mbplayer, ('GET', 'mapspells'): api_mapspells, ('POST', 'mapspellset'): api_mapspellset, ('POST', 'mapspellsheet'): api_mapspellsheet, ('POST', 'mapspellbg'): api_mapspellbg, ('POST', 'mapspellcolour'): api_mapspellcolour, ('POST', 'mapspellpreview'): api_mapspellpreview, ('POST', 'mapbattleset'): api_mapbattleset, ('POST', 'mapbattlesheet'): api_mapbattlesheet, ('POST', 'mapbattlepreview'): api_mapbattlepreview, ('POST', 'portrait'): api_portrait, ('POST', 'aicmd'): api_aicmd, ('POST', 'airecipe'): api_airecipe, ('GET', 'music'): api_music, ('POST', 'musicfile'): api_musicfile,
+       ('GET', 'armies'): api_armies, ('GET', 'portraits'): api_portraits, ('GET', 'mapsprites'): api_mapsprites, ('GET', 'skills'): api_skills, ('POST', 'gen2check'): api_gen2check, ('POST', 'newchild'): api_newchild, ('GET', 'mapinfo'): api_mapinfo, ('GET', 'unitshare'): api_unitshare, ('POST', 'mapunit'): api_mapunit, ('POST', 'testchapter'): api_testchapter, ('GET', 'wincond'): api_wincond, ('POST', 'wincond'): api_wincond, ('POST', 'skillcheck'): api_skillcheck, ('POST', 'skilledit'): api_skilledit, ('POST', 'spriteentry'): api_spriteentry, ('GET', 'tileinfo'): api_tileinfo, ('POST', 'tiledraw'): api_tiledraw, ('POST', 'mapsprite'): api_mapsprite, ('POST', 'mapwalk'): api_mapwalk, ('GET', 'mapbattle'): api_mapbattle, ('GET', 'mbplayer'): api_mbplayer, ('GET', 'mapspells'): api_mapspells, ('POST', 'mapspellset'): api_mapspellset, ('POST', 'mapspellsheet'): api_mapspellsheet, ('POST', 'mapspellbg'): api_mapspellbg, ('POST', 'mapspellcolour'): api_mapspellcolour, ('POST', 'mapspellpreview'): api_mapspellpreview, ('POST', 'mapbattleset'): api_mapbattleset, ('POST', 'mapbattlesheet'): api_mapbattlesheet, ('POST', 'mapbattlepreview'): api_mapbattlepreview, ('POST', 'portrait'): api_portrait, ('POST', 'aicmd'): api_aicmd, ('POST', 'airecipe'): api_airecipe, ('GET', 'music'): api_music, ('POST', 'musicfile'): api_musicfile,
        ('GET', 'title'): api_title, ('POST', 'titleset'): api_title_set,
        ('POST', 'skillicon'): api_skillicon,
        ('GET', 'tileset'): api_tileset, ('POST', 'tilesetset'): api_tileset_set, ('POST', 'mapsize'): api_mapsize}

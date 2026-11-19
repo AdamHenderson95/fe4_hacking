@@ -20,7 +20,8 @@ export async function armiesPage(root) {
   const dl = h('datalist', { id: 'arpeople' }, people.filter(p => p.name && !p.speaker).map(p => h('option', { value: `${p.name} (${p.id})` })));
   root.append(dl, h('div', { class: 'split' },
     h('div', { class: 'roster' }, h('div', { class: 'roster-tools' }, chapterSel,
-      h('p', { class: 'hint' }, 'The armies this chapter sets up, by slot. Slot 0 is yours.')), list),
+      h('p', { class: 'hint' }, 'The armies this chapter sets up, by slot. Slot 0 is yours.'),
+      h('button', { class: 'btn btn-line', onclick: () => newArmy() }, '+ New army')), list),
     sheetWrap));
   chapterSel.onchange = () => { st.ch = Number(chapterSel.value); st.sel = null; remember(); load(); };
 
@@ -28,6 +29,39 @@ export async function armiesPage(root) {
     A = await api('armies?ch=' + st.ch);
     if (!A.armies.some(a => a.slot === st.sel)) st.sel = A.armies.find(a => a.slot > 0)?.slot ?? A.armies[0]?.slot ?? null;
     drawList(); drawSheet();
+  }
+
+  // A new army: a record past the game's 72 that copies another army's look, side and AI programs
+  // (shared, so changing one program changes both), set up in this chapter's next free slot.
+  function newArmy() {
+    document.querySelector('.modal.arnew')?.remove();
+    const names = (A.castleNames || []).map((n, i) => [i, n]).filter(([, n]) => n);
+    const mine = A.armies.filter(a => a.slot > 0);
+    const nameSel = h('select', { class: 'in', 'aria-label': 'Name' }, names.map(([i, n]) => h('option', { value: i }, n)));
+    const likeSel = h('select', { class: 'in', 'aria-label': 'Copy' }, mine.map(a => h('option', { value: a.army }, `${a.name} (slot ${a.slot}, army ${a.army})`)));
+    const ok = h('button', { class: 'btn btn-gilt' }, 'Add army');
+    const modal = h('div', { class: 'modal arnew', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'New army' },
+      h('div', { class: 'modal-box' }, h('h2', {}, 'New army'),
+        h('div', { class: 'itgrid wide' },
+          h('label', { class: 'lbl' }, h('span', {}, 'Name (shown in the phase banner and unit info)'), nameSel),
+          h('label', { class: 'lbl' }, h('span', {}, 'Works like (side, colour and AI programs)'), likeSel)),
+        h('p', { class: 'hint' }, 'The new army gets this chapter\'s next free slot and its own turn. It shares the AI programs of the army it copies: changing one of those programs changes both. Then place its units on the Maps page (right-click → Place an enemy, and pick the army), and give it castles here.'),
+        h('div', { class: 'modal-actions' }, h('button', { class: 'btn btn-line', onclick: () => modal.remove() }, 'Cancel'), ok)));
+    const pickName = () => { const a = mine.find(x => String(x.army) === likeSel.value); if (a && a.nameId !== undefined) nameSel.value = String(a.nameId); };
+    likeSel.onchange = pickName; pickName();
+    if (!mine.length) { likeSel.disabled = true; ok.disabled = true; }
+    ok.onclick = async () => {
+      ok.disabled = true;
+      try {
+        const r = await api('newarmy', { ch: st.ch, name: Number(nameSel.value), like: Number(likeSel.value) });
+        modal.remove(); await refreshSession(); await loadTables(['armies'], true);
+        st.sel = r.slot; remember(); await load();
+        toast(`New army in slot ${r.slot} (Ctrl+Z undoes it)`);
+      } catch (e) { toast(e.message, true); ok.disabled = false; }
+    };
+    modal.addEventListener('keydown', e => { if (e.key === 'Escape') modal.remove(); });
+    document.body.append(modal);
+    nameSel.focus();
   }
 
   const personName = id => people.find(p => p.id === id)?.name || `Unit ${id}`;

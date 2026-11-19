@@ -536,6 +536,8 @@ class FreeSpace:
         while True:
             if upper_half and (a & 0xFFFF) < 0x8000:
                 a = (a & 0xFF0000) | 0x8000
+            if not a & 0xFFFF:          # the game takes a $xx:0000 pointer for "nothing" in places
+                a += 0x10                # (the decompression queue, text windows)
             if (a >> 16) != ((a + size - 1) >> 16):
                 a = ((a >> 16) + 1) << 16
                 continue

@@ -93,8 +93,28 @@ def _p24(rom, fo):
     return rom[fo] | rom[fo + 1] << 8 | rom[fo + 2] << 16
 
 
+TABLE_REFS = (0x06C56F, 0x06C567)          # LDA $86:C784,X (pointer) and LDA $86:C786,X (bank) in $86:C55A
+NEW_ARMY_BANKS = (0x86, 0x84, 0x81, 0x83, 0x85, 0x87, 0x88, 0x8A)
+
+
+def table_addr(rom):
+    """File offset of the army table (a build with new armies moves it)."""
+    return snes_to_file(_p24(rom, TABLE_REFS[0]))
+
+
 def army_addr(rom, i):
-    return _p24(rom, ARMY_TABLE + 3 * i)
+    return _p24(rom, table_addr(rom) + 3 * i)
+
+
+def army_count(rom):
+    """72, or more in a build with new armies (the table is followed by $FFFFFF there)."""
+    t = table_addr(rom)
+    if t == ARMY_TABLE:
+        return ARMY_COUNT
+    n = ARMY_COUNT
+    while _p24(rom, t + 3 * n) != 0xFFFFFF and n < 255:
+        n += 1
+    return n
 
 
 def _wlist(rom, bank, p, step=2, limit=64):
@@ -241,7 +261,7 @@ def _listing(rom):
 
 # ---------------------------------------------------------------- export
 ARMY_FIELDS = ['army', '_used_in', 'name', '_name', 'unk1', 'unk2', 'members', '_member_names',
-               'castles', '_orders']
+               'castles', '_orders', 'orders_like']
 
 
 def export(rom, proj):
@@ -388,12 +408,14 @@ def apply(rom, proj, space=None):
 
     path = os.path.join(proj, 'armies.csv')
     if os.path.exists(path):
-        for ln, row in enumerate(csv.DictReader(open(path, newline='')), start=2):
+        rows = list(csv.DictReader(open(path, newline='')))
+        changes += _add_armies(rom, rows, path, space)
+        for ln, row in enumerate(rows, start=2):
             where = f'{path}:{ln}'
             try:
                 i = int(row['army'])
-                if not 0 <= i < ARMY_COUNT:
-                    raise SystemExit(f'{where}: army must be 0-{ARMY_COUNT - 1}')
+                if not 0 <= i < army_count(rom):
+                    raise SystemExit(f'{where}: army must be 0-{army_count(rom) - 1}')
                 a = army(rom, i)
                 rec = bytearray(rom[a['file']:a['file'] + 9])
                 rec[0] = int(row['name'], 0)
@@ -424,6 +446,59 @@ def apply(rom, proj, space=None):
             elif any((a[k] or []) != v for k, v in (('members', mem), ('castles', cas))):
                 changes += 1
     return changes
+
+
+def _add_armies(rom, rows, path, space):
+    """Rows past the game's 72 armies become new armies: a 9-byte record (in a bank with free room),
+    a copy of the AI program list of the army in `orders_like` (the programs are shared), and a new
+    army table with the new entries (the lookup at $86:C55A is repointed)."""
+    new = []
+    for ln, row in enumerate(rows, start=2):
+        try:
+            i = int(row['army'])
+        except ValueError:
+            raise SystemExit(f'{path}:{ln}: army must be a number')
+        if i >= ARMY_COUNT:
+            new.append((i, ln, row))
+    if not new:
+        return 0
+    new.sort()
+    if [i for i, _, _ in new] != list(range(ARMY_COUNT, ARMY_COUNT + len(new))):
+        raise SystemExit(f'{path}: new armies must be numbered {ARMY_COUNT}, {ARMY_COUNT + 1}, ... without gaps')
+    if ARMY_COUNT + len(new) > 255:
+        raise SystemExit(f'{path}: at most {255 - ARMY_COUNT} new armies')
+
+    def alloc(n):
+        for b in NEW_ARMY_BANKS:
+            try:
+                return space.alloc(b << 16 | 0x8000, n)
+            except SystemExit:
+                continue
+        raise SystemExit('new armies: no room left in banks $81-$8A')
+    ptrs = [_p24(rom, ARMY_TABLE + 3 * k) for k in range(ARMY_COUNT)]
+    for i, ln, row in new:
+        like = (row.get('orders_like') or '').strip()
+        orders = []
+        if like:
+            try:
+                orders = army(rom, int(like))['orders'] or []
+            except (ValueError, IndexError):
+                raise SystemExit(f'{path}:{ln}: orders_like must be one of the game\'s armies (0-{ARMY_COUNT - 1})')
+        data = bytearray(9)
+        olist = b''.join(p.to_bytes(3, 'little') for p in orders) + b'\xff\xff'
+        fo, sn = alloc(9 + len(olist))
+        rom[fo + 9:fo + 9 + len(olist)] = olist
+        if orders:
+            o = (sn + 9) & 0xFFFF
+            data[7], data[8] = o & 0xFF, o >> 8
+        rom[fo:fo + 9] = data                   # name, members, castles: filled from the row next
+        ptrs.append(sn)
+    table = b''.join(p.to_bytes(3, 'little') for p in ptrs) + b'\xff\xff\xff'
+    fo, sn = alloc(len(table))
+    rom[fo:fo + len(table)] = table
+    rom[TABLE_REFS[0]:TABLE_REFS[0] + 3] = sn.to_bytes(3, 'little')
+    rom[TABLE_REFS[1]:TABLE_REFS[1] + 3] = (sn + 2).to_bytes(3, 'little')
+    return len(new)
 
 
 if __name__ == '__main__':

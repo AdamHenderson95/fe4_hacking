@@ -8,7 +8,7 @@ Writes into <outdir>:
   scenes.evt        all 562 scenes (cutscenes / conversations), by scene ID
   dialogue.txt      every message referenced by those scripts, editable text
 
-.evt lines look like   86C8A7: 02 00 00 00 01 00   ; COND_TURN  turn 1
+.evt lines look like   86C8A7: 02 00 00 00 01 00   ; COND_SEIZE  your army takes location 1
 Change the hex bytes, keeping each command the same length.
 
 dialogue.txt blocks look like
@@ -51,7 +51,7 @@ CHAPTERS = ['prologue', 'ch01', 'ch02', 'ch03', 'ch04', 'ch05', 'ch06', 'ch07', 
 
 # Names ending in '?' are inferred from argument patterns, not yet confirmed in-game.
 EV_NAMES = {
-    0x00: 'BLOCK_END?', 0x01: 'COND_TURN_START', 0x02: 'COND_TURN', 0x04: 'COND_TALK', 0x05: 'COND_05?', 0x07: 'COND_07?',
+    0x00: 'BLOCK_END?', 0x01: 'COND_TURN_START', 0x02: 'COND_SEIZE', 0x04: 'COND_TALK', 0x05: 'COND_05?', 0x07: 'COND_07?',
     0x0A: 'COND_VISIT', 0x0B: 'COND_IN_AREA', 0x0C: 'COND_NEXT_TO?', 0x0D: 'COND_BATTLE',
     0x0E: 'COND_DEFEAT?', 0x0F: 'COND_UNIT?', 0x16: 'COND_TALK2', 0x1A: 'COND_DEATH',
     0x20: 'NOP2', 0x25: 'NOP2', 0x2E: 'NOP2', 0x21: 'ARMY_ORDER?', 0x2B: 'GOTO',
@@ -342,8 +342,9 @@ class Commenter:
         try:
             if op == 0x01:
                 return 'start of every turn' if w(2) == 0xFFFF else 'start of turn %d' % (w(2) + 1)
-            if op == 0x02:
-                return 'turn %d' % w(4)
+            if op == 0x02:          # mode 1, from the task a castle's capture starts (1.2)
+                who = 'your army' if w(2) == 0 else 'anyone' if w(2) == 0xFFFF else 'army slot %d' % w(2)
+                return '%s takes location %d' % (who, w(4))
             if op in (0x04, 0x16):
                 return '%s talks to %s' % (self.unit(w(2)), self.unit(w(4)))
             if op == 0x0C:

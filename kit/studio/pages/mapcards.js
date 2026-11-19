@@ -6,6 +6,48 @@ import { api, h, app, toast, refreshSession, go, loadTables } from '../app.js';
 import { openEventAt } from './events.js';
 import { pickArea } from './mappick.js';
 
+const TITLE_FONTS = ['Georgia', 'Palatino Linotype', 'Book Antiqua', 'Garamond', 'Times New Roman', 'Cambria', 'Constantia', 'serif'];
+
+/** Draw a title the way the game's card letters look: greys 3-8 (by coverage), colour 1 as a one-pixel
+ *  outline, 24 rows with the baseline on row 16, centred in 256 columns. Returns {px, wide}. */
+export function renderTitle(text, { font = 'Georgia', size = 18, width = 82 } = {}) {
+  const S = 4, c = document.createElement('canvas'), g = c.getContext('2d');
+  const f = `${size * S}px "${font}", serif`;
+  g.font = f;
+  const tw = Math.ceil(g.measureText(text).width);
+  c.width = tw + 16 * S; c.height = 24 * S;
+  g.font = f; g.fillStyle = '#fff'; g.textBaseline = 'alphabetic';
+  g.fillText(text, 8 * S, 16 * S);
+  const w = Math.max(1, Math.round(c.width * width / 100 / S));
+  const d = document.createElement('canvas'); d.width = w; d.height = 24;
+  const dg = d.getContext('2d');
+  dg.imageSmoothingEnabled = true; dg.imageSmoothingQuality = 'high';
+  dg.drawImage(c, 0, 0, w, 24);
+  const a = dg.getImageData(0, 0, w, 24).data;
+  const al = (x, y) => a[(y * w + x) * 4 + 3];
+  let x0 = w, x1 = -1;
+  for (let x = 0; x < w; x++) for (let y = 0; y < 24; y++) if (al(x, y) > 24) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); }
+  const px = new Uint8Array(256 * 24);
+  if (x1 < 0) return { px: '0'.repeat(256 * 24), wide: false };
+  const tw2 = x1 - x0 + 3, ox = Math.floor((256 - tw2) / 2) + 1;
+  const TH = [24, 48, 80, 110, 150, 200];
+  for (let y = 0; y < 24; y++) for (let x = x0; x <= x1; x++) {
+    const v = al(x, y), lvl = TH.filter(t => v >= t).length, X = ox + x - x0;
+    if (lvl && X >= 0 && X < 256) px[y * 256 + X] = 2 + lvl;
+  }
+  const out = px.slice();
+  for (let y = 0; y < 24; y++) for (let x = 0; x < 256; x++) {
+    if (px[y * 256 + x]) continue;
+    let near = false;
+    for (let dy = -1; dy <= 1 && !near; dy++) for (let dx = -1; dx <= 1; dx++) {
+      const yy = y + dy, xx = x + dx;
+      if (yy >= 0 && yy < 24 && xx >= 0 && xx < 256 && px[yy * 256 + xx] >= 3) { near = true; break; }
+    }
+    if (near) out[y * 256 + x] = 1;
+  }
+  return { px: Array.from(out).join(''), wide: tw2 > 254 };
+}
+
 const STAT_LINE = 'Write what is said, or leave it for later: the words can be changed on the Events page.';
 
 /** ctx: { M(), ch(), reload(), select(rows), redraw(), hover() } */
@@ -14,6 +56,11 @@ export function mapActions(ctx) {
   const danger = { rows: new Set(), all: false };
   let clip = null;                                      // {ch, units: [{...}]}
   try { clip = JSON.parse(sessionStorage.getItem('fe4studio-mapclip') || 'null'); } catch (e) { clip = null; }
+
+  if (!window.__mcardHash) {                          // a card belongs to the page it was opened on
+    window.__mcardHash = true;
+    addEventListener('hashchange', () => document.querySelector('.modal.mcard')?.remove());
+  }
 
   async function load(force) {
     const ch = ctx.ch();
@@ -124,6 +171,18 @@ export function mapActions(ctx) {
       sep();
       add('Event when someone reaches here…', () => eventCard('area', { x1: Math.max(0, x - 1), y1: Math.max(0, y - 1), x2: x + 1, y2: y + 1 }));
       if (site?.kind === 'village') add('Village visit event…', () => eventCard('visit', { loc: Number(site.index) }));
+      if (site?.kind === 'castle' && !(M.endings || []).some(e => e.kind === 'seize' && e.loc === Number(site.index))) {
+        add(`Taking ${site.name || 'this castle'} wins the chapter`, () => setWin({ kind: 'seize', loc: Number(site.index) }));
+      }
+      if (site) add(`Remove this ${site.kind === 'castle' ? (site.name || 'castle') : 'village'}`, () => removeSite(site), { danger: true });
+      else if (inArea(x, y)) {
+        add('Add a castle here…', () => siteCard('castle', x, y));
+        add('Add a village here…', () => siteCard('village', x, y));
+      }
+      sep();
+      add('Win condition…', () => winCard());
+      add('Chapter title…', () => titleCard());
+      add('Opening scene…', () => openingCard({ x, y }));
       add('Message at the start of a turn…', () => eventCard('turn', {}));
       sep();
       add(danger.all ? 'Hide all danger zones' : 'Show all enemy danger zones', () => toggleDanger('all'));
@@ -164,7 +223,9 @@ export function mapActions(ctx) {
       }
     });
     modal.addEventListener('pointerdown', e => { if (e.target === modal) modal.remove(); });
+    modal.tabIndex = -1;
     document.body.append(modal);
+    setTimeout(() => { if (!modal.contains(document.activeElement)) modal.focus(); }, 0);
     return modal;
   }
   const field = (label, el, extra) => h('label', { class: 'lbl' }, h('span', {}, label, extra || null), el);
@@ -572,6 +633,264 @@ export function mapActions(ctx) {
     modal.querySelector('input, select, textarea')?.focus();
   }
 
+  // ------------------------------------------------------------ how the chapter is won
+  // The game ends a chapter with an event whose scene runs $78 (chapter clear). Its condition is usually
+  // `02`: your army takes a castle. The card points it at another castle, or turns it into "survive until
+  // turn N starts" (`01`); the ending scene itself (and its words) stays.
+  async function winCard() {
+    let w;
+    try { w = await api('wincond?ch=' + ctx.ch()); } catch (e) { toast(e.message, true); return; }
+    const editable = w.endings.filter(e => e.kind !== 'other');
+    if (!editable.length) {
+      const m = card('How this chapter is won', ctx.M().title, h('div', { class: 'mcard-body' },
+        h('p', {}, w.endings.length ? `This chapter ends with: ${w.endings.map(e => e.words).join('; ')}. The editor can only change endings that are "take a castle" or "survive until a turn".`
+          : 'This chapter ends through its scripted story sequence (not one event the editor can change). The Prologue and chapters 1 and 3-11 end when you take a castle, and those can be changed here.')),
+      [h('button', { class: 'btn btn-gilt', onclick: () => m.remove() }, 'OK')]);
+      return;
+    }
+    const e = editable[0];
+    const seize = h('input', { type: 'radio', name: 'mcwin', checked: e.kind === 'seize' });
+    const turn = h('input', { type: 'radio', name: 'mcwin', checked: e.kind === 'turn' });
+    const castleSel = select(w.castles.map(c => [c.index, `${c.name}${c.holder ? ' (held by ' + c.holder + ')' : ''}`]), e.loc ?? w.castles[w.castles.length - 1]?.index, 'Castle');
+    const turnIn = num(e.turn ?? 10, 'Turn', 2, 99);
+    const ok = h('button', { class: 'btn btn-gilt' }, 'Save');
+    const m = card('How this chapter is won', `Now: ${e.words}`, h('div', { class: 'mcard-body' },
+      h('label', { class: 'mcard-radio' }, seize, ' Take a castle'),
+      h('div', { class: 'mcard-grid', style: 'margin-left:26px' }, h('div', { class: 'mcard-wide' }, field('Castle', castleSel))),
+      h('label', { class: 'mcard-radio' }, turn, ' Survive until a turn starts'),
+      h('div', { class: 'mcard-grid', style: 'margin-left:26px' }, field('Turn', turnIn),
+        h('p', { class: 'hint', style: 'align-self:end;margin:0' }, 'The chapter ends as your phase of that turn begins.')),
+      h('p', { class: 'hint' }, 'Either way the chapter\'s own ending scene plays, then the Save Game screen and the next chapter. Change the scene\'s words on the Events page.'),
+      w.endings.length > 1 ? h('p', { class: 'hint' }, `This chapter has ${w.endings.length} ending events; the card changes the first.`) : null),
+    [h('button', { class: 'btn btn-line', onclick: () => m.remove() }, 'Cancel'), ok]);
+    castleSel.onfocus = () => { seize.checked = true; };
+    turnIn.onfocus = () => { turn.checked = true; };
+    ok.onclick = async () => {
+      ok.disabled = true;
+      if (await setWin(seize.checked ? { kind: 'seize', loc: Number(castleSel.value) } : { kind: 'turn', turn: Number(turnIn.value) }, e.line)) m.remove();
+      else ok.disabled = false;
+    };
+  }
+
+  async function setWin(spec, line) {
+    try {
+      if (line === undefined) {
+        const w = await api('wincond?ch=' + ctx.ch());
+        const e = w.endings.find(x => x.kind !== 'other');
+        if (!e) { winCard(); return; }
+        line = e.line;
+      }
+      const r = await api('wincond', { ch: ctx.ch(), line, ...spec });
+      await refreshSession();
+      await ctx.reload();
+      toast(`The chapter is won: ${r.endings.find(x => x.line === line)?.words || 'changed'} (Ctrl+Z undoes it)`);
+      return true;
+    } catch (er) { toast(er.message, true); return false; }
+  }
+
+  // ------------------------------------------------------------ add or take away castles and villages
+  // A site is a record the game reads (index, kind, x, y; castles add a name, town buttons and an
+  // armory) plus the tiles on the map. The card can copy the tiles around one of the chapter's own
+  // castles or villages so the new one looks right straight away.
+  async function siteCard(kind, x, y) {
+    try { await load(true); } catch (e) { toast(e.message, true); return; }
+    const M = ctx.M();
+    const same = M.locations.filter(L => L.kind === kind);
+    const lookSel = select([['', 'Leave the map tiles as they are'], ...same.map(L => [L.index, `Copy the tiles of ${L.kind === 'castle' ? (L.name || 'castle ' + L.index) : 'village ' + L.index} (${L.x}, ${L.y})`])],
+      same.length ? same[0].index : '', 'Look');
+    const names = (armies.castleNames || []).map((n, i) => [i, n ? `${n} (${i})` : `Name ${i}`]).filter(([i, n]) => !/^Name /.test(n));
+    const nameSel = kind === 'castle' ? select(names, names[0]?.[0], 'Castle name') : null;
+    const holderSel = kind === 'castle' ? select([['', 'Nobody (empty)'], ...info.armies.map(([s, n]) => [s, s === 0 ? `${n} (you)` : n])], '', 'Held by') : null;
+    const goldIn = kind === 'village' ? num(5000, 'Gold', 1, 50000) : null;
+    const ok = h('button', { class: 'btn btn-gilt' }, kind === 'castle' ? 'Add castle' : 'Add village');
+    const foot = kind === 'castle' ? '3 wide and 4 tall, with the gate (where units seize it) on the cell you clicked' : '3 wide and 2 tall, with the door on the cell you clicked';
+    const m = card(kind === 'castle' ? 'New castle' : 'New village', `At (${x}, ${y}) · ${M.locations.length + 1} of 16 castles and villages`, h('div', { class: 'mcard-body' },
+      kind === 'castle' ? h('div', { class: 'mcard-grid' }, field('Name', nameSel), field('Held by', holderSel)) : h('div', { class: 'mcard-grid' }, field('Gold for visiting', goldIn)),
+      field('Look on the map', lookSel),
+      h('p', { class: 'hint' }, `A ${kind} takes ${foot}. Town buttons, armory and visit events are set from the castle or village afterwards.`)),
+    [h('button', { class: 'btn btn-line', onclick: () => m.remove() }, 'Cancel'), ok]);
+    ok.onclick = async () => {
+      ok.disabled = true;
+      try {
+        const body = { ch: ctx.ch(), add: kind, x, y };
+        if (lookSel.value !== '') body.look = Number(lookSel.value);
+        if (nameSel) body.castle_id = Number(nameSel.value);
+        if (holderSel && holderSel.value !== '') body.army = Number(holderSel.value);
+        if (goldIn) body.gold = Number(goldIn.value);
+        await api('sites', body);
+        await refreshSession();
+        await ctx.reload();
+        m.remove();
+        toast(`Added a ${kind} at (${x}, ${y}) (Ctrl+Z undoes it)`);
+      } catch (e) { toast(e.message, true); ok.disabled = false; }
+    };
+  }
+
+  async function removeSite(site) {
+    const M = ctx.M();
+    const last = M.locations.reduce((a, L) => Math.max(a, Number(L.index)), -1);
+    const what = site.kind === 'castle' ? (site.name || 'this castle') : `village ${site.index}`;
+    const m = card(`Remove ${what}?`, `(${site.x}, ${site.y})`, h('div', { class: 'mcard-body' },
+      h('p', {}, 'The game will no longer treat this spot as a ' + site.kind + '. Its own events stop playing and its army no longer holds it. The map tiles stay: paint over them with the Paint tool.'),
+      Number(site.index) !== last ? h('p', { class: 'hint' }, `Castles and villages are numbered without gaps, so the last one (number ${last}) takes number ${site.index}; its events, army and enemy orders are updated to match.`) : null),
+    [h('button', { class: 'btn btn-line', onclick: () => m.remove() }, 'Cancel'),
+      h('button', { class: 'btn btn-gilt', onclick: async () => {
+        try {
+          await api('sites', { ch: ctx.ch(), remove: Number(site.index) });
+          await refreshSession(); await ctx.reload(); m.remove();
+          toast(`Removed ${what} (Ctrl+Z undoes it)`);
+        } catch (e) { toast(e.message, true); }
+      } }, 'Remove')]);
+  }
+
+  // ------------------------------------------------------------ the chapter's opening scene
+  // What plays when the chapter starts, as a list of simple steps: music, move the camera, units arrive,
+  // a conversation over the map, a pause, fade the music. Steps the editor doesn't know (the game's own
+  // animations) stay as "game steps" unless taken out.
+  async function openingCard(at) {
+    let o;
+    try { await load(); o = await api('opening?ch=' + ctx.ch()); } catch (e) { toast(e.message, true); return; }
+    const steps = o.steps.map(s => ({ ...s, _orig: true }));
+    let mode = 'replace';
+    const listBox = h('ol', { class: 'opsteps' });
+    const songName = n => { const s = o.songs.find(([k]) => k === n); return s && s[1] ? `${n}: ${s[1]}` : `Song ${n}`; };
+    const words = st => ({
+      music: () => `Music: ${songName(Number(st.song))}`,
+      camera: () => `Camera moves to (${st.x}, ${st.y})`,
+      units: () => `Units arrive: group ${st.list}${(o.lists.find(l => l.list === Number(st.list)) || {}).when ? '' : ''}`,
+      talk: () => `Conversation: ${st.lines ? st.lines.map(l => l.text).join(' / ') : String(st.text || '').replace(/\{[^}]*\}/g, ' ').replace(/\s+/g, ' ').trim()}`,
+      wait: () => `Pause ${st.frames} frames (${(st.frames / 60).toFixed(1)} s)`,
+      fade: () => 'Fade the music out',
+      game: () => `Game step: ${st.what || st.hex}`,
+      setup: () => `Map set-up (always kept): ${st.what || st.hex}`,
+    }[st.kind] || (() => st.kind))();
+    const draw = () => {
+      listBox.replaceChildren(...steps.map((st, i) => h('li', { class: 'opstep' + (st.kind === 'game' || st.kind === 'setup' ? ' game' : '') },
+        h('span', {}, words(st)),
+        st.kind === 'setup' ? null : h('span', { class: 'opstep-btns' },
+          h('button', { class: 'icon-btn', title: 'Up', disabled: i === 0 || steps[i - 1].kind === 'setup', onclick: () => { [steps[i - 1], steps[i]] = [steps[i], steps[i - 1]]; draw(); } }, '↑'),
+          h('button', { class: 'icon-btn', title: 'Down', disabled: i === steps.length - 1, onclick: () => { [steps[i + 1], steps[i]] = [steps[i], steps[i + 1]]; draw(); } }, '↓'),
+          h('button', { class: 'icon-btn', title: 'Take out', onclick: () => { steps.splice(i, 1); draw(); } }, '×')))));
+      if (!steps.length) listBox.append(h('li', { class: 'hint' }, 'No steps yet: add some below.'));
+    };
+    // adding steps
+    const songSel = select(o.songs.map(([n, nm]) => [n, nm ? `${n}: ${nm}` : `Song ${n}`]), 0x70, 'Song');
+    const camX = num(at?.x ?? 8, 'Camera x', 0, 63), camY = num(at?.y ?? 7, 'Camera y', 0, 63);
+    const listSel = select(o.lists.map(l => [l.list, `Group ${l.list} · ${l.when}`]), o.lists[0]?.list, 'Units');
+    const aIn = h('input', { class: 'in', list: 'mcpeople', 'aria-label': 'First person', value: personLabel(info.lord ?? 1) });
+    const bIn = h('input', { class: 'in', list: 'mcpeople', 'aria-label': 'Second person', placeholder: 'nobody' });
+    const talkIn = h('textarea', { class: 'in', rows: 3, 'aria-label': 'Conversation', placeholder: 'One line each. Start a line with 2: for the second person; other lines are the first person\'s.' });
+    const waitIn = num(60, 'Pause frames', 1, 600);
+    const add = st => { steps.push(st); draw(); };
+    const addTalk = () => {
+      const a = parsePerson(aIn.value), b = bIn.value.trim() ? parsePerson(bIn.value) : null;
+      if (a === null) { toast('Who is the first person?', true); return; }
+      const lines = talkIn.value.split('\n').map(t => t.trim()).filter(Boolean).map(t => /^2\s*:/.test(t) ? { who: 'b', text: t.replace(/^2\s*:\s*/, '') } : { who: 'a', text: t.replace(/^1\s*:\s*/, '') });
+      if (!lines.length) { toast('Write what is said.', true); return; }
+      add({ kind: 'talk', a, b: b ?? undefined, lines }); talkIn.value = '';
+    };
+    const tabs = h('div', { class: 'opadd' },
+      h('div', { class: 'opadd-row' }, field('Music', songSel), h('button', { class: 'btn btn-line', onclick: () => add({ kind: 'music', song: Number(songSel.value) }) }, '+ Music')),
+      h('div', { class: 'opadd-row' }, field('Camera x', camX), field('y', camY), h('button', { class: 'btn btn-line', onclick: () => add({ kind: 'camera', x: Number(camX.value), y: Number(camY.value) }) }, '+ Camera')),
+      o.lists.length ? h('div', { class: 'opadd-row' }, field('Units', listSel), h('button', { class: 'btn btn-line', onclick: () => add({ kind: 'units', list: Number(listSel.value) }) }, '+ Units arrive')) : null,
+      h('div', { class: 'opadd-row' }, field('Speaker 1', aIn), field('Speaker 2', bIn)),
+      h('div', { class: 'opadd-row' }, field('Conversation', talkIn), h('button', { class: 'btn btn-line', onclick: addTalk }, '+ Conversation')),
+      h('div', { class: 'opadd-row' }, field('Pause (frames, 60 = 1 s)', waitIn), h('button', { class: 'btn btn-line', onclick: () => add({ kind: 'wait', frames: Number(waitIn.value) }) }, '+ Pause'),
+        h('button', { class: 'btn btn-line', onclick: () => add({ kind: 'fade' }) }, '+ Fade music')));
+    const rep = h('input', { type: 'radio', name: 'opmode', checked: true, onchange: () => { mode = 'replace'; } });
+    const bef = h('input', { type: 'radio', name: 'opmode', onchange: () => { mode = 'after'; } });
+    const ok = h('button', { class: 'btn btn-gilt' }, 'Save opening');
+    const m = card('Opening scene', `${ctx.M().title} · scene ${o.scene}`, h('div', { class: 'mcard-body' },
+      listBox, tabs,
+      h('label', { class: 'mcard-radio' }, rep, ' These steps are the whole opening'),
+      h('label', { class: 'mcard-radio' }, bef, ' Keep the game\'s own opening and play my new steps after it'),
+      o.complex ? h('p', { class: 'hint' }, 'The game\'s opening for this chapter jumps around inside itself, so its game steps can\'t be kept one by one: take them all out to replace it, or keep it and play your new steps after it.') : null,
+      h('p', { class: 'hint' }, 'Camera x, y is the cell to look at (right-click the map and choose Opening scene to start from that cell). Groups of units come in where the Maps page shows them. Keep the "Units arrive" steps of the game\'s own opening, or its enemies never appear.')),
+    [h('button', { class: 'btn btn-line', onclick: () => m.remove() }, 'Cancel'), ok], 'mcard-wide');
+    draw();
+    ok.onclick = async () => {
+      let send = steps;
+      if (mode === 'after') send = steps.filter(s => !s._orig);
+      else send = [...steps.filter(s => s.kind === 'setup'), ...steps.filter(s => s.kind !== 'setup')];
+      if (mode === 'replace' && o.complex && steps.some(s => s.kind === 'game')) { toast('Take out the game steps first (see the note), or choose to play your steps first.', true); return; }
+      ok.disabled = true;
+      try {
+        await api('opening', { ch: ctx.ch(), mode, steps: send.map(({ what, text, _orig, ...s }) => s) });
+        await refreshSession(); await ctx.reload(); m.remove();
+        toast('Opening saved (Ctrl+Z undoes it). Test it with ▶ Test this chapter.');
+      } catch (e) { toast(e.message, true); ok.disabled = false; }
+    };
+  }
+
+  // ------------------------------------------------------------ the chapter's title card
+  // The card that opens a chapter ("Chapter 3 / Eldigan the Lionheart") is a picture: Project Naga drew
+  // the titles. A new title is drawn here with a font on this computer, styled like the game's (light
+  // letters, a black outline) and stored as that picture, so the build always looks like the preview.
+  async function titleCard() {
+    let t;
+    try { t = await api('chaptitle?ch=' + ctx.ch()); } catch (e) { toast(e.message, true); return; }
+    const look = { font: 'Georgia', size: 18, width: 82, ...(t.look || {}) };
+    const textIn = h('input', { class: 'in', value: t.text || t.gameText, maxlength: t.textMax, 'aria-label': 'Title', spellcheck: 'false' });
+    const fontSel = select(TITLE_FONTS.map(f => [f, f]), look.font, 'Font');
+    const sizeIn = num(look.size, 'Letter size', 12, 26);
+    const widthIn = num(look.width, 'Letter width (%)', 50, 120);
+    const cv = h('canvas', { class: 'mtitle-cv', width: 512, height: 112, 'aria-label': 'Preview of the title card' });
+    const warn = h('p', { class: 'mcard-warn', hidden: true });
+    const ok = h('button', { class: 'btn btn-gilt' }, 'Save');
+    let cur = null, touched = false;
+    const draw = px => {
+      const g = cv.getContext('2d'), img = g.createImageData(256, 56);
+      const tint = [1.55, 1.25, 1.05];
+      for (let y = 0; y < 56; y++) for (let x = 0; x < 256; x++) {
+        const src = y < 4 ? 0 : y < 28 ? Number(t.label[(y - 4) * 256 + x]) : y < 52 ? Number(px[(y - 28) * 256 + x]) : 0;
+        const o = (y * 256 + x) * 4, gv = src ? t.greys[src - 1] : null;
+        if (gv === null) { img.data.set([16, 8, 8, 255], o); continue; }
+        img.data.set([Math.min(255, gv * tint[0]), Math.min(255, gv * tint[1]), Math.min(255, gv * tint[2]), 255], o);
+      }
+      const tmp = h('canvas', { width: 256, height: 56 });
+      tmp.getContext('2d').putImageData(img, 0, 0);
+      g.imageSmoothingEnabled = false;
+      g.drawImage(tmp, 0, 0, 512, 112);
+    };
+    const update = () => {
+      const text = textIn.value.replace(/\s+/g, ' ').trim();
+      const bad = [...text].filter(c => !t.chars.includes(c));
+      warn.hidden = true;
+      ok.disabled = false;
+      if (!text) { draw(t.orig); ok.disabled = true; cur = null; return; }
+      if (bad.length) { warn.textContent = `The game has no letter for: ${[...new Set(bad)].join(' ')}`; warn.hidden = false; ok.disabled = true; return; }
+      const r = renderTitle(text, { font: fontSel.value, size: Number(sizeIn.value), width: Number(widthIn.value) });
+      if (r.wide) { warn.textContent = 'Too wide for the screen: make it shorter, smaller or narrower.'; warn.hidden = false; ok.disabled = true; }
+      cur = { text, px: r.px };
+      draw(r.px);
+    };
+    for (const el of [textIn, fontSel, sizeIn, widthIn]) el.addEventListener('input', () => { touched = true; update(); });
+    const m = card('Chapter title', `${t.name}${t.custom ? ' · your title' : ' · the game\'s title'}`, h('div', { class: 'mcard-body' },
+      cv,
+      field('Title', textIn),
+      h('div', { class: 'mcard-grid' }, field('Font', fontSel), field('Size', sizeIn), field('Width %', widthIn)),
+      warn,
+      h('p', { class: 'hint' }, `Shown when the chapter starts, and used as the chapter's name in the game's text (save screen, end-of-game record). Up to ${t.textMax} letters. Fonts come from this computer; the saved title keeps its look everywhere.`)),
+    [t.custom ? h('button', { class: 'btn btn-line', onclick: async () => {
+      try { await api('chaptitle', { ch: ctx.ch(), reset: true }); await refreshSession(); m.remove(); toast('The game\'s own title is back (Ctrl+Z undoes it)'); } catch (e) { toast(e.message, true); }
+    } }, 'Use the game\'s title') : null,
+    h('button', { class: 'btn btn-line', onclick: () => m.remove() }, 'Cancel'), ok]);
+    if (t.custom && t.px) { draw(t.px); cur = { text: t.text, px: t.px }; } else draw(t.orig);
+    ok.onclick = async () => {
+      if (!touched && !t.custom) update();
+      if (!cur) return;
+      ok.disabled = true;
+      try {
+        await api('chaptitle', { ch: ctx.ch(), text: cur.text, px: cur.px, look: { font: fontSel.value, size: Number(sizeIn.value), width: Number(widthIn.value) } });
+        await refreshSession();
+        m.remove();
+        toast(`${t.name} is now "${cur.text}" (Ctrl+Z undoes it)`);
+      } catch (e) { toast(e.message, true); ok.disabled = false; }
+    };
+    textIn.focus();
+    textIn.select();
+  }
+
   // ------------------------------------------------------------ danger zones
   // Movement: entering a cell costs the game's per-terrain value + 1 for the unit's movement type
   // (the grid $87:B394 builds: roads and bridges 1, plains 2, 128 = can't enter) out of 2 x Move, so
@@ -647,6 +966,6 @@ export function mapActions(ctx) {
     for (const i of at) if (!mv.has(i)) c2d.fillRect((i % M.width) * s, ((i / M.width) | 0) * s, s, s);
   }
 
-  return { menu, unitCard, eventCard, copy, paste, duplicate, remove, toggleDanger, drawDanger, closeMenu, danger,
+  return { menu, unitCard, eventCard, winCard, setWin, titleCard, siteCard, removeSite, openingCard, copy, paste, duplicate, remove, toggleDanger, drawDanger, closeMenu, danger,
     load, hasClip: () => !!clip?.units.length, unitAt };
 }

@@ -1,5 +1,5 @@
 // Characters: a roster of portraits and a status-screen style sheet for the selected unit.
-import { api, h, app, toast, setField, loadTables, go } from '../app.js';
+import { api, h, app, toast, setField, loadTables, go, refreshSession } from '../app.js';
 import { showPortrait } from './portraits.js';
 
 const GROUPS = [
@@ -38,8 +38,49 @@ export async function charactersPage(root) {
   const tabs = h('div', { class: 'tabs', role: 'tablist' });
   const search = h('input', { class: 'search', type: 'search', placeholder: 'Find a unit', 'aria-label': 'Find a unit', value: state.query });
   const grid = h('div', { class: 'grid' });
-  roster.append(h('div', { class: 'roster-tools' }, tabs, search), grid);
+  const addBtn = h('button', { class: 'btn btn-line', title: 'A new playable character for generation 1', onclick: () => newCharacter() }, '+ New character');
+  roster.append(h('div', { class: 'roster-tools' }, tabs, search, addBtn), grid);
   search.oninput = () => { state.query = search.value; remember(); drawGrid(); };
+
+  // ---------------------------------------------------------------- a new generation-1 character
+  // The game keeps 24 character places (one per gen-1 character, shared with a gen-2 child or
+  // stand-in), and every one is used. A new character takes the place of someone your story leaves
+  // out: their love and children rules come with it.
+  function newCharacter() {
+    document.querySelector('.modal.chnew')?.remove();
+    const gen1 = T.units_playable.rows.filter(r => Number(r.index) <= 768 && r._name);
+    const seen = new Set(), places = [];
+    for (const r of gen1) if (!seen.has(r.slot)) { seen.add(r.slot); places.push(r); }
+    const cls = T.classes.rows.map((r, i) => [i, r._name]).filter(([, n]) => n);
+    const name = h('input', { class: 'in', maxlength: 12, 'aria-label': 'Name', placeholder: 'e.g. Kain' });
+    const takes = h('select', { class: 'in', 'aria-label': 'Takes the place of' }, places.map(r => h('option', { value: r.index }, `${r._name} (${r._class_name || 'class ' + r.class})`)));
+    const klass = h('select', { class: 'in', 'aria-label': 'Class' }, h('option', { value: '' }, 'Same as theirs'), cls.map(([i, n]) => h('option', { value: i }, n)));
+    const level = h('input', { class: 'in num', value: '', placeholder: 'theirs', 'aria-label': 'Level' });
+    const start = h('input', { type: 'checkbox' });
+    const ok = h('button', { class: 'btn btn-gilt' }, 'Add character');
+    const modal = h('div', { class: 'modal chnew', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'New character' },
+      h('div', { class: 'modal-box' }, h('h2', {}, 'New character'),
+        h('div', { class: 'itgrid wide' },
+          h('label', { class: 'lbl' }, h('span', {}, 'Name'), name),
+          h('label', { class: 'lbl' }, h('span', {}, 'Takes the place of'), takes),
+          h('label', { class: 'lbl' }, h('span', {}, 'Class'), klass),
+          h('label', { class: 'lbl' }, h('span', {}, 'Level'), level)),
+        h('label', { class: 'lbl', style: 'flex-direction:row;gap:8px;align-items:center' }, start, h('span', {}, 'In Sigurd\'s army from the Prologue (instead of the person whose place it takes, if they are)')),
+        h('p', { class: 'hint' }, 'The game has 24 places for characters and every one is used, so a new character takes over the place of someone your story leaves out: their love, children and stand-in rules come with it. Don\'t recruit both. The new character starts as a copy of theirs; change the stats, growths, skills, portrait and items on this page, and bring them in on the Maps page (right-click: place a unit, then a Recruit event).'),
+        h('div', { class: 'modal-actions' }, h('button', { class: 'btn btn-line', onclick: () => modal.remove() }, 'Cancel'), ok)));
+    ok.onclick = async () => {
+      const body = { name: name.value.trim(), takes: Number(takes.value), class: klass.value, level: level.value.trim(), start: start.checked };
+      ok.disabled = true;
+      try {
+        const r = await api('newchar', body); modal.remove(); await refreshSession(); await loadTables(NEEDED, true);
+        state.group = 'units_playable'; state.row = r.row; remember(); drawTabs(); drawGrid(); drawSheet();
+        toast(`${body.name} added (Ctrl+Z undoes it)`);
+      } catch (e) { toast(e.message, true); ok.disabled = false; }
+    };
+    modal.addEventListener('keydown', e => { if (e.key === 'Escape') modal.remove(); });
+    document.body.append(modal);
+    name.focus();
+  }
 
   function drawTabs() {
     tabs.replaceChildren(...GROUPS.filter(g => T[g.key]).map(g => h('button', {
@@ -142,6 +183,14 @@ export async function charactersPage(root) {
     const who = h('div', { class: 'who' }, h('h2', {}, unitName(table, r)));
     if (nameEl) who.append(h('div', { style: 'max-width:220px;margin:-4px 0 12px' }, labeled('Name in the game', nameEl)));
     who.append(facts);
+    if (table === 'units_playable' && Number(r.index) > 768) {
+      const owner = t.rows.find(x => x.slot === r.slot && Number(x.index) <= 768);
+      who.append(h('p', { class: 'note' }, `A character you added · takes ${owner?._name || 'place ' + r.slot}'s place `,
+        h('button', { class: 'btn btn-line', onclick: async () => {
+          try { await api('newchar', { delete: row }); await refreshSession(); await loadTables(NEEDED, true); state.row = null; remember(); drawGrid(); drawSheet(); toast(`${unitName(table, r)} deleted`); }
+          catch (e) { toast(e.message, true); }
+        } }, 'Delete')));
+    }
     const picBox = r._portrait !== null && r._portrait !== undefined
       ? h('div', {}, pic, h('button', { class: 'btn btn-line ptlink', title: 'Replace this picture on the Portraits page', onclick: () => { showPortrait(r._portrait); go('portraits'); } }, 'Change picture'))
       : pic;

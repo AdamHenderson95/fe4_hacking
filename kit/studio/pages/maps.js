@@ -77,6 +77,9 @@ export async function mapsPage(root) {
         h('button', { class: 'chip', 'aria-pressed': String(st.layers[k]), onclick: e => { st.layers[k] = !st.layers[k]; e.currentTarget.setAttribute('aria-pressed', String(st.layers[k])); drawOverlay(); drawObjects(); } }, label))),
     h('button', { class: 'btn btn-line mtileset', title: 'How much of the 64 × 64 layout the chapter uses', onclick: () => sizeDialog() }, 'Map size…'),
     h('button', { class: 'btn btn-line mtileset2', title: 'Draw the whole map as one picture, or give the chapter a whole new set of tiles', onclick: () => tilesetDialog() }, 'Map picture & tile set…'),
+    h('button', { class: 'btn btn-line', title: 'How this chapter is won', onclick: () => acts.winCard() }, '★ Win condition…'),
+    h('button', { class: 'btn btn-line', title: 'The title shown when the chapter starts', onclick: () => acts.titleCard() }, 'Chapter title…'),
+    h('button', { class: 'btn btn-line', title: 'What plays when the chapter starts', onclick: () => acts.openingCard() }, 'Opening scene…'),
     h('button', { class: 'btn btn-gilt mtest', title: 'Build the game and open the PC port with New Game going straight to this chapter', onclick: () => testChapter() }, '▶ Test this chapter'));
 
   const base = h('canvas', { class: 'mbase' });
@@ -234,8 +237,9 @@ export async function mapsPage(root) {
     if (st.layers.sites) for (const L of M.locations) {
       const f = FOOT[L.kind] || [0, 0, 0, 0];
       const x = Number(L.x) + f[0], y = Number(L.y) + f[1], w = f[2] - f[0] + 1, hh = f[3] - f[1] + 1;
-      const label = L.kind === 'castle' ? (L.name || 'Castle') : L.kind === 'village' ? 'Village' : L.kind;
-      const e = h('div', { class: `msite ${L.kind}`, title: `${label} (${L.kind} ${L.index}) at ${L.x}, ${L.y}`,
+      const ends = L.kind === 'castle' && (M.endings || []).some(x => x.kind === 'seize' && x.loc === Number(L.index));
+      const label = (L.kind === 'castle' ? (L.name || 'Castle') : L.kind === 'village' ? 'Village' : L.kind) + (ends ? ' ★' : '');
+      const e = h('div', { class: `msite ${L.kind}${ends ? ' ends' : ''}`, title: `${label} (${L.kind} ${L.index}) at ${L.x}, ${L.y}${ends ? ': taking it wins the chapter' : ''}`,
         style: `left:${x * s}px;top:${y * s}px;width:${w * s}px;height:${hh * s}px`, 'data-row': L._row,
         'aria-selected': String(st.sel?.type === 'site' && st.sel.row === L._row) },
       h('span', {}, label));
@@ -362,7 +366,11 @@ export async function mapsPage(root) {
           numIn('X', L.x, v => moveTo(sel, Number(v), Number(L.y))),
           numIn('Y', L.y, v => moveTo(sel, Number(L.x), Number(v))),
           L.kind === 'village' ? numIn('Gold', L.gold || '', v => setMany([['locations', L._row, 'gold', v]])) : null),
-        h('p', { class: 'hint' }, 'Moving the marker moves where the game counts the castle or village as being (seizing, visiting). The picture is the map tiles: paint those to match.'));
+        L.kind === 'castle' ? h('div', { class: 'mins-actions' }, (M.endings || []).some(x => x.kind === 'seize' && x.loc === Number(L.index))
+          ? h('p', { class: 'note', style: 'margin:0' }, '★ Taking this castle wins the chapter.')
+          : h('button', { class: 'btn btn-line', onclick: () => acts.setWin({ kind: 'seize', loc: Number(L.index) }) }, '★ Taking this castle wins the chapter')) : null,
+        h('div', { class: 'mins-actions' }, h('button', { class: 'btn btn-line danger', onclick: () => acts.removeSite(L) }, `Remove this ${L.kind === 'castle' ? 'castle' : 'village'}…`)),
+        h('p', { class: 'hint' }, 'Moving the marker moves where the game counts the castle or village as being (seizing, visiting). The picture is the map tiles: paint those to match. Right-click an empty cell to add a castle or village.'));
       return;
     }
     if (sel?.type === 'cell' && inMap(sel.x, sel.y)) {
@@ -880,7 +888,8 @@ export async function mapsPage(root) {
     async refresh(change) {
       if (!M) return;
       if (change?.files?.some(f => f.startsWith('maps/tiles/') || f.startsWith('maps/tilesets/'))) { await load(); return; }
-      if (!change || change.maps?.includes(M.ch) || change.tables?.some(t => t === 'deploy' || t === 'locations' || t === 'map_terrain' || t === 'map_sizes')) await reloadData();
+      if (!change || change.maps?.includes(M.ch) || change.events?.length ||
+          change.tables?.some(t => ['deploy', 'locations', 'map_terrain', 'map_sizes', 'units_generic', 'armies'].includes(t))) await reloadData();
     },
   };
 }

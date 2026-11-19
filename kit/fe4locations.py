@@ -238,56 +238,113 @@ def export(rom, path):
     print('wrote', path)
 
 
+MAX_SITES = 16
+
+
 def apply(rom, path, space=None):
+    """Write locations.csv.  Rows can be added (the next index of the chapter) or the last ones left
+    out; a chapter whose list changes gets a new list (and new records) in its info block's bank."""
     if not os.path.exists(path):
         return 0
     space = space or BankSpace(rom)
     recs = {(ch, rom[q]): (q, n, sn) for ch, q, n, sn in _records(rom)}
     old_gold = village_gold(rom)
-    new_gold = dict(old_gold)
+    new_gold = {}
     changes = 0
+    rows = {}
     for ln, row in enumerate(csv.DictReader(open(path, newline='')), start=2):
         try:
             key = (int(row['chapter']), int(row['index']))
         except (ValueError, KeyError) as e:
             raise SystemExit(f'{path}:{ln}: {e}')
-        if key not in recs:
-            raise SystemExit(f'{path}:{ln}: no location {key[1]} in chapter {key[0]} (rows cannot be added yet)')
-        q, n, sn = recs[key]
-        new = bytearray(rom[q:q + n])
-        kind = row['kind'].strip()
-        k = KINDS_INV.get(kind)
-        try:
-            if k is None:
-                k = int(kind, 0)
-            if (k == 0) != (n == 8):
-                raise SystemExit(f'{path}:{ln}: a castle cannot become another kind (or the reverse) yet')
-            new[1] = int(row['castle_id'], 0)
-            new[2] = k
-            new[3] = int(row['x'], 0)
-            new[4] = int(row['y'], 0)
-            if n == 8:
-                if 'facilities' in row:
-                    new[5] = _fac_parse(row['facilities'])
-                elif row.get('flags', '').strip():            # v5 projects
-                    new[5] = int(row['flags'], 0)
-                if 'shop' in row:
-                    changes += _apply_shop(rom, new, row['shop'], sn, space, f'{path}:{ln}')
-                elif row.get('home_ptr', '').strip():          # v5 projects
-                    hp = int(row['home_ptr'], 16)
-                    new[6], new[7] = hp & 0xFF, hp >> 8
-            elif row.get('gold', '').strip():
-                g = int(row['gold'], 0)
-                if not 1 <= g <= 50000:
-                    raise SystemExit(f'{path}:{ln}: village gold must be 1-50000')
-                new_gold[sn] = g
-        except ValueError as e:
-            raise SystemExit(f'{path}:{ln}: {e}')
-        if not (0 <= new[3] < 64 and 0 <= new[4] < 64):
-            raise SystemExit(f'{path}:{ln}: x and y must be 0-63')
-        if new != rom[q:q + n]:
-            rom[q:q + n] = new
+        if not 0 <= key[0] < CHAPTERS:
+            raise SystemExit(f'{path}:{ln}: no chapter {key[0]}')
+        if key in rows:
+            raise SystemExit(f'{path}:{ln}: location {key[1]} of chapter {key[0]} is listed twice')
+        rows[key] = (ln, row)
+    for ch in range(CHAPTERS):
+        idx = sorted(i for c, i in rows if c == ch)
+        old_n = sum(1 for c, _ in recs if c == ch)
+        if not idx and old_n:
+            continue                                     # chapter left out of the file: keep the game's
+        if idx != list(range(len(idx))):
+            raise SystemExit(f'{path}: chapter {ch}: castles and villages must be numbered 0, 1, 2, ... without gaps')
+        if len(idx) > MAX_SITES:
+            raise SystemExit(f'{path}: chapter {ch}: at most {MAX_SITES} castles and villages')
+        a, fo = info_block(rom, ch)
+        bank = a & 0xFF0000
+        ptrs, moved = [], len(idx) != old_n
+        for i in idx:
+            ln, row = rows[(ch, i)]
+            where = f'{path}:{ln}'
+            kind = row['kind'].strip()
+            k = KINDS_INV.get(kind)
+            try:
+                if k is None:
+                    k = int(kind, 0)
+            except ValueError:
+                raise SystemExit(f'{where}: unknown kind {kind!r} (castle or village)')
+            size = 8 if k == 0 else 5
+            if (ch, i) in recs and recs[(ch, i)][1] == size:
+                q, n, sn = recs[(ch, i)]
+                new = bytearray(rom[q:q + n])
+            else:                                        # new, or a castle where a village was
+                q, sn, n = None, None, size
+                new = bytearray(size)
+                new[0] = i
+            try:
+                new[1] = int(row.get('castle_id') or 0, 0) if k == 0 else int(row.get('castle_id') or 0, 0) & 0xFF
+                new[2] = k
+                new[3] = int(row['x'], 0)
+                new[4] = int(row['y'], 0)
+            except ValueError as e:
+                raise SystemExit(f'{where}: {e}')
+            if not (0 <= new[3] < 64 and 0 <= new[4] < 64):
+                raise SystemExit(f'{where}: x and y must be 0-63')
+            if q is None:
+                q, sn = space.alloc(bank, n)
+                moved = True
+                changes += 1
+            try:
+                if n == 8:
+                    if 'facilities' in row:
+                        new[5] = _fac_parse(row['facilities'] or '')
+                    elif row.get('flags', '').strip():            # v5 projects
+                        new[5] = int(row['flags'], 0)
+                    if 'shop' in row:
+                        changes += _apply_shop(rom, new, row['shop'] or '', sn, space, where)
+                    elif row.get('home_ptr', '').strip():          # v5 projects
+                        hp = int(row['home_ptr'], 16)
+                        new[6], new[7] = hp & 0xFF, hp >> 8
+                else:
+                    g = (row.get('gold') or '').strip()
+                    g = int(g, 0) if g else old_gold.get(sn, kind_gold(rom, k))
+                    if not 1 <= g <= 50000:
+                        raise SystemExit(f'{where}: village gold must be 1-50000')
+                    new_gold[sn] = g
+            except ValueError as e:
+                raise SystemExit(f'{where}: {e}')
+            if new != rom[q:q + n]:
+                rom[q:q + n] = new
+                changes += 1
+            ptrs.append(sn & 0xFFFF)
+        if not idx:
+            continue
+        lf = snes_to_file(bank | _w(rom, fo))
+        old_ptrs = [_w(rom, lf + 1 + 2 * j) for j in range(rom[lf])]
+        if moved or ptrs != old_ptrs:
+            data = bytes([len(ptrs)]) + b''.join(p.to_bytes(2, 'little') for p in ptrs)
+            if len(ptrs) <= rom[lf]:
+                lq = lf
+            else:
+                lq, lsn = space.alloc(bank, len(data))
+                rom[fo], rom[fo + 1] = lsn & 0xFF, (lsn >> 8) & 0xFF
+            rom[lq:lq + len(data)] = data
             changes += 1
+    # villages of chapters the file leaves out keep their gold
+    for ch, q, n, sn in _records(rom):
+        if rom[q + 2] != 0 and sn not in new_gold:
+            new_gold[sn] = old_gold.get(sn, kind_gold(rom, rom[q + 2]))
     if new_gold != old_gold:
         over = {sn: g for sn, g in new_gold.items() if g != kind_gold(rom, 2)}
         _install_hook(rom, over)

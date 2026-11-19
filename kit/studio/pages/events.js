@@ -12,7 +12,7 @@ const STATS = ['HP', 'Strength', 'Magic', 'Skill', 'Speed', 'Defense', 'Resistan
 // text codes the game draws as letters but the kit's text table doesn't name
 const EXTRA = { '4A': '"', '4C': ':', '89': 'á', '91': 'é', '9E': 'ö' };
 const EXTRA_INV = Object.fromEntries(Object.entries(EXTRA).map(([k, v]) => [v, k]));
-const FILTERS = [['all', 'All'], ['talk', 'Talks'], ['turn', 'Turns'], ['visit', 'Villages'], ['battle', 'Battles'], ['area', 'Areas'], ['other', 'Other']];
+const FILTERS = [['all', 'All'], ['talk', 'Talks'], ['turn', 'Turns'], ['castle', 'Castles'], ['visit', 'Villages'], ['battle', 'Battles'], ['area', 'Areas'], ['other', 'Other']];
 
 let people = null, text = null;
 
@@ -110,7 +110,7 @@ export async function eventsPage(root) {
   function kindOf(c) {
     if (!c) return 'other';
     const op = bytesOf(c.hex)[0];
-    return { 0x01: 'turn', 0x02: 'turn', 0x04: 'talk', 0x16: 'talk', 0x0C: 'talk', 0x0A: 'visit', 0x0B: 'area', 0x0D: 'battle', 0x0E: 'battle', 0x1A: 'battle' }[op] || 'other';
+    return { 0x01: 'turn', 0x02: 'castle', 0x04: 'talk', 0x16: 'talk', 0x0C: 'talk', 0x0A: 'visit', 0x0B: 'area', 0x0D: 'battle', 0x0E: 'battle', 0x1A: 'battle' }[op] || 'other';
   }
 
   function condTitle(c) {
@@ -118,7 +118,7 @@ export async function eventsPage(root) {
     const b = bytesOf(c.hex), w = i => b[i] | b[i + 1] << 8;
     switch (b[0]) {
       case 0x01: return w(2) === 0xFFFF ? 'At the start of every turn' : `At the start of turn ${w(2) + 1}`;
-      case 0x02: return w(2) ? `Turn ${w(4)}, army slot ${w(2)}'s phase` : `Turn ${w(4)}`;
+      case 0x02: return `${w(2) === 0 ? 'You take' : w(2) === 0xFFFF ? 'Anyone takes' : `Army slot ${w(2)} takes`} ${locName(w(4))}`;
       case 0x04: case 0x16: return `${unitName(w(2))} talks to ${unitName(w(4))}`;
       case 0x07: return `${w(2) === 0xFFFF ? '' : unitName(w(2)) + ': '}${locName(w(4))} is taken (guess)`;
       case 0x0C: return `${unitName(w(2))} comes next to ${unitName(w(4))}`;
@@ -439,7 +439,7 @@ export async function eventsPage(root) {
   // field specs per opcode: [label, kind, byte position, size]
   const SPEC = {
     0x01: [['At the start of turn', 'turnstart', 2, 2]],
-    0x02: [['Turn', 'num', 4, 2], ['Whose phase (army slot)', 'num', 2, 2]],
+    0x02: [['Castle', 'loc', 4, 2], ['Taken by (army slot, 0 = you)', 'num', 2, 2]],
     0x04: [['Who talks', 'unit', 2, 2], ['To whom', 'unit', 4, 2]],
     0x16: [['Who talks', 'unit', 2, 2], ['To whom', 'unit', 4, 2]],
     0x07: [['Unit', 'unit', 2, 2], ['Castle', 'loc', 4, 2]],

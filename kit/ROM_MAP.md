@@ -252,12 +252,15 @@ The directory holds 58 word offsets from `0x1C000`. Each list is a run of
 - **Start-of-turn events (V, 1.1):** condition `$01 [flag] [turn word]`
   (mode `$20`) is checked as each turn starts (`$81:AD08`), with `$0EBD` =
   `$0D8F` *before* the turn counter goes up, so `01 xx 02 00` fires as turn 3
-  starts (verified: its list came in then); `FF FF` = every turn. The `$02`
-  turn condition (mode 1) is checked from an army's phase task (`$87:C1E8`,
-  `$0EBD` = the army slot from `$1017,X`, `$0EBF` = its turn from `$0FD7,X`);
-  in the Prologue tests mode 1 never came up through turn 3, so neither the
-  game's own `02` triggers there nor new ones ran. The editor writes `$01`,
-  first in the trigger list (see "One action per trigger").
+  starts (verified: its list came in then); `FF FF` = every turn. The editor
+  writes `$01`, first in the trigger list (see "One action per trigger").
+- **Castle taken (V, 1.2):** condition `$02 [flag] [army slot word] [location word]`
+  (mode 1) is checked by the task that runs when an army captures a castle
+  (`$87:C056` → `$87:C1E8`; `$0EBD` = the army slot from `$1017,X`, `$0EBF` = the
+  location from `$0FD7,X`). Army slot 0 = your army. Every chapter's ending but
+  chapter 2's is one of these (the Prologue's `02 01 00 00 02 00` = you take
+  Evans); chapter 2 ends from its structured tail. Earlier notes called this a
+  turn condition: it is not.
 
 ### Runtime RAM, for debugging
 
@@ -366,7 +369,7 @@ and 785 messages, with every script decoded to its end.
 | Op | Meaning | Evidence |
 |---|---|---|
 | `$01` | start of a turn `[flag][turn word]`: fires as turn n+1 starts (mode `$20`) | V (1.1) |
-| `$02` | turn condition `[flag][army slot word][turn word]`, checked by an army's phase task (mode 1) | |
+| `$02` | castle taken `[flag][army slot word][location word]`: fires when that army (0 = yours) takes the castle (mode 1) | V (1.2): every chapter's ending but chapter 2's |
 | `$0B` | unit in rectangle `[?][unit][x1 y1 x2 y2][?]` | |
 | `$04` | talk: unit A talks to unit B `[flag][unit A word][unit B word][FFFF]` | V: Quan → Finn runs scene 426, Finn's talk boosts |
 | `$16` | talk, same layout as `$04`; used from chapter 6 on (also enemy recruits) | V: Lana → Julia runs Lana's "Julia, right? Hello there!" |
@@ -1064,6 +1067,13 @@ adds working Armory and Arena buttons to the Prologue.
 - Renaming Chalphy to castle ID 42 shows "Kapathogia" in the terrain window.
 - Moving village 3 next to Sigurd gives him a Visit command there; the scene
   plays and pays the village's gold.
+- **New and removed locations (1.2):** the list can grow (a new list and new
+  records in the info block's bank; +0 is repointed). The index field matches
+  the list position (0, 1, 2, …), and other data names places by it: event
+  conditions `$02` (castle taken) and `$0A` (visit), armies' castle lists and
+  AI commands `$06`/`$07`/`$08`. Verified: a village (index 8) and a castle
+  (index 9) added to the Prologue; `$87:EBC8` gave the village its gold
+  (`$7E:4E55 + 2 × 8`) and a brigand raided it during two full turns.
 
 ## Armies and enemy AI (V)
 
@@ -1080,6 +1090,13 @@ adds working Armory and Arena buttons to the Prologue.
 | +5 | → location indices the army holds (words, `$FFFF`), claimed at setup (`$84:BC21`) |
 | +7 | → AI programs (ptr24 each, `$FFFF`) |
 
+- **New armies (1.2):** the only reader of the army table is `$86:C55A`
+  (`LDA $86:C786,X` for the bank, `LDA $86:C784,X` for the pointer), so the
+  table moves to free space with new entries after the 72 (followed by
+  `$FFFFFF`). A chapter's opening sets a slot up with `$4B slot army`,
+  `$4D rel a b` (relations between slots: 1 = enemies, 2 = allies; the
+  Prologue's six) and `$50 slot 00 00 00 00`. Verified: army 72 in slot 4 of
+  the Prologue, copying Evans's relations and programs, through two turns.
 - **Setup:** `$84:BBD2` runs per slot in `$4B` order, so a later slot's castle
   claim overrides an earlier one. Verified: moving Jungby from army 1 to army
   2 makes it Verdane-held at the start (`$7E:4E45+1` owner = slot 1).
@@ -1574,6 +1591,46 @@ main screen BG1 + BG2 + OBJ, colour math adds the sub screen (BG3) to BG1 only.
 - Metasprites (`$80:87C7`, DB = their bank): count word, then 5 bytes each: x word (bit 15 = 16x16),
   y byte (signed), tile/attribute word. The routine writes the OAM buffer `$1C00` with `STA $1C00,X`
   through DB, so metasprites must be in a bank that mirrors RAM ($80-$BF).
+
+## Opening scenes (editor 1.2)
+A chapter's init block ends with `$30 RUN_SCENE`; the Prologue's opening is scene 1. Scene commands the
+editor's opening builder writes (each verified on the Prologue in lsrun):
+
+| Command | Meaning |
+|---|---|
+| `4A xx …` at the start | the map's set-up events (the Prologue: `4A 4A 00`, `4A 49 01 00` …); always kept |
+| `3A x y`, `3B 80`, `34 02 00`, `FD` | put the view's top-left at cell (x, y), before the map fades in |
+| `46 04` | the map fades in; `2A` then waits for it (a text started before it ends leaves the screen half dark and shows nothing) |
+| `40 x y 04`, `FD` | scroll the view to (x, y) (speed 4) on a running map (scene 2 does this) |
+| `0C ptr`, `FD` | a conversation with portraits over the map (scene 2's "You curs…") |
+| `14 ptr 03 03 02` | a conversation in the castle (the Prologue's opening talks) |
+| `34 n n`, `FD` | wait n frames |
+| `12 E0 00` | fade the music out |
+| `4A 4E nn` | deploy list nn comes onto the map |
+
+- Free space at `$xx:0000` is never handed out: the decompression queue takes a `$xx:0000` source for
+  "no job", and the first new message used to land at `$70:0000`.
+
+## Chapter title cards (editor 1.2)
+Traced on the Prologue's card (frames ~15186-15600 of a New Game). `$80:F390-$80:F412` draws it:
+
+| Part | Data | Notes |
+|---|---|---|
+| letters | 4bpp tiles `$43:14F0` (LZ, $6000 bytes = 768 tiles to VRAM $0000) | named by the graphics-script entry `$80:F42B` (size, VRAM, `01`, ptr24); Naga drew every title into this one sheet (16 tiles wide, 24 px strips, titles running on from strip to strip) plus "Prologue", "Chapter", "Endgame" and the digits |
+| layout | BG1 map `$42:5A10` (LZ, 12 × $180 bytes) | immediates `LDA #$425A` / `LDA #$5A10` at `$80:F3DD`; the block of chapter `$0D6A` (0 = Prologue … 11 = Endgame) goes to VRAM $5140 (screen rows 10-15): rows 0-2 the label, 3-5 the title |
+| colours | palette 4, colours 1-8 | 1 = black outline, 2-8 greys dark to light; the card tints them. Tile `$033` is empty |
+
+- The graphics-script runner `$87:8979` is a coroutine keyed on its caller's return address
+  (`$0536-$0538`); it sets DB to the entry's bank and then reads the decompression queue at `$0446`
+  with absolute addressing, so a script entry must sit in a bank that mirrors RAM ($80-$BF). The
+  queue takes a `$xx:0000` source as "no job", and `$70-$7D:6000-7FFF` reads as save RAM: compressed
+  streams go in the upper half of a bank.
+- The editor (1.2) gives each retitled chapter its own copy of the sheet with the new title cut in
+  (the old one's tiles and every other chapter's are free in that copy), and a hook at `$80:F392`
+  (replacing `LDA #$8000 / STA $28 / LDA #$F42B / STA $27`) picks the script entry by `$0D6A`.
+  Verified: "The Road to Jungby" on the Prologue card.
+- The same names are in the Naga text table: 32-byte slots `09 text 01` at `$50:6010` (Prologue),
+  `$50:6040`, `$50:6060`, … `$50:61C0` (Endgame); and in the end-of-game turn record `$68:3100`.
 
 ## Ranking (port 0.14)
 The end-of-game grades (A-E) come from four counts; `$84:8ED7` picks the first of five (low, high)
