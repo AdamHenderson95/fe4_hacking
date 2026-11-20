@@ -54,7 +54,7 @@ import fe4skillanim                # noqa: E402
 from fe4project import Project, load_settings, save_settings   # noqa: E402
 
 APP = 'Builder of the Holy War'
-VERSION = '1.5'
+VERSION = '1.6'
 STATIC = os.path.join(KIT, 'studio')
 
 # ---------------------------------------------------------------- state
@@ -105,6 +105,10 @@ def open_project(d):
         for ch, what in fe4maps.upgrade_v15_maps(rom, os.path.join(d, 'maps')):
             print(f'chapter {ch} map: ' + ('re-read from the ROM (older kits read it wrongly)' if what == 'fixed'
                                            else 'exported by an older kit and edited since; re-export it'))
+        try:                                                     # editors before 1.6: no map narration
+            fe4events.upgrade_narration(rom, os.path.join(d, 'events'))
+        except Exception as e:                                   # noqa: BLE001
+            print('narration not added:', e)
         if not os.path.exists(os.path.join(d, 'talks.csv')):     # kits before v19 had no Talk lists
             fe4locations.export_talks(rom, os.path.join(d, 'talks.csv'))
         if not os.path.exists(os.path.join(d, 'map_terrain.csv')):   # kits before v24
@@ -4626,6 +4630,18 @@ def api_timeline(b, q):
         if blk['label'] == 'init':
             out['opening'] = step_beats(ch, name, blk['cmds'], idx)
             out['openingLine'] = blk['cmds'][0]['line'] if blk['cmds'] else None
+    d = p.dialogue()
+    narr = []
+    for k, w in (d.where.items() if d else []):
+        m = re.match(r'narr(\d\d) ([0-9A-F]{6})', w or '')
+        if m and int(m.group(1)) == ch:
+            t = d.text.get(k, '')
+            plain = t
+            for code, c in (('4A', '"'), ('4C', ':'), ('89', 'á'), ('91', 'é'), ('9E', 'ö')):
+                plain = plain.replace('{%s}' % code, c)
+            plain = ' '.join(re.sub(r'\{[0-9A-F ]+\}', ' ', plain).split())
+            narr.append((m.group(2), {'key': k, 'text': plain}))
+    out['narration'] = [x for _a, x in sorted(narr, key=lambda t: t[0])]
     loses = {r['scene'] for r in chapter_loses(ch)}
     ends = {e['line'] for e in chapter_endings(ch)}
     for cnd, steps in chapter_triggers(name):

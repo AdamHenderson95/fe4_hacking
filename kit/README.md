@@ -1,6 +1,6 @@
 # fe4kit: FE4 hacking toolkit (Project Naga ROM)
 
-**Builder of the Holy War 1.5** (1.0 was the first public release; test
+**Builder of the Holy War 1.6** (1.0 was the first public release; test
 builds were numbered up to v57, and the "kit vNN" notes below refer to those).
 1.1 added right-click cards on the Maps page for placing units, reinforcements
 and events, danger zones, and testing a chapter in the PC port. 1.2 adds what
@@ -10,7 +10,8 @@ adds characters who arrive during a chapter (as Azel and Lex do), more win
 conditions (defeat a boss, rout armies) and chapters where your army starts
 without a castle. 1.4 adds lose conditions and **Check my hack**, which looks
 the whole project over for mistakes. 1.5 adds the **chapter timeline**: a
-chapter's story in order, from its opening to how it ends. Free software
+chapter's story in order, from its opening to how it ends. 1.6 makes the
+world-map narration before each chapter editable. Free software
 under the MIT license (`licenses/`).
 
 Make hacks and randomized games of Fire Emblem: Genealogy of the Holy War
@@ -271,6 +272,14 @@ default browser). The editor runs on your PC only: nothing is sent anywhere.
      army, who joins your army, what is given, and whether it wins or loses
      the chapter. **Open** goes to that event. Nothing in the timeline
      changes the chapter.
+   - **World map narration** (1.6): the story told over the map of Jugdral
+     before each chapter's title (for the Prologue, the history of
+     Grannvale a new game opens with) is listed at the top of the timeline,
+     one box per line. **Edit** opens it like any other message; the
+     narration box shows two lines at a time. Codes such as `{00 80 …}`
+     (portraits and highlighted lands on the map) are kept as they are;
+     **Show codes** shows them. Projects made with older versions get the
+     narration the first time this version opens them.
    - **When**: the condition's settings as fields (the turn, who talks to
      whom, which village, the area's corners, who fights whom). Pick people
      from a list of names.

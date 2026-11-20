@@ -221,6 +221,15 @@ def edits(rom, work):
         assert len(T['loses']) >= 4, T['loses']
     check('edit: the timeline shows arrivals and lose rules', e_timeline)
 
+    def e_narration():
+        T = S.api_timeline({}, q(ch=1))
+        assert len(T['narration']) >= 3, T['narration']
+        k = T['narration'][0]['key']
+        d = S.project().dialogue()
+        S.api_msg({'key': k, 'text': d.text[k].replace('Sigurd', 'Sigurd the Test', 1)}, {})
+        expect.append(('chapter 1 narration edited', lambda dd: 'Sigurd the Test' in open(os.path.join(dd, 'events', 'dialogue.txt'), encoding='utf-8').read()))
+    check('edit: world map narration text', e_narration)
+
     def e_undo_redo():
         n = len(p.table('deploy').rows)
         S.api_mapunit({'op': 'add', 'ch': 0, 'x': 51, 'y': 13, 'list': 0, 'slot': 1, 'orders': 1, 'char_id': 69}, {})

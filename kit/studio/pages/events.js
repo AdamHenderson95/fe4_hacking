@@ -207,8 +207,11 @@ export async function eventsPage(root) {
           h('button', { class: 'btn btn-line', onclick: () => jumpToLine(c, u.line) }, 'Open the event')));
       }
     }
+    const nm = /^narr(\d\d)/.exec(m.where || '');
+    if (nm) uses.append(h('li', {}, `World map narration · ${chapters.find(x => x.ch === Number(nm[1]))?.title || 'chapter ' + Number(nm[1])}`,
+      h('button', { class: 'btn btn-line', onclick: () => { st.ch = Number(nm[1]); chapterSel.value = st.ch; st.view = 'timeline'; tlBtn.setAttribute('aria-pressed', 'true'); load(); } }, 'Back to the timeline')));
     detail.append(h('article', { class: 'evcard' },
-      h('h2', {}, 'Message'), uses, convo(r.key)));
+      h('h2', {}, nm ? 'World map narration' : 'Message'), uses, convo(r.key)));
   }
 
   function findSceneGroup(sid) {
@@ -259,6 +262,10 @@ export async function eventsPage(root) {
     detail.replaceChildren(h('article', { class: 'evcard tl' },
       h('div', { class: 'evhead' }, h('span', { class: 'evicon big k-turn', 'aria-hidden': 'true' }, '⧗'), h('h2', {}, T.title + ': timeline')),
       h('p', { class: 'sub' }, 'The chapter in the order a player meets it. Open any entry to change it; nothing here changes the chapter.'),
+      T.narration?.length ? h('section', { class: 'tl-sec' }, h('h3', {}, 'World map narration'),
+        h('p', { class: 'hint' }, 'Told over the map of Jugdral before the chapter title, one box at a time (two lines each).'),
+        h('ol', { class: 'tl-narr' }, T.narration.map(n => h('li', {}, h('span', {}, n.text),
+          h('button', { class: 'btn btn-line btn-sm', onclick: () => { st.view = 'event'; tlBtn.setAttribute('aria-pressed', 'false'); openMessage({ key: n.key, chapters: [T.ch] }); } }, 'Edit'))))) : null,
       sec('Opening', T.opening.length ? [entry('As the chapter starts', { beats: T.opening, line: T.openingLine })] : []),
       sec('Turns', turns),
       ...T.sections.map(x => sec(x.title, T.when[x.key].map(e => entry(e.when, e)),

@@ -1621,6 +1621,18 @@ editor's opening builder writes (each verified on the Prologue in lsrun):
 - Free space at `$xx:0000` is never handed out: the decompression queue takes a `$xx:0000` source for
   "no job", and the first new message used to land at `$70:0000`.
 
+### World map narration (editor 1.6)
+
+Verified in lsrun (chapter 1's narration edited, shown in game):
+
+- `$91:D69B` (map mode before a chapter) starts the scene VM (`$80:C1FC`) on the script at
+  `$8D:[$8D:FC56 + 2 * $0D6A]` (chapter >= 18 reads entry 0). Entries 0-11 are the chapters, 12 repeats 0.
+- The scripts use the scene VM: `0E` song (94, the map of Jugdral), `3A x y` and `51 ...` place and move the map
+  view, `58 [message]` a narration box (2 lines, `{08}{02}` scrolls a line, `{08}{04}` clears), `5A` closes
+  it, `56 n` / `52`-`55` / `5B` / `5C` portraits and highlighted lands, `12 E1 00` fades the music.
+- The kit decodes them with the scene decoder (where `narrNN`), so `58` messages are in dialogue.txt and their
+  pointers are moved like any other message's when the text grows.
+
 ### Game over (editor 1.4)
 
 Verified in lsrun (a Prologue soldier set as "must survive", and Sigurd at 1 HP):

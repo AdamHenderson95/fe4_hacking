@@ -1,3 +1,12 @@
+# Builder of the Holy War 1.6
+
+### New
+- **World map narration**: the story told over the map of Jugdral before each chapter's title can now be
+  edited. For the Prologue, that's the history of Grannvale a new game opens with. It's listed at the top of each
+  chapter's timeline (Events & dialogue > Chapter timeline); **Edit** opens a box like any other message.
+  Projects made with older versions pick up the narration the first time 1.6 opens them, and nothing else
+  changes.
+
 # Builder of the Holy War 1.5
 
 ### New

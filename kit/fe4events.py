@@ -65,7 +65,12 @@ SC_NAMES = {
     0x05: 'IF_TRUE_JR', 0x06: 'IF_FALSE_JR', 0x07: 'TEST_FLAG?', 0x0C: 'TEXT',
     0x14: 'TEXT_WINDOW', 0x45: 'CALL_ASM', 0x4A: 'EVENT', 0x4D: 'EVENT_ASYNC?',
     0x0E: 'PLAY_SONG', 0x0F: 'SOUND', 0x10: 'SOUND', 0x11: 'SOUND_2', 0x12: 'SOUND_CMD',
+    0x58: 'NARRATION',
 }
+# The world-map narration that opens each chapter ($91:D69B): a scene-VM script per chapter ($0D6A) from the
+# table of 16-bit pointers into bank $8D at $8D:FC56; `58 [message]` shows a narration box (editor 1.6).
+NARR_TABLE = 0x0DFC56
+NARR_COUNT = 12
 # sound commands (SOUND_CMD): what the music does ($80:8FA3; ROM_MAP "Music")
 SOUND_CMDS = {0xE0: 'fade the music out (fast)', 0xE1: 'fade the music out', 0xE2: 'fade the music out (slow)',
               0xC0: 'stop the music', 0xF8: 'stop the music', 0xC2: 'stop all sound'}
@@ -189,6 +194,10 @@ class Ctx:
         return [r[SCENE_TABLE + 3 * i] | r[SCENE_TABLE + 3 * i + 1] << 8 | r[SCENE_TABLE + 3 * i + 2] << 16
                 for i in range(SCENE_COUNT)]
 
+    def narration_ptrs(self):
+        r = self.rom
+        return [(ch, 0x8D0000 | r[NARR_TABLE + 2 * ch] | r[NARR_TABLE + 2 * ch + 1] << 8) for ch in range(NARR_COUNT)]
+
     def all_commands(self):
         """{addr: (vm, bytes, where)} for every decoded command."""
         cmds = {}
@@ -199,6 +208,13 @@ class Ctx:
         for sid, p in enumerate(self.scene_ptrs()):
             for a, b in self.sc_decode(p).items():
                 cmds.setdefault(a, ('sc', b, 'scene %d' % sid))
+        for ch, p in self.narration_ptrs():
+            try:
+                dec = self.sc_decode(p)
+            except Exception:           # noqa: BLE001  -- a ROM whose table points elsewhere: no narration
+                continue
+            for a, b in dec.items():
+                cmds.setdefault(a, ('sc', b, 'narr%02d' % ch))
         return cmds
 
     def text_refs(self, cmds=None):
@@ -209,7 +225,7 @@ class Ctx:
             off = None
             if vm == 'ev' and b[0] in (0x31, 0x32) and len(b) >= 5:
                 off = 2
-            elif vm == 'sc' and b[0] in (0x0C, 0x14) and len(b) >= 4 and b != b'\xff\xff':
+            elif vm == 'sc' and b[0] in (0x0C, 0x14, 0x58) and len(b) >= 4 and b != b'\xff\xff':
                 off = 1
             if off is None:
                 continue
@@ -465,6 +481,44 @@ def dump(rom_path, outdir):
     open(os.path.join(outdir, 'dialogue.txt'), 'w').write('\n'.join(lines) + '\n')
     print(f'wrote {n_ev} event commands (13 chapters), {n_sc} scene commands (562 scenes), '
           f'{len(refs)} messages to {outdir}')
+
+
+def narration_blocks(rom):
+    """dialogue.txt blocks for the world-map narration: [(message address, where, text)]."""
+    ctx = Ctx(bytes(rom))
+    cmds = {}
+    for ch, p in ctx.narration_ptrs():
+        try:
+            for a, b in ctx.sc_decode(p).items():
+                cmds.setdefault(a, ('sc', b, 'narr%02d' % ch))
+        except Exception:               # noqa: BLE001
+            continue
+    refs = ctx.text_refs(cmds)
+    spans = message_spans(rom, refs)
+    out = []
+    for a in sorted(refs):
+        fo, end = spans[a]
+        where = ', '.join('%s %06X %s' % (w, ca, nm) for ca, _, w, nm in refs[a][:4])
+        out.append((a, where, text_decode(rom[fo:end]).rstrip('\n')))
+    return out
+
+
+def upgrade_narration(rom, evdir):
+    """Projects from before editor 1.6 have no narration in dialogue.txt: add it (unchanged from the ROM)."""
+    path = os.path.join(evdir, 'dialogue.txt')
+    if not os.path.exists(path):
+        return 0
+    text = open(path, encoding='utf-8').read()
+    if ' narr0' in text or ' narr1' in text:
+        return 0
+    have = set(re.findall(r'^@([0-9A-F]{6})', text, re.M))
+    add = [b for b in narration_blocks(rom) if '%06X' % b[0] not in have]
+    if not add:
+        return 0
+    lines = [''] + [x for a, w, t in add for x in ('@%06X  ; %s' % (a, w), t, '')]
+    with open(path, 'a', encoding='utf-8') as f:
+        f.write('\n'.join(lines))
+    return len(add)
 
 
 # ---------------------------------------------------------------- apply

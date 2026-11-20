@@ -885,3 +885,7 @@ textarea.fe4box.bad { border-color: #E1606F; }
 .tl-win .tl-ico { color: #B08A12; }
 .tl-lose .tl-ico { color: #A3283A; }
 .tl-end .tl-beats li { padding: 4px 0; }
+.tl-narr { margin: 0; padding-left: 22px; }
+.tl-narr li { padding: 4px 0; }
+.tl-narr li { display: list-item; }
+.tl-narr li > span { display: inline; margin-right: 8px; }
