@@ -26,9 +26,10 @@ const st = {
   hidden: new Set(), terrainFilter: '', sel: null, multi: new Set(),
 };
 
-export function setMapChapter(ch, list) {
+export function setMapChapter(ch, list, cell) {
   st.ch = ch;
-  if (list !== undefined) st.focusList = list;
+  if (list !== undefined && list !== null) st.focusList = list;
+  if (cell) st.focusCell = cell;           // {x, y, row?}: scroll there and select it once the map is drawn
 }
 
 export async function mapsPage(root) {
@@ -78,6 +79,7 @@ export async function mapsPage(root) {
     h('button', { class: 'btn btn-line mtileset', title: 'How much of the 64 × 64 layout the chapter uses', onclick: () => sizeDialog() }, 'Map size…'),
     h('button', { class: 'btn btn-line mtileset2', title: 'Draw the whole map as one picture, or give the chapter a whole new set of tiles', onclick: () => tilesetDialog() }, 'Map picture & tile set…'),
     h('button', { class: 'btn btn-line', title: 'How this chapter is won', onclick: () => acts.winCard() }, '★ Win condition…'),
+    h('button', { class: 'btn btn-line', title: 'How this chapter is lost', onclick: () => acts.loseCard() }, 'Lose conditions…'),
     h('button', { class: 'btn btn-line', title: 'The title shown when the chapter starts', onclick: () => acts.titleCard() }, 'Chapter title…'),
     h('button', { class: 'btn btn-line', title: 'What plays when the chapter starts', onclick: () => acts.openingCard() }, 'Opening scene…'),
     h('button', { class: 'btn btn-gilt mtest', title: 'Build the game and open the PC port with New Game going straight to this chapter', onclick: () => testChapter() }, '▶ Test this chapter'));
@@ -122,7 +124,14 @@ export async function mapsPage(root) {
       M.deploy.forEach(l => (l.list === focus ? st.hidden.delete(`${M.ch}:${l.list}`) : st.hidden.add(`${M.ch}:${l.list}`)));
       st.layers.units = true; focus = undefined;
     }
+    const fc = st.focusCell; st.focusCell = undefined;
+    if (fc) st.sel = fc.row !== undefined && fc.row !== null ? { type: 'unit', row: fc.row } : { type: 'cell', x: fc.x, y: fc.y };
     layout(); drawBase(); drawOverlay(); drawObjects(); drawPalette(); drawLists(); drawInspector();
+    if (fc) {
+      const s = st.zoom * 16;
+      view.scrollLeft = (fc.x + 0.5) * s - view.clientWidth / 2;
+      view.scrollTop = (fc.y + 0.5) * s - view.clientHeight / 2;
+    }
   }
 
   function loadImage(src) {

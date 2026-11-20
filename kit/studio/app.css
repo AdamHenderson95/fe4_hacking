@@ -847,3 +847,21 @@ textarea.fe4box.bad { border-color: #E1606F; }
 .opadd-row .lbl { flex: 1 1 140px; margin: 0; }
 .opadd-row textarea { width: 100%; }
 .mcard-sub { margin: 0 0 8px 26px; padding: 8px 10px; border-left: 2px solid var(--line, #0002); }
+.mcard-h { font-size: 13px; font-weight: 600; margin: 14px 0 6px; }
+.mcard-list { list-style: none; margin: 0; padding: 0; }
+.mcard-list li { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 5px 0; border-bottom: 1px solid var(--line, #0002); }
+.mcard-list li:last-child { border-bottom: 0; }
+.checkdlg .modal-box { width: min(760px, calc(100vw - 32px)); }
+.checklist { max-height: min(60vh, 560px); overflow: auto; margin: 6px 0 10px; }
+.check-ok { color: #2E7D4F; font-weight: 600; }
+.check-sum { font-weight: 600; }
+.check-fail { color: var(--crimson, #A3283A); }
+.check-items { list-style: none; margin: 0; padding: 0; }
+.check-items li { display: flex; align-items: flex-start; gap: 10px; padding: 7px 0; border-bottom: 1px solid var(--line, #0002); }
+.check-items li:last-child { border-bottom: 0; }
+.check-text { flex: 1; line-height: 1.4; }
+.check-tag { flex: none; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; padding: 2px 6px; border-radius: 4px; margin-top: 2px; }
+.check-error .check-tag { background: #A3283A; color: #fff; }
+.check-warn .check-tag { background: #D9A441; color: #2a1d00; }
+.check-info .check-tag { background: #0001; color: inherit; border: 1px solid var(--line, #0002); }
+.checkrow { display: flex; gap: 8px; align-items: center; font-size: 13px; }

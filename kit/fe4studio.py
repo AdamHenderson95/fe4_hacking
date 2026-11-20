@@ -54,7 +54,7 @@ import fe4skillanim                # noqa: E402
 from fe4project import Project, load_settings, save_settings   # noqa: E402
 
 APP = 'Builder of the Holy War'
-VERSION = '1.3.1'
+VERSION = '1.4'
 STATIC = os.path.join(KIT, 'studio')
 
 # ---------------------------------------------------------------- state
@@ -2649,9 +2649,15 @@ def deploy_chapters(evdir):
     return out
 
 
+_UL = {}
+
+
 def unit_lookup():
-    """char_id -> (table, row) over all unit tables (playable first)."""
+    """char_id -> (table, row) over all unit tables (playable first); kept until the project changes."""
     p = project()
+    key = (id(p), p.path, getattr(p, 'changes', 0))
+    if _UL.get('key') == key:
+        return _UL['map']
     out = {}
     for t in ('units_playable', 'units_children', 'units_npc', 'units_generic'):
         tb = p.table(t)
@@ -2659,6 +2665,7 @@ def unit_lookup():
             cid = (r.get('char_id') or '').strip()
             if cid.isdigit():
                 out.setdefault(int(cid), (t, r))
+    _UL.update(key=key, map=out)
     return out
 
 
@@ -3446,30 +3453,34 @@ SMART = {'\u2019': "'", '\u2018': "'", '\u201c': '"', '\u201d': '"', '\u2026': '
 
 
 def wrap_words(text, default):
-    """Plain words as FE4 dialogue: lines that fit the box ({02}), a button wait ({08}) every
-    three lines.  Empty text gives `default`."""
-    text = ' '.join(''.join(SMART.get(c, c) for c in str(text or '')).split())
-    if not text:
+    """Plain words as FE4 dialogue: lines that fit the box ({02}), a button wait and a cleared box
+    ({08}{04}, as the game's own text does) every three lines.  Empty text gives `default`."""
+    paras = [' '.join(''.join(SMART.get(c, c) for c in pa).split()) for pa in str(text or '').split('\n')]
+    paras = [pa for pa in paras if pa]
+    if not paras:
         return default
+    text = ' '.join(paras)
     rom = rom_data()
     width = lambda w: sum(rom[TEXT_WIDTHS + fe4events._CH_INV[c] - 0x10] if rom is not None and 0x10 <= fe4events._CH_INV[c] < 0x100 else 6 for c in w)  # noqa: E731
     bad = sorted({c for c in text if c not in fe4events._CH_INV and c != ' '})
     if bad:
         raise ValueError('The game\'s font has no ' + ' '.join(repr(c) for c in bad) + '.')
-    lines, cur = [], ''
-    for word in text.split(' '):
-        t = (cur + ' ' + word) if cur else word
-        if cur and width(t) > TEXT_BOX_WIDTH:
-            lines.append(cur)
-            cur = word
-        else:
-            cur = t
-    lines.append(cur)
+    lines = []
+    for pa in paras:                      # a new line in the text starts a new line in the box
+        cur = ''
+        for word in pa.split(' '):
+            t = (cur + ' ' + word) if cur else word
+            if cur and width(t) > TEXT_BOX_WIDTH:
+                lines.append(cur)
+                cur = word
+            else:
+                cur = t
+        lines.append(cur)
     out = ''
     for i, ln in enumerate(lines):
         out += ln
         if i < len(lines) - 1:
-            out += '{08}' if i % 3 == 2 else '{02}'
+            out += '{08}{04}' if i % 3 == 2 else '{02}'
     return out
 
 
@@ -4021,7 +4032,7 @@ def prepend_to_scene(sid, cmds, ops):
     first = sc['block']['cmds'][0]
     f = need_project().evt('scenes.evt')
     old = f.lines[first['line']]
-    lead = '%s: %-24s ; %s' % (first['addr'], cmds[0], _comment('scenes.evt', cmds[0]))
+    lead = ('%s: ' % first['addr'] if first['addr'] else '+ ') + '%-24s ; %s' % (cmds[0], _comment('scenes.evt', cmds[0]))
     rest = _plus('scenes.evt', cmds[1:] + [first['hex']])
     ops['list'].append(('lines', 'scenes.evt', first['line'], [old], [lead] + rest))
 
@@ -4054,7 +4065,7 @@ def first_trigger_ops(name, cmds, ops):
     if blk is None or not blk['cmds']:
         raise ValueError('This chapter has no trigger list.')
     first = blk['cmds'][0]
-    lead = '%s: %-24s ; %s' % (first['addr'], cmds[0], _comment(name, cmds[0]))
+    lead = ('%s: ' % first['addr'] if first['addr'] else '+ ') + '%-24s ; %s' % (cmds[0], _comment(name, cmds[0]))
     ops['list'].append(('lines', name, first['line'], [f.lines[first['line']]],
                         [lead] + _plus(name, cmds[1:] + [first['hex']])))
     return first['line']
@@ -4146,6 +4157,335 @@ def castle_holders(ch):
             if c.strip().isdigit():
                 out[int(c)] = slot
     return out
+
+
+# ---------------------------------------------------------------- lose conditions (1.4)
+# The game's own game over (`$81:B32C`) runs scene 558-561 and sets the map mode `$0304` = $0C, which waits
+# for the scene to end and goes to the Game Over screen.  `$80:ED81` (LDA #$000C, STA $0304, RTL) is that
+# last step on its own, so a scene can end the game with CALL_ASM `45 81 ED 80`.
+GAME_OVER_CALL = '45 81 ED 80'
+GAME_OVER_CODE = (0x80ED81, bytes.fromhex('A90C008D04036B'))
+
+
+def _game_over_ok():
+    rom = rom_data()
+    if rom is None:
+        raise ValueError('Choose your FE4 ROM on the Project page first.')
+    a, code = GAME_OVER_CODE
+    o = fe4spellfx.snes_to_file(a)
+    if bytes(rom[o:o + len(code)]) != code:
+        raise ValueError('Your ROM\'s game-over code isn\'t where the editor expects it, so it can\'t add a lose condition.')
+
+
+def location_name(loc, ch):
+    lt = need_project().table('locations')
+    r = next((r for r in (lt.rows if lt else []) if _num(r.get('chapter'), -1) == ch and _num(r.get('index'), -1) == loc), None)
+    return (r.get('_castle_name') if r else None) or f'location {loc}'
+
+
+def chapter_loses(ch):
+    """The editor's lose conditions in the chapter: triggers whose scene ends the game, one rule per scene."""
+    name = chapter_file(ch)
+    idx = story_index()
+    by_scene = {}
+    for cnd, steps in chapter_triggers(name):
+        if not steps:
+            continue
+        sb = cmd_bytes(steps[0])
+        if sb[:1] != b'\x30' or len(sb) < 4:
+            continue
+        sid = sb[2] | sb[3] << 8
+        sc = idx['scenes'].get(sid)
+        if not sc or not any(c['hex'].upper() == GAME_OVER_CALL for c in sc['block']['cmds']):
+            continue
+        cb = cmd_bytes(cnd)
+        w = lambda i: cb[i] | cb[i + 1] << 8 if i + 1 < len(cb) else 0  # noqa: E731
+        e = by_scene.get(sid)
+        if e is None:
+            e = by_scene[sid] = {'lines': [], 'file': name, 'scene': sid, 'kind': 'other',
+                                 'words': cond_words(cb, ch)}
+            if cb[0] == 0x1A:
+                e.update(kind='death', unit=w(2), words=f'{unit_label(w(2))} is defeated')
+            elif cb[0] == 0x02:
+                e.update(kind='castle', loc=w(4), words=f'An enemy takes {location_name(w(4), ch)}')
+        e['lines'].append(cnd['line'])
+    return list(by_scene.values())
+
+
+def api_losecond(b, q):
+    """GET ?ch: the game's own lose rules, the chapter's added ones, and what can be chosen.
+    POST {ch, kind: 'death', unit, text?, speaker?} or {ch, kind: 'castle', loc, text?, speaker?}: add one (one
+    undo step): triggers (flag FF: no flag needed, the game ends) whose scene shows the words and ends the game.
+    POST {ch, remove: scene}: remove that rule's triggers."""
+    p = need_project()
+    ch = int((q.get('ch', ['0'])[0]) if not b else b.get('ch', 0))
+    name = chapter_file(ch)
+    lt = p.table('locations')
+    castles = [{'index': _num(r.get('index')), 'name': r.get('_castle_name') or f"castle {r.get('index')}"}
+               for r in (lt.rows if lt else []) if _num(r.get('chapter'), -1) == ch and r.get('kind') == 'castle']
+    held = castle_holders(ch)
+    names = army_names(ch)
+    for c in castles:
+        sl = held.get(c['index'])
+        c['holder'] = None if sl is None else ('your army' if sl == 0 else names.get(sl, f'army slot {sl}'))
+    if not b:
+        leader = 'Seliph' if ch >= 6 else 'Sigurd'
+        base = next((c['name'] for c in castles if c['index'] == 0), None)
+        builtin = [f'{leader} is defeated']
+        if base:
+            builtin.append(f'An enemy takes {base}, your army\'s base castle')
+        people = {}
+        for _i, r, _l, _e, _s in chapter_deploy(ch):
+            cid = _num(r.get('char_id'), -1)
+            if cid >= 0:
+                people.setdefault(cid, {'id': cid, 'name': unit_label(cid), 'slot': _num(r.get('army_slot'), 0)})
+        tabs = ['units_playable'] + (['units_children'] if ch >= 6 else [])
+        for t in tabs:
+            tb = p.table(t)
+            for r in (tb.rows if tb else []):
+                cid = _num(r.get('char_id') or r.get('index'), -1)
+                if cid > 0:
+                    people.setdefault(cid, {'id': cid, 'name': unit_label(cid), 'slot': 0})
+        people.pop(1, None)
+        return {'builtin': builtin, 'rules': chapter_loses(ch), 'castles': castles,
+                'people': sorted(people.values(), key=lambda x: (x['slot'] != 0, x['name']))}
+    if 'remove' in b:
+        sid = int(b['remove'])
+        rule = next((r for r in chapter_loses(ch) if r['scene'] == sid), None)
+        if rule is None:
+            raise KeyError('That lose condition is gone already.')
+        f = p.evt(name)
+        ops = []
+        for ln in sorted(rule['lines'], reverse=True):
+            a, z = _group_at(name, ln)
+            ops.append(('lines', name, a, f.lines[a:z], []))
+        p.edit(ops)
+        return {'ok': True, 'rules': chapter_loses(ch)}
+    _game_over_ok()
+    kind = b.get('kind')
+    have = chapter_loses(ch)
+    if kind == 'death' and any(r['kind'] == 'death' and r.get('unit') == int(b['unit']) for r in have):
+        raise ValueError(f"This chapter is already lost when {unit_label(int(b['unit']))} is defeated.")
+    if kind == 'castle' and any(r['kind'] == 'castle' and r.get('loc') == int(b['loc']) for r in have):
+        raise ValueError(f"This chapter is already lost when an enemy takes {location_name(int(b['loc']), ch)}.")
+    if kind == 'death':
+        uid = int(b['unit'])
+        if uid == 1:
+            raise ValueError('The game already ends when Sigurd is defeated.')
+        conds = [_hx('1A FF', _w(uid), 'FF FF')]
+        who = unit_label(uid)
+        default = f'{who} has fallen...\nWe can\'t go on without them.'
+    elif kind == 'castle':
+        loc = int(b['loc'])
+        if loc not in [c['index'] for c in castles]:
+            raise ValueError('Choose one of this chapter\'s castles.')
+        if loc == 0:
+            raise ValueError('The game already ends when an enemy takes your base castle.')
+        others = sorted(sl for sl in _chapter_slots(ch) if sl != 0)
+        if not others:
+            raise ValueError('This chapter has no other armies to take it.')
+        conds = [_hx('02 FF', _w(sl), _w(loc)) for sl in others]
+        cname = next(c['name'] for c in castles if c['index'] == loc)
+        default = f'{cname} has fallen...\nWe have no hope of victory now...'
+    else:
+        raise ValueError('Choose when the chapter is lost.')
+    ops = {'list': []}
+    text = str(b.get('text') or '').strip() or default
+    speaker = int(b.get('speaker') or 0x27F)
+    key = new_message_op(_talk_text({'a': speaker, 'lines': [{'who': 'a', 'text': text}]}), f'{name[:4]} lose', ops)
+    cmds = ['12 E0 00', '34 23 00', 'FD', '0E 6A', 'FD', '34 14 00', 'FD', f'0C @{key}', 'FD', GAME_OVER_CALL, 'FF FF']
+    sid = new_scene_ops(cmds, ops)
+    trig = []
+    for c in conds:
+        trig += [c, '30 FF ' + _w(sid)]
+    first_trigger_ops(name, trig, ops)
+    p.edit(ops['list'])
+    return {'ok': True, 'rules': chapter_loses(ch)}
+
+
+# ---------------------------------------------------------------- Check my hack (1.4)
+def _check_text(text):
+    """Problems in one message: lines wider than the box, more than three lines before a button wait."""
+    rom = rom_data()
+    probs = []
+    t = re.sub(r'\{08\}\{04\}|\{08\}\{06\}\{00 29\}|\{0[67]\}', '\x01', text)     # new box / other speaker
+    for page in t.split('\x01'):
+        lines = re.sub(r'\{08\}', '\x02', page).split('{02}')
+        n = 0
+        for ln in lines:
+            for part in ln.split('\x02'):
+                plain = re.sub(r'\{[0-9A-F ]+\}', '', part)
+                w = 0
+                for c in plain:
+                    k = fe4events._CH_INV.get(c)
+                    w += rom[TEXT_WIDTHS + k - 0x10] if rom is not None and k is not None and 0x10 <= k < 0x100 else 6
+                if w > TEXT_BOX_WIDTH:
+                    probs.append(f'a line is too wide for the box ("{plain[:40]}…")')
+            n += 1
+        if n > TEXT_BOX_LINES:
+            probs.append(f'{n} lines in one box (it shows 3)')
+    return probs
+
+
+def project_check(try_build=False):
+    """Look the project over for mistakes the game won't explain: [{level, area, text, link}]."""
+    p = need_project()
+    out = []
+
+    def add(level, area, text, link=None):
+        out.append({'level': level, 'area': area, 'text': text, 'link': link})
+
+    def guarded(area, fn):
+        try:
+            fn()
+        except Exception as e:          # noqa: BLE001  -- one check failing shouldn't hide the others
+            add('info', area, f'This check couldn\'t run: {e}')
+
+    info = api_mapinfo({}, {'ch': ['0']})
+    classes = {c['id']: c for c in info['classes']}
+    items = {i['id']: i for i in info['items']}
+    costs = info['costs']
+    rank = {'E': 1, 'D': 2, 'C': 3, 'B': 4, 'A': 5}
+
+    def usable(cls, it):
+        c = classes.get(cls)
+        if c is None or it is None or it['type'] > 9 or it['rank'] in ('*', ''):
+            return True
+        r = c['ranks'][it['type']]
+        return r not in ('-', '') and rank.get(r, 0) >= rank.get(it['rank'], 0)
+
+    # soldiers as the game has them: its own odd choices (Elliot's Killer bow) aren't the creator's mistakes
+    game_generic = {}
+    rom = rom_data()
+    if rom is not None:
+        for idx, addr, size, _label in L.TABLES['units_generic'][0](rom):
+            rec = rom[addr:addr + size]
+            game_generic[idx] = (rec[5], tuple(rec[10:13]))
+    for ch in range(12):
+        title = CHAPTER_TITLES[ch].split(':')[0] if ch < len(CHAPTER_TITLES) else f'chapter {ch}'
+
+        def units(ch=ch, title=title):
+            M = api_map({}, {'ch': [str(ch)]})
+            ax, ay, aw, ah = M.get('area') or (0, 0, 64, 64)
+            seen = {}
+            for i, r, lst, ent, sure in chapter_deploy(ch):
+                if not sure:
+                    continue
+                x, y, cid = _num(r.get('x'), -1), _num(r.get('y'), -1), _num(r.get('char_id'), -1)
+                t, rec = unit_lookup().get(cid, (None, None))
+                cname = classes.get(_num(rec.get('class'), -1), {}).get('name') if rec is not None else None
+                who = unit_label(cid) + (f' ({cname})' if cname and t == 'units_generic' else '')
+                link = {'page': 'maps', 'ch': ch, 'x': x, 'y': y, 'row': i}
+                if not (ax <= x < ax + aw and ay <= y < ay + ah):
+                    add('error', title, f'{who}, in group {lst}, is placed outside the map, at {x}, {y}.', link)
+                    continue
+                k = (lst, x, y)
+                if k in seen:
+                    add('warn', title, f'{who} and {seen[k]}, both in group {lst}, are placed on the same cell, {x}, {y}.', link)
+                seen[k] = who
+                if t == 'units_generic' and rec is not None and game_generic.get(cid) != (
+                        _num(rec.get('class'), -1), tuple(_num(rec.get(f'item{n}'), 255) for n in (1, 2, 3))):
+                    cls = _num(rec.get('class'), -1)
+                    bad = [items[_num(rec.get(f'item{n}'), 255)]['name'] for n in (1, 2, 3)
+                           if _num(rec.get(f'item{n}'), 255) in items and not usable(cls, items[_num(rec.get(f'item{n}'), 255)])]
+                    if bad:
+                        add('warn', title, f'{who} carries {", ".join(bad)}, which that class can\'t use.', link)
+                    c = classes.get(cls)
+                    words = M.get('words') or []
+                    if c and y * M['width'] + x < len(words):
+                        ter = M['terrain'][words[y * M['width'] + x] & 0x3FF]
+                        row = costs[c['group']] if c['group'] < len(costs) else (costs[0] if costs else [])
+                        if row and ter < len(row) and row[ter] >= 128:
+                            add('warn', title, f'{who} stands on {M["terrainNames"].get(str(ter)) or "terrain %d" % ter}, '
+                                'which that class can\'t enter, so it can\'t move.', link)
+        guarded(title, units)
+
+        def endings(ch=ch, title=title):
+            ends = chapter_endings(ch)
+            if not ends and ch != 2:
+                add('error', title, 'Nothing wins this chapter: it has no ending event.', {'page': 'maps', 'ch': ch, 'card': 'win'})
+            w = api_wincond({}, {'ch': [str(ch)]})
+            count = {a['slot']: a['units'] for a in w['armies']}
+            for e in ends:
+                if e['kind'] == 'rout':
+                    empty = [a['name'] for a in w['armies'] if a['slot'] in e['slots'] and not count.get(a['slot'])]
+                    if empty:
+                        add('warn', title, 'The rout win counts ' + ', '.join(empty) + ' as gone from the start (no units placed), '
+                            'so it could end the chapter early.', {'page': 'maps', 'ch': ch, 'card': 'win'})
+                elif e['kind'] == 'boss' and p.table('deploy'):
+                    n = sum(1 for r in p.table('deploy').rows if _num(r.get('char_id'), -1) == e['unit'])
+                    if n > 1:
+                        add('warn', title, f'The boss, {unit_label(e["unit"])}, is used by {n} units: defeating any of them wins.',
+                            {'page': 'maps', 'ch': ch, 'card': 'win'})
+                elif e['kind'] == 'seize' and e.get('who') == 0 and castle_holders(ch).get(e['loc']) == 0:
+                    add('warn', title, f'The chapter is won by taking {location_name(e["loc"], ch)}, but your army holds it from the start.',
+                        {'page': 'maps', 'ch': ch, 'card': 'win'})
+        guarded(title, endings)
+
+        def flags(ch=ch, title=title):
+            name = chapter_file(ch)
+            if free_flag(name) is None:
+                add('warn', title, 'Every event flag (0-79) is in use: new events in this chapter need one.', {'page': 'events', 'ch': ch})
+        guarded(title, flags)
+
+    def texts():
+        d = p.dialogue()
+        if not d:
+            return
+        for k, t in d.text.items():
+            if not k.startswith('N'):
+                continue
+            for pr in _check_text(t):
+                where = d.where.get(k, '')
+                m = re.match(r'ch(\d\d)', where)
+                add('warn', 'Dialogue', f'A message you wrote ({where or k}): {pr}.',
+                    {'page': 'events', 'ch': int(m.group(1))} if m else {'page': 'events'})
+    guarded('Dialogue', texts)
+
+    def chars():
+        rom = rom_data()
+        cnt = L.unit_count(rom) if rom is not None else L.GAME_UNITS
+        up = p.table('units_playable')
+        for i, r in enumerate(up.rows if up else []):
+            if _num(r.get('index')) > cnt and not unit_label(_num(r.get('index'))).strip(' 0123456789()#'):
+                add('warn', 'Characters', f'A character you added (ID {r.get("index")}) has no name.',
+                    {'page': 'characters', 'group': 'units_playable', 'row': i})
+    guarded('Characters', chars)
+
+    def room():
+        left = len(spare_scenes())
+        if left < 8:
+            add('info', 'Room left', f'{left} spare scenes left for new events and conversations.')
+        nl = new_units_left()
+        if nl < 10:
+            add('info', 'Room left', f'Room for {nl} more new units.')
+    guarded('Room left', room)
+
+    if try_build:
+        def build():
+            import tempfile
+            rom = rom_path()
+            if not rom:
+                raise ValueError('choose your FE4 ROM on the Project page first')
+            p.save()
+            with tempfile.TemporaryDirectory() as td:
+                fe4hack.build(rom, p.path, os.path.join(td, 'check.smc'), None, False)
+        try:
+            build()
+        except BaseException as e:      # noqa: BLE001  -- the build reports problems as exceptions or SystemExit
+            add('error', 'Build', f'The ROM doesn\'t build: {e}')
+    order = {'error': 0, 'warn': 1, 'info': 2}
+    out.sort(key=lambda f: order[f['level']])
+    return out
+
+
+def api_check(b, q):
+    """GET ?build=1: Check my hack."""
+    need_project()
+    t = time.time()
+    found = project_check(q.get('build', ['0'])[0] == '1')
+    return {'findings': found, 'seconds': round(time.time() - t, 1),
+            'counts': {k: sum(1 for f in found if f['level'] == k) for k in ('error', 'warn', 'info')}}
 
 
 def api_wincond(b, q):
@@ -5951,8 +6291,13 @@ def _talk_text(st):
         else:
             merged.append((who, [str(ln['text'])]))
     for k, (who, texts) in enumerate(merged):
-        out += ('{06}' if who == 'a' else '{07}') + ('{09}' if k == 0 else '{00 1D 10}')
-        out += '{08}'.join(wrap_words(t, '...') for t in texts)
+        # the game's own switches: back to the first speaker = wait, select, clear ({08}{06}{00 29});
+        # to the second = select and a short pause ({07}{00 1D 10})
+        if k == 0:
+            out += ('{06}' if who == 'a' else '{07}') + '{09}'
+        else:
+            out += '{08}{06}{00 29}' if who == 'a' else '{07}{00 1D 10}'
+        out += '{08}{04}'.join(wrap_words(t, '...') for t in texts)
     return out + '{08}{01}'
 
 
@@ -6281,7 +6626,7 @@ API = {('GET', 'session'): api_session, ('POST', 'ping'): api_ping, ('GET', 'tab
        ('GET', 'chapters'): api_chapters, ('GET', 'scene'): api_scene, ('POST', 'messages'): api_messages,
        ('POST', 'msg'): api_msg, ('POST', 'evtcmd'): api_evtcmd, ('GET', 'dsearch'): api_dsearch, ('GET', 'villages'): api_villages, ('GET', 'itemuse'): api_itemuse, ('POST', 'newevent'): api_newevent, ('POST', 'talkmenu'): api_talkmenu, ('POST', 'delstep'): api_delstep,
        ('POST', 'addstep'): api_addstep, ('GET', 'eventinfo'): api_eventinfo, ('GET', 'maps'): api_maps, ('GET', 'map'): api_map, ('POST', 'paint'): api_paint,
-       ('GET', 'armies'): api_armies, ('GET', 'portraits'): api_portraits, ('GET', 'mapsprites'): api_mapsprites, ('GET', 'skills'): api_skills, ('POST', 'gen2check'): api_gen2check, ('POST', 'newchild'): api_newchild, ('GET', 'mapinfo'): api_mapinfo, ('GET', 'unitshare'): api_unitshare, ('POST', 'mapunit'): api_mapunit, ('POST', 'testchapter'): api_testchapter, ('GET', 'wincond'): api_wincond, ('POST', 'wincond'): api_wincond, ('POST', 'skillcheck'): api_skillcheck, ('POST', 'skilledit'): api_skilledit, ('POST', 'spriteentry'): api_spriteentry, ('GET', 'tileinfo'): api_tileinfo, ('POST', 'tiledraw'): api_tiledraw, ('POST', 'mapsprite'): api_mapsprite, ('POST', 'mapwalk'): api_mapwalk, ('GET', 'mapbattle'): api_mapbattle, ('GET', 'mbplayer'): api_mbplayer, ('GET', 'mapspells'): api_mapspells, ('POST', 'mapspellset'): api_mapspellset, ('POST', 'mapspellsheet'): api_mapspellsheet, ('POST', 'mapspellbg'): api_mapspellbg, ('POST', 'mapspellcolour'): api_mapspellcolour, ('POST', 'mapspellpreview'): api_mapspellpreview, ('POST', 'mapbattleset'): api_mapbattleset, ('POST', 'mapbattlesheet'): api_mapbattlesheet, ('POST', 'mapbattlepreview'): api_mapbattlepreview, ('POST', 'portrait'): api_portrait, ('POST', 'aicmd'): api_aicmd, ('POST', 'airecipe'): api_airecipe, ('GET', 'music'): api_music, ('POST', 'musicfile'): api_musicfile,
+       ('GET', 'armies'): api_armies, ('GET', 'portraits'): api_portraits, ('GET', 'mapsprites'): api_mapsprites, ('GET', 'skills'): api_skills, ('POST', 'gen2check'): api_gen2check, ('POST', 'newchild'): api_newchild, ('GET', 'mapinfo'): api_mapinfo, ('GET', 'unitshare'): api_unitshare, ('POST', 'mapunit'): api_mapunit, ('POST', 'testchapter'): api_testchapter, ('GET', 'wincond'): api_wincond, ('POST', 'wincond'): api_wincond, ('GET', 'losecond'): api_losecond, ('GET', 'check'): api_check, ('POST', 'losecond'): api_losecond, ('POST', 'skillcheck'): api_skillcheck, ('POST', 'skilledit'): api_skilledit, ('POST', 'spriteentry'): api_spriteentry, ('GET', 'tileinfo'): api_tileinfo, ('POST', 'tiledraw'): api_tiledraw, ('POST', 'mapsprite'): api_mapsprite, ('POST', 'mapwalk'): api_mapwalk, ('GET', 'mapbattle'): api_mapbattle, ('GET', 'mbplayer'): api_mbplayer, ('GET', 'mapspells'): api_mapspells, ('POST', 'mapspellset'): api_mapspellset, ('POST', 'mapspellsheet'): api_mapspellsheet, ('POST', 'mapspellbg'): api_mapspellbg, ('POST', 'mapspellcolour'): api_mapspellcolour, ('POST', 'mapspellpreview'): api_mapspellpreview, ('POST', 'mapbattleset'): api_mapbattleset, ('POST', 'mapbattlesheet'): api_mapbattlesheet, ('POST', 'mapbattlepreview'): api_mapbattlepreview, ('POST', 'portrait'): api_portrait, ('POST', 'aicmd'): api_aicmd, ('POST', 'airecipe'): api_airecipe, ('GET', 'music'): api_music, ('POST', 'musicfile'): api_musicfile,
        ('GET', 'title'): api_title, ('POST', 'titleset'): api_title_set,
        ('POST', 'skillicon'): api_skillicon,
        ('GET', 'tileset'): api_tileset, ('POST', 'tilesetset'): api_tileset_set, ('POST', 'mapsize'): api_mapsize}

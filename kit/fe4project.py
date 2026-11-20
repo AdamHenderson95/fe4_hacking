@@ -322,6 +322,7 @@ class Project:
 
     # -- edits with undo
     def _apply(self, op, back=False):
+        self.changes = getattr(self, 'changes', 0) + 1     # anything cached from the project is stale
         if op[0] == 'cell':
             _, table, row, field, old, new = op
             t = self.table(table)

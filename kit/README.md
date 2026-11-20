@@ -1,6 +1,6 @@
 # fe4kit: FE4 hacking toolkit (Project Naga ROM)
 
-**Builder of the Holy War 1.3.1** (1.0 was the first public release; test
+**Builder of the Holy War 1.4** (1.0 was the first public release; test
 builds were numbered up to v57, and the "kit vNN" notes below refer to those).
 1.1 added right-click cards on the Maps page for placing units, reinforcements
 and events, danger zones, and testing a chapter in the PC port. 1.2 adds what
@@ -8,7 +8,8 @@ a whole new chapter needs: its win condition, title card, opening scene,
 castles and villages, new armies and new first-generation characters. 1.3
 adds characters who arrive during a chapter (as Azel and Lex do), more win
 conditions (defeat a boss, rout armies) and chapters where your army starts
-without a castle. Free software
+without a castle. 1.4 adds lose conditions and **Check my hack**, which looks
+the whole project over for mistakes. Free software
 under the MIT license (`licenses/`).
 
 Make hacks and randomized games of Fire Emblem: Genealogy of the Holy War
@@ -164,6 +165,16 @@ default browser). The editor runs on your PC only: nothing is sent anywhere.
        uses).
      - **Defend** (survive until turn N): the chapter ends as your phase of
        that turn begins.
+   - **Lose conditions…** (1.4, also on the right-click menu). The game
+     always ends when your leader (Sigurd, then Seliph) falls or an enemy
+     takes your base castle (the chapter's first castle). Add more:
+     - **Someone is defeated**: a unit the player must protect (one of
+       yours, an ally or a guest).
+     - **An enemy takes a castle**: a castle the player must hold.
+     - Choose who speaks and what they say (a new line in the message starts
+       a new line in the box). The music fades, the message shows over the
+       map and the Game Over screen follows, as when Sigurd falls.
+     - The card lists the chapter's lose conditions; **Remove** takes one out.
    - **Chapter title…** (1.2): the title card shown as the chapter starts
      ("Prologue / Birth of a Crusader") is a picture Project Naga drew. Type a
      new title (up to 30 letters); the editor draws it in a font from your
@@ -398,6 +409,19 @@ default browser). The editor runs on your PC only: nothing is sent anywhere.
    emulator). It checks the patch by applying it to your ROM before it
    finishes. The patch holds only your changes, never the game. The dialog
    remembers what you typed for next time.
+
+   **Check my hack** (1.4, the button under Save) looks every chapter over
+   without changing anything and lists what it finds, each with **Show** to
+   go there:
+   - **Fix**: units placed outside the map; a chapter nothing wins; a ROM that doesn't build (tick
+     "Also try building the ROM").
+   - **Look**: soldiers carrying weapons their class can't use, or standing where their class can't
+     move; two units of one group on the same cell; a rout that counts an army with no units as gone; a
+     boss used by several units; a castle to take that your army already holds; messages you wrote with
+     a line too wide for the box or more than three lines in one box; characters you added without a
+     name; a chapter with every event flag in use.
+   - **Note**: little room left for new scenes or units.
+   - The game's own oddities (Elliot's Killer bow) aren't reported, only changes you made.
 14. **Battle animations** lists every class with a row for each weapon kind
    (and gender, and the few character-only rows such as Julia's). Pick one
    to watch it: a player runs any of the animation's motions (the game's own

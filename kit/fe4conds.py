@@ -18,7 +18,6 @@ import os
 
 import fe4events as E
 from asm65816 import Asm
-from dis65816 import snes_to_file as _fo
 
 ROUT_OP = 0x03
 ROUT_LEN = 5

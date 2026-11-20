@@ -33,7 +33,7 @@ const fs = require('fs');
         await p.$$eval('select', (ss, [i, k]) => { ss[i].selectedIndex = k; ss[i].dispatchEvent(new Event('change', { bubbles: true })); }, [sel, k]);
         await p.waitForTimeout(pg === 'maps' ? 3000 : 1500);
         if (pg === 'maps') {
-          for (const label of ['Win condition', 'Opening scene', 'Chapter title']) {
+          for (const label of ['Win condition', 'Lose conditions', 'Opening scene', 'Chapter title']) {
             const btn = await p.$(`button:has-text("${label}")`);
             if (btn) { where = `${pg} ch option ${k} ${label}`; await btn.click().catch(() => {}); await p.waitForTimeout(1200); await closeCards(); }
           }
@@ -83,6 +83,13 @@ const fs = require('fs');
     }
   }
   await closeCards();
+  // Check my hack
+  where = 'Check my hack';
+  await p.click('#btnCheck');
+  await p.waitForSelector('.check-items, .check-ok, .check-fail', { timeout: 180000 }).catch(() => problems.push('Check my hack: no result'));
+  console.log('check:', (await p.$eval('.checklist', e => e.innerText).catch(() => '?')).split('\n')[0]);
+  await p.screenshot({ path: `${shots}/check.png` });
+  await p.keyboard.press('Escape');
   console.log(`${problems.length} problem(s)`);
   for (const x of [...new Set(problems)]) console.log('  ' + x);
   await b.close();

@@ -1,3 +1,30 @@
+# Builder of the Holy War 1.4
+
+Chapters can now be lost as well as won, and **Check my hack** looks the whole project over for mistakes
+before you test. The PC port is unchanged (1.0.1).
+
+### New
+- **Lose conditions** (Maps page, next to Win condition, and on the right-click menu): the game is lost when
+  someone the player must protect is defeated, or when an enemy takes a castle the player must hold. Pick who
+  speaks and what they say; the music fades, the message shows and the Game Over screen follows, as when
+  Sigurd falls. The card also shows the rules the game always has (your leader falls, an enemy takes your
+  base castle) and lets you remove the ones you added.
+- **Check my hack** (under Save): lists problems in every chapter, each with **Show** to go straight there.
+  It finds:
+  - units placed outside the map, or two units of one group on the same cell;
+  - soldiers whose class can't use their weapons, or can't move where they stand;
+  - chapters nothing wins, or win conditions that could end a chapter early;
+  - messages too wide or too long for the text box;
+  - added characters without a name;
+  - when room is running out for new scenes or units.
+  It can also try a full build. The game's own oddities aren't reported, only your changes.
+
+### Fixed
+- Messages longer than three lines ran on in the same box after the button press; they now start a fresh
+  box, as the game's own text does. Conversations that go back to the first speaker now clear that speaker's
+  box first. This affects talks, recruit events, opening scenes and arriving characters' conversations.
+- In messages you write, a new line now starts a new line in the box.
+
 # Builder of the Holy War 1.3.1
 
 A full test pass of the editor (every page, every chapter, the map cards, builds on Linux and Windows, the

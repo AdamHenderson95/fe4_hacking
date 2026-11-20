@@ -1,9 +1,9 @@
 // Builder of the Holy War: app shell (session, navigation, saving, undo, build / test play, jobs).
 import { homePage } from './pages/home.js';
-import { charactersPage } from './pages/characters.js';
+import { charactersPage, openCharacter } from './pages/characters.js';
 import { classesPage } from './pages/classes.js';
-import { mapsPage } from './pages/maps.js';
-import { eventsPage } from './pages/events.js';
+import { mapsPage, setMapChapter } from './pages/maps.js';
+import { eventsPage, openEventAt } from './pages/events.js';
 import { itemsPage } from './pages/items.js';
 import { armiesPage } from './pages/armies.js';
 import { portraitsPage } from './pages/portraits.js';
@@ -133,6 +133,56 @@ async function build() {
   catch (e) { toast(e.message, true); }
 }
 
+// ---------------------------------------------------------------- Check my hack (1.4)
+async function checkHack() {
+  document.querySelector('.modal.checkdlg')?.remove();
+  const list = h('div', { class: 'checklist' }, h('p', { class: 'hint' }, 'Looking the hack over…'));
+  const tryBuild = h('input', { type: 'checkbox' });
+  const again = h('button', { class: 'btn btn-line' }, 'Check again');
+  const close = h('button', { class: 'btn btn-gilt' }, 'Close');
+  const modal = h('div', { class: 'modal checkdlg', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Check my hack' },
+    h('div', { class: 'modal-box' }, h('h2', {}, 'Check my hack'),
+      h('p', { class: 'sub' }, 'Units, win conditions, messages and room left, in every chapter. Nothing is changed.'),
+      list,
+      h('label', { class: 'checkrow' }, tryBuild, ' Also try building the ROM (slower; finds problems only the build sees)'),
+      h('div', { class: 'modal-actions' }, again, close)));
+  close.onclick = () => modal.remove();
+  modal.addEventListener('keydown', e => { if (e.key === 'Escape') modal.remove(); });
+  modal.addEventListener('pointerdown', e => { if (e.target === modal) modal.remove(); });
+  document.body.append(modal);
+  close.focus();
+  const show = f => {
+    const L = f.link;
+    if (!L) return null;
+    return h('button', { class: 'btn btn-line btn-sm', onclick: () => {
+      modal.remove();
+      if (L.page === 'maps') { setMapChapter(L.ch, null, L.x !== undefined ? { x: L.x, y: L.y, row: L.row } : null); go('maps'); }
+      else if (L.page === 'events') { if (L.ch !== undefined) openEventAt(L.ch, L.line); go('events'); }
+      else if (L.page === 'characters') openCharacter(L.group, L.row);
+      else go(L.page);
+    } }, 'Show');
+  };
+  async function run() {
+    again.disabled = true;
+    list.replaceChildren(h('p', { class: 'hint' }, tryBuild.checked ? 'Looking the hack over and building it…' : 'Looking the hack over…'));
+    try {
+      const r = await api('check' + (tryBuild.checked ? '?build=1' : ''));
+      const { error, warn, info } = r.counts;
+      const head = error + warn === 0
+        ? h('p', { class: 'check-ok' }, '✓ No problems found.' + (info ? ' A few notes below.' : ''))
+        : h('p', { class: 'check-sum' }, [error ? `${error} problem${error > 1 ? 's' : ''} to fix` : '', warn ? `${warn} thing${warn > 1 ? 's' : ''} to look at` : ''].filter(Boolean).join(', ') + '.');
+      const label = { error: 'Fix', warn: 'Look', info: 'Note' };
+      list.replaceChildren(head, r.findings.length ? h('ul', { class: 'check-items' }, r.findings.map(f => h('li', { class: 'check-' + f.level },
+        h('span', { class: 'check-tag' }, label[f.level]),
+        h('span', { class: 'check-text' }, h('b', {}, f.area + ': '), f.text), show(f)))) : null,
+      h('p', { class: 'hint' }, `Checked in ${r.seconds} s.`));
+    } catch (e) { list.replaceChildren(h('p', { class: 'check-fail' }, e.message)); }
+    again.disabled = false;
+  }
+  again.onclick = run;
+  run();
+}
+
 async function ipsPatch() {
   document.querySelector('.modal.ipsdlg')?.remove();
   let info;
@@ -235,6 +285,7 @@ async function start() {
   document.getElementById('btnSave').onclick = () => save().catch(e => toast(e.message, true));
   document.getElementById('btnBuild').onclick = build;
   document.getElementById('btnIps').onclick = ipsPatch;
+  document.getElementById('btnCheck').onclick = checkHack;
   document.getElementById('btnPlay').onclick = testPlay;
   document.getElementById('btnUndo').onclick = () => undoRedo('undo').catch(e => toast(e.message, true));
   document.getElementById('btnRedo').onclick = () => undoRedo('redo').catch(e => toast(e.message, true));

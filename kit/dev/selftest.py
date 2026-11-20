@@ -95,9 +95,15 @@ def reads(rom, work):
     check('read battlemotions', lambda: S.api_battlemotions({}, q(row=0)))
     check('read mbplayer', lambda: S.api_mbplayer({}, q(fig=0)))
     for ch in range(nch):
-        for fn in ('events', 'map', 'mapinfo', 'armies', 'villages', 'wincond', 'opening', 'chaptitle', 'tileset'):
+        for fn in ('events', 'map', 'mapinfo', 'armies', 'villages', 'wincond', 'losecond', 'opening', 'chaptitle', 'tileset'):
             check(f'read {fn} ch{ch}', lambda fn=fn, ch=ch: getattr(S, 'api_' + fn)({}, q(ch=ch)))
         check(f'read tileinfo ch{ch}', lambda ch=ch: S.api_tileinfo({}, q(ch=ch, k=5)))
+    def clean_check():
+        r = S.api_check({}, {})
+        bad = [f['text'] for f in r['findings'] if f['level'] != 'info']
+        if bad:
+            raise AssertionError('the unedited game has findings: ' + '; '.join(bad[:3]))
+    check('Check my hack: nothing to report on the unedited game', clean_check)
     return chs
 
 
@@ -191,6 +197,21 @@ def edits(rom, work):
         S.api_set({'table': 'armies', 'row': i, 'field': 'castles', 'value': ''}, {})
         expect.append(('army 0 has no castles', lambda d: _csv(d, 'armies.csv')[i]['castles'] == ''))
     check('edit: castle-less Prologue', e_castleless)
+
+    def e_lose():
+        S.api_losecond({'ch': 0, 'kind': 'death', 'unit': 6, 'text': 'Quan has fallen...\nWe cannot go on.'}, {})
+        S.api_losecond({'ch': 0, 'kind': 'castle', 'loc': 1}, {})
+        rules = S.api_losecond({}, q(ch=0))['rules']
+        assert sorted(r['kind'] for r in rules) == ['castle', 'death'], rules
+        expect.append(('lose if Quan is defeated', lambda d: _evt_has(d, 0, '1A FF 06 00 FF FF')))
+        expect.append(('lose scenes end the game', lambda d: '45 81 ED 80' in open(os.path.join(d, 'events', 'scenes.evt')).read()))
+    check('edit: lose conditions (someone defeated, a castle taken)', e_lose)
+
+    def e_check():
+        r = S.api_check({}, {})
+        texts = [f['text'] for f in r['findings']]
+        assert any("can't use" in t for t in texts), texts      # the soldier added above (class 2, item 3)
+    check('edit: Check my hack finds the added soldier\'s unusable weapon', e_check)
 
     def e_undo_redo():
         n = len(p.table('deploy').rows)

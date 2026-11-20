@@ -184,6 +184,7 @@ export function mapActions(ctx) {
       }
       sep();
       add('Win condition…', () => winCard());
+      add('Lose conditions…', () => loseCard());
       add('Chapter title…', () => titleCard());
       add('Opening scene…', () => openingCard({ x, y }));
       add('Message at the start of a turn…', () => eventCard('turn', {}));
@@ -677,7 +678,7 @@ export function mapActions(ctx) {
       sub(w.armies.length ? h('div', {}, ...boxes) : h('p', { class: 'hint', style: 'margin:0' }, 'This chapter has no other armies.'),
         h('p', { class: 'hint', style: 'margin:6px 0 0' }, 'Checked as each army\'s phase begins, so the chapter ends at the start of the next phase after the last of them falls. An army with no one on the map yet counts as gone, so leave out armies that only arrive later, and your allies.')),
       h('label', { class: 'mcard-radio' }, turn, ' Defend: survive until a turn starts'),
-      sub(field('Turn', turnIn), h('p', { class: 'hint', style: 'margin:6px 0 0' }, 'The chapter ends as your phase of that turn begins.')),
+      sub(field('Turn', turnIn), h('p', { class: 'hint', style: 'margin:6px 0 0' }, 'The chapter ends as your phase of that turn begins. The game is lost if your leader falls or an enemy takes your base castle; add more ways to lose (a castle to hold, someone to protect) with Lose conditions.')),
       h('p', { class: 'hint' }, 'Whichever you pick, the chapter\'s own ending scene plays, then the Save Game screen and the next chapter. Change the scene\'s words on the Events page.'),
       w.endings.length > 1 ? h('p', { class: 'hint' }, `This chapter has ${w.endings.length} ending events; the card changes the first.`) : null),
     [h('button', { class: 'btn btn-line', onclick: () => m.remove() }, 'Cancel'), ok]);
@@ -710,6 +711,80 @@ export function mapActions(ctx) {
       toast(`The chapter is won: ${r.endings.find(x => x.line === line)?.words || 'changed'} (Ctrl+Z undoes it)`);
       return true;
     } catch (er) { toast(er.message, true); return false; }
+  }
+
+  // ------------------------------------------------------------ how the chapter is lost (1.4)
+  // The game ends by itself when the leader falls or an enemy takes the base castle. A lose condition adds
+  // another: someone is defeated, or an enemy takes a castle. A short message plays, then Game Over.
+  async function loseCard(preset = {}) {
+    let w;
+    try { await load(); w = await api('losecond?ch=' + ctx.ch()); } catch (e) { toast(e.message, true); return; }
+    const list = h('div', { class: 'mcard-loses' });
+    const draw = rules => {
+      list.replaceChildren(
+        h('p', { class: 'hint', style: 'margin:0 0 6px' }, 'The game always ends when: ' + w.builtin.join('; ') + '.'),
+        rules.length ? h('ul', { class: 'mcard-list' }, rules.map(r => h('li', {},
+          h('span', {}, r.words),
+          h('button', { class: 'btn btn-line btn-sm', title: 'Remove this lose condition', onclick: async () => {
+            try {
+              const x = await api('losecond', { ch: ctx.ch(), remove: r.scene });
+              w.rules = x.rules; draw(x.rules); await refreshSession();
+              toast('Lose condition removed (Ctrl+Z undoes it)');
+            } catch (er) { toast(er.message, true); }
+          } }, 'Remove'))))
+          : h('p', { class: 'hint', style: 'margin:0' }, 'This chapter adds none of its own.'));
+    };
+    draw(w.rules);
+    const death = h('input', { type: 'radio', name: 'mclose', checked: preset.kind !== 'castle' });
+    const castle = h('input', { type: 'radio', name: 'mclose', checked: preset.kind === 'castle' });
+    const whoIn = h('input', { class: 'in', list: 'mcloseppl', 'aria-label': 'Who must survive', placeholder: 'e.g. Quan',
+      value: preset.unit !== undefined ? personLabel(preset.unit) : '' });
+    const dl = h('datalist', { id: 'mcloseppl' }, w.people.map(p => h('option', { value: `${p.name} (${p.id})` })));
+    const castles = w.castles.filter(c => c.index !== 0);
+    const castleSel = select(castles.map(c => [c.index, c.name + (c.holder ? ` (held by ${c.holder})` : '')]),
+      preset.loc ?? castles.find(c => c.holder === 'your army')?.index ?? castles[0]?.index, 'Castle');
+    const spk = h('input', { class: 'in', list: 'mcpeople', 'aria-label': 'Who says it', placeholder: 'an advisor (as the game\'s own)' });
+    const txt = h('textarea', { class: 'in mcard-text', rows: 3, 'aria-label': 'What is said',
+      placeholder: 'e.g. Quan has fallen...\nWe can\'t go on without him.' });
+    whoIn.onfocus = () => { death.checked = true; };
+    castleSel.onfocus = () => { castle.checked = true; };
+    const sub = (...k) => h('div', { class: 'mcard-sub' }, ...k);
+    const ok = h('button', { class: 'btn btn-gilt' }, 'Add');
+    const m = card('How this chapter is lost', ctx.M().title, h('div', { class: 'mcard-body' }, dl,
+      list,
+      h('h3', { class: 'mcard-h' }, 'Add a lose condition'),
+      h('label', { class: 'mcard-radio' }, death, ' Someone is defeated'),
+      sub(field('Who', whoIn), h('p', { class: 'hint', style: 'margin:6px 0 0' }, 'For someone the player must protect: one of your units, an ally, or a guest.')),
+      h('label', { class: 'mcard-radio' }, castle, ' An enemy takes a castle'),
+      sub(castles.length ? field('Castle', castleSel) : h('p', { class: 'hint', style: 'margin:0' }, 'This chapter has no other castles.')),
+      field('Who says it', spk), field('Message', txt),
+      h('p', { class: 'hint' }, 'The music fades, the message shows over the map and the game ends with the Game Over screen. A new line in the message starts a new line in the box.')),
+    [h('button', { class: 'btn btn-line', onclick: () => m.remove() }, 'Close'), ok]);
+    ok.onclick = async () => {
+      let spec;
+      if (death.checked) {
+        const u = parsePerson(whoIn.value, false);
+        if (u === null) { whoIn.classList.add('bad'); toast('Pick who must survive from the list.', true); return; }
+        spec = { kind: 'death', unit: u };
+      } else {
+        if (!castles.length) return;
+        spec = { kind: 'castle', loc: Number(castleSel.value) };
+      }
+      if (spk.value.trim()) {
+        const s = parsePerson(spk.value, false);
+        if (s === null) { spk.classList.add('bad'); toast('Pick who says it from the list, or leave it empty.', true); return; }
+        spec.speaker = s;
+      }
+      spec.text = txt.value;
+      ok.disabled = true;
+      try {
+        const x = await api('losecond', { ch: ctx.ch(), ...spec });
+        w.rules = x.rules; draw(x.rules); await refreshSession();
+        whoIn.value = ''; txt.value = '';
+        toast('Lose condition added (Ctrl+Z undoes it)');
+      } catch (er) { toast(er.message, true); }
+      ok.disabled = false;
+    };
   }
 
   // ------------------------------------------------------------ a character arrives
@@ -1090,6 +1165,6 @@ export function mapActions(ctx) {
     for (const i of at) if (!mv.has(i)) c2d.fillRect((i % M.width) * s, ((i / M.width) | 0) * s, s, s);
   }
 
-  return { menu, unitCard, eventCard, winCard, setWin, titleCard, siteCard, removeSite, openingCard, arrivalCard, copy, paste, duplicate, remove, toggleDanger, drawDanger, closeMenu, danger,
+  return { menu, unitCard, eventCard, winCard, loseCard, setWin, titleCard, siteCard, removeSite, openingCard, arrivalCard, copy, paste, duplicate, remove, toggleDanger, drawDanger, closeMenu, danger,
     load, hasClip: () => !!clip?.units.length, unitAt };
 }

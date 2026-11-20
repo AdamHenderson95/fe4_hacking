@@ -1621,6 +1621,27 @@ editor's opening builder writes (each verified on the Prologue in lsrun):
 - Free space at `$xx:0000` is never handed out: the decompression queue takes a `$xx:0000` source for
   "no job", and the first new message used to land at `$70:0000`.
 
+### Game over (editor 1.4)
+
+Verified in lsrun (a Prologue soldier set as "must survive", and Sigurd at 1 HP):
+
+- `$81:B32C` (A = 0 the leader fell, 1 the base castle fell) runs scene 558/559 (gen 1) or 560/561 (gen 2,
+  `$0D6A` >= 6) from the table at `$81:B353` and sets the map mode `$0304` = `$0C`.
+- Leader: `$81:B088` (after a unit dies) calls it when the unit's slot (`$84:A358`) is 1 (Sigurd / Seliph).
+- Base castle: the castle-capture routine `$84:BCAF` calls it when the castle index (`$02`) is 0, the
+  chapter's first location.
+- Map mode `$0C` (`$81:AD6A`, from the mode table `$81:A8F8`) waits until no scene runs (`$171A` = 0),
+  fades the music (`E0`) and starts the task `$82:82D3` with `$0ECF` = `$B1E1`: the Game Over screen, then the
+  title.
+- `$80:ED81` is `LDA #$000C : STA $0304 : RTL` on its own, so a scene ends the game with CALL_ASM
+  `45 81 ED 80` (the scene VM's `$45` handler `$91:CA1F` does `JML [$24]` with 16-bit registers). The
+  editor's lose conditions are `1A FF uu uu FF FF` (someone dies) or `02 FF slot loc` for each other army
+  (a castle taken), each running a scene: music fade `12 E0 00`, `34 23 00`, song 106, `34 14 00`, the
+  message, then `45 81 ED 80`. Flag `FF` = no flag, since the game ends anyway.
+- Text: `{08}{04}` is the game's "wait, then a fresh box"; going back to the first speaker is
+  `{08}{06}{00 29}`, to the second `{07}{00 1D 10}`. `{08}` alone waits and then carries on in the same box
+  (1.3 and earlier wrote that after three lines, so a fourth line ran on).
+
 ### Characters arriving mid-chapter (editor 1.3)
 
 Verified in lsrun on the Prologue (Finn joining, Dew arriving with Verdane):
