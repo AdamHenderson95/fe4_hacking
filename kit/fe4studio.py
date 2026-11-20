@@ -37,6 +37,7 @@ import fe4gfx                      # noqa: E402
 import fe4maps                     # noqa: E402
 import fe4events                   # noqa: E402
 import fe4locations                # noqa: E402
+import fe4conds                    # noqa: E402
 import fe4sprites                  # noqa: E402
 import fe4walk                     # noqa: E402
 import fe4mapbattle                # noqa: E402
@@ -53,7 +54,7 @@ import fe4skillanim                # noqa: E402
 from fe4project import Project, load_settings, save_settings   # noqa: E402
 
 APP = 'Builder of the Holy War'
-VERSION = '1.2'
+VERSION = '1.3'
 STATIC = os.path.join(KIT, 'studio')
 
 # ---------------------------------------------------------------- state
@@ -3142,7 +3143,7 @@ def api_dsearch(b, q):
 
 
 # ---------------------------------------------------------------- items, shops and villages
-COND_OPS = {0x01, 0x02, 0x04, 0x05, 0x07, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x16, 0x1A, 0x21}
+COND_OPS = {0x01, 0x02, 0x03, 0x04, 0x05, 0x07, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x16, 0x1A, 0x21}
 
 
 def gift_of(name, c):
@@ -3492,7 +3493,7 @@ def api_newevent(b, q):
         flag = free_flag(name)
         msg = new_message_op('{06}{00 3D}%s{07}{00 3D}%s{06}{09}%s{07}{00 1D 10}%s{08}{01}'
                              % (portrait_code(a), portrait_code(t), wrap_words(b.get('line1'), 'Write what is said here.'),
-                                wrap_words(b.get('line2'), 'And the reply: they join you.')), f'{name[:4]} new recruit', ops)
+                                wrap_words(b.get('line2'), 'And their reply. Then they join you.')), f'{name[:4]} new recruit', ops)
         sid = new_scene_ops(talk_scene(msg, t, gifts=['4A 53 %s 00' % _w(t)]), ops)
         cond = _hx('04' if ch < 6 else '16', '%02X' % flag, _w(a), _w(t), 'FF FF')
         steps = ['30 FF ' + _w(sid)]
@@ -3805,7 +3806,12 @@ def cond_words(b, ch):
     if op == 0x0E:
         return f'After {unit_label(w(4))} fights {unit_label(w(8))}'
     if op == 0x1A:
-        return f'{unit_label(w(2))} dies'
+        if w(2) == 0xFFFF:
+            return f'Someone is defeated by {unit_label(w(4))}'
+        return f'{unit_label(w(2))} is defeated' + ('' if w(4) == 0xFFFF else f' by {unit_label(w(4))}')
+    if op == 0x03:
+        nm = army_names(ch)
+        return 'Every unit of ' + ', '.join(nm.get(s, f'army slot {s}') for s in fe4conds.rout_slots(b)) + ' is gone'
     if op == 0x07:
         return f'{loc_label(ch, w(4))} is taken'
     return f'A story event (condition {op:02X})'
@@ -4109,13 +4115,17 @@ def chapter_endings(ch):
             e.update(kind='seize', loc=w(4), who=w(2))
         elif cb[0] == 0x01 and w(2) != 0xFFFF:
             e.update(kind='turn', turn=w(2) + 1)
+        elif cb[0] == 0x1A and w(2) != 0xFFFF and w(4) == 0xFFFF:
+            e.update(kind='boss', unit=w(2))
+        elif cb[0] == 0x03:
+            e.update(kind='rout', slots=fe4conds.rout_slots(cb))
         out.append(e)
     return out
 
 
 def api_wincond(b, q):
-    """GET ?ch: how the chapter is won and what can win it.  POST {ch, line, kind: 'seize', loc} or
-    {ch, line, kind: 'turn', turn}: rewrites that ending's condition (its flag and action stay)."""
+    """GET ?ch: how the chapter is won and what can win it.  POST {ch, line, kind: 'seize', loc},
+    {ch, line, kind: 'turn', turn}, {kind: 'boss', unit} or {kind: 'rout', slots}: rewrites that ending's condition (its flag and action stay)."""
     p = need_project()
     ch = int((b or {}).get('ch', q.get('ch', ['0'])[0]))
     name = chapter_file(ch)
@@ -4130,8 +4140,28 @@ def api_wincond(b, q):
     castles = [{'index': _num(r['index']), 'name': r.get('_castle_name') or f"castle {r['index']}", 'x': r.get('x'), 'y': r.get('y'),
                 'holder': holders.get(_num(r['index']), '')}
                for r in (lt.rows if lt else []) if r.get('chapter') == str(ch) and r.get('kind') == 'castle']
+    slots = _chapter_slots(ch)
+    dep = chapter_deploy(ch)
+    count = {}
+    for _i, r, _lst, _ent, _sure in dep:
+        count[_num(r.get('army_slot'), 0)] = count.get(_num(r.get('army_slot'), 0), 0) + 1
+    armies = [{'slot': sl, 'name': names.get(sl, f'army slot {sl}'), 'units': count.get(sl, 0)} for sl in sorted(slots) if 1 <= sl <= 7]
+    people, seen = [], {}
+    for _i, r, _lst, _ent, _sure in dep:
+        cid, sl = _num(r.get('char_id'), -1), _num(r.get('army_slot'), 0)
+        if cid < 0 or sl == 0:
+            continue
+        seen[cid] = seen.get(cid, 0) + 1
+        if seen[cid] == 1:
+            nm = unit_label(cid)
+            if nm.lower() in ('', 'unit'):
+                ur = unit_lookup().get(cid, (None, {}))[1] or {}
+                nm = f"{ur.get('_class_name') or 'Unit'} (character {cid})"
+            people.append({'id': cid, 'name': nm, 'slot': sl, 'army': names.get(sl, f'army slot {sl}')})
+    for pp in people:
+        pp['shared'] = seen[pp['id']] > 1
     if not b or 'kind' not in b:
-        return {'endings': chapter_endings(ch), 'castles': castles}
+        return {'endings': chapter_endings(ch), 'castles': castles, 'armies': armies, 'people': people}
     line = int(b['line'])
     e = next((x for x in chapter_endings(ch) if x['line'] == line), None)
     if e is None:
@@ -4155,6 +4185,23 @@ def api_wincond(b, q):
         if sid is not None:
             raise ValueError(f'Turn {turn} already starts with another event, and only one plays. Choose another turn.')
         new = _hx('01', flag, _w(turn - 1))
+    elif b['kind'] == 'boss':
+        uid = int(b['unit'])
+        pp = next((x for x in people if x['id'] == uid), None)
+        if pp is None:
+            raise ValueError('Choose someone who is on this chapter\'s map in another army.')
+        if pp['shared']:
+            raise ValueError(f"{pp['name']} is used by more than one unit on this map, so defeating any of them would "
+                             'end the chapter. Choose a named character, or give that unit its own character first.')
+        new = _hx('1A', flag, _w(uid), 'FF FF')
+    elif b['kind'] == 'rout':
+        sl = [int(x) for x in b.get('slots') or []]
+        if not sl:
+            raise ValueError('Choose at least one army to rout.')
+        for x in sl:
+            if x not in [a['slot'] for a in armies]:
+                raise ValueError(f'Army slot {x} isn\'t in this chapter.')
+        new = fe4conds.rout_cond(int(flag, 16), sl)
     else:
         raise ValueError('Choose how the chapter is won.')
     f = p.evt(name)
@@ -5982,6 +6029,135 @@ def api_opening(b, q):
     return {'ok': True, 'scene': sid}
 
 
+# ---------------------------------------------------------------- a character arrives (1.3)
+# How the game brings people in (traced on the Prologue, verified with Finn and Dew in lsrun):
+#   join your army:   4A 49 uu uu          load unit uu into your army (off the map)
+#                     24 uu uu 00 sx sy dx dy 04 02 00   walk it from (sx, sy) to (dx, dy) (same cell = appear)
+#                     29, 2A, FD           wait for the walk
+#                     4A 68 uu cc          its home castle = location cc (unit byte; Azel/Lex: 1)
+#   another army:     23 ll ee ee sx sy 04 04   walk deploy list ll's entry ee (1-based) from (sx, sy) to
+#                                          its deploy cell (only a picture; Prologue scene 1 does this)
+#                     29, 2A, FD, 4A 4E ll  then the list comes onto the map for real
+def arrival_cmds(ch, b, ops, rows):
+    """Scene commands for {unit, side: 'join'|'army', slot, orders, x, y, entrance: 'walk'|'appear', fx, fy,
+    talk?}.  Adds a deploy row to rows for 'army'."""
+    uid = int(b['unit'])
+    units = unit_lookup()
+    if uid not in units:
+        raise ValueError('Choose who arrives.')
+    x, y = int(b['x']), int(b['y'])
+    ax, ay, aw, ah = map_area(ch)
+    if not (ax <= x < ax + aw and ay <= y < ay + ah):
+        raise ValueError('Pick a spot on the map.')
+    walk = b.get('entrance', 'walk') == 'walk'
+    fx, fy = (int(b.get('fx', x)), int(b.get('fy', y))) if walk else (x, y)
+    if not (0 <= fx < 64 and 0 <= fy < 64):
+        raise ValueError('Pick where they walk in from.')
+    cx, cy = min(63, max(0, x - 8)), min(63, max(0, y - 7))
+    cmds = ['40 %02X %02X 04' % (cx, cy), 'FD', '34 14 00', 'FD']
+    if b.get('side', 'join') == 'join':
+        if units[uid][0] == 'units_generic':
+            raise ValueError('Only named characters can join your army (soldiers can\'t).')
+        cmds += ['4A 49 ' + _w(uid), '24 %s 00 %02X %02X %02X %02X 04 02 00' % (_w(uid), fx, fy, x, y),
+                 '29', '2A', 'FD']
+        home = _home_castle(ch)
+        if uid < 256 and home is not None:
+            cmds += ['4A 68 %02X %02X' % (uid, home)]
+    else:
+        slot = int(b.get('slot', 1))
+        if slot == 0:
+            raise ValueError('For your army choose "Joins your army".')
+        if slot not in army_names(ch):
+            raise ValueError('That army isn\'t in this chapter.')
+        lst = free_list()
+        if lst in ops.get('_lists', ()):
+            lst = max(ops['_lists']) + 1
+        ops.setdefault('_lists', []).append(lst)
+        rows.append({'index': f'{lst}.0', '_name': unit_label(uid), 'char_id': str(uid), 'x': str(x), 'y': str(y),
+                     'leader_flag': '1' if b.get('leader') else '0', 'orders': str(int(b.get('orders') or 0)),
+                     'army_slot': str(slot), 'slot': '0'})
+        if walk and (fx, fy) != (x, y):
+            cmds += ['23 %02X 01 00 %02X %02X 04 04' % (lst, fx, fy), '29', '2A', 'FD']
+        cmds += ['4A 4E %02X' % lst, '34 0A 00', 'FD']
+    t = b.get('talk')
+    if t and any(str(ln.get('text', '')).strip() for ln in t.get('lines') or []):
+        key = new_message_op(_talk_text(t), f'{chapter_file(ch)[:4]} arrival', ops)
+        cmds += ['0C @' + key, 'FD', '34 14 00', 'FD']
+    return cmds
+
+
+def _home_castle(ch):
+    """Your army's first castle in this chapter (location number), or None when it holds none."""
+    at = need_project().table('armies')
+    army = _chapter_slots(ch).get(0)
+    row = next((r for r in (at.rows if at else []) if r.get('army') == str(army)), None)
+    if row is None:
+        return None
+    cs = [c for c in (row.get('castles') or '').split(';') if c.strip().isdigit()]
+    return int(cs[0]) if cs else None
+
+
+def trigger_scene_ops(ch, when, cmds, ops):
+    """Run cmds when {kind: 'opening'} (at the end of the chapter's opening), {kind: 'turn', turn},
+    {kind: 'area', unit, x1, y1, x2, y2} or {kind: 'seize', loc, by (army slot, 0 = you)}.
+    Returns words for when."""
+    name = chapter_file(ch)
+    kind = when.get('kind')
+    if kind == 'opening':
+        sid = _opening_scene(ch)
+        if sid is None:
+            raise ValueError('This chapter\'s opening runs no scene the editor can add to.')
+        blk = story_index()['scenes'][sid]['block']
+        endc = next((c for c in reversed(blk['cmds']) if cmd_bytes(c)[:2] == b'\xff\xff'), None)
+        if endc is None:
+            raise ValueError('The opening has no end the editor can find.')
+        ops['list'].append(('lines', 'scenes.evt', endc['line'], [], _plus('scenes.evt', cmds)))
+        return 'At the end of the chapter\'s opening'
+    if kind == 'turn':
+        turn = int(when['turn'])
+        if not 2 <= turn <= 99:
+            raise ValueError('Choose turn 2 to 99 (for turn 1, use the opening).')
+        sid = turn_scene(name, turn)
+        if sid is not None:
+            add_cmds_to_scene(sid, cmds, ops)
+            return f'At the start of turn {turn}'
+        cond = turn_cond(name, turn)
+    elif kind == 'area':
+        unit = int(when.get('unit', 0xFFFF))
+        x1, y1, x2, y2 = (int(when[k]) for k in ('x1', 'y1', 'x2', 'y2'))
+        if not all(0 <= v < 64 for v in (x1, y1, x2, y2)):
+            raise ValueError('Corners are 0 to 63.')
+        cond = _hx('0B', '%02X' % free_flag(name), _w(unit),
+                   '%02X %02X %02X %02X' % (min(x1, x2), min(y1, y2), max(x1, x2), max(y1, y2)), 'FF')
+    elif kind == 'seize':
+        loc, by = int(when['loc']), int(when.get('by', 0))
+        cond = _hx('02', '%02X' % free_flag(name), _w(by), _w(loc))
+    else:
+        raise ValueError('Choose when they arrive.')
+    sid = new_scene_ops(cmds + ['FF FF'], ops)
+    first_trigger_ops(name, [cond, '30 FF ' + _w(sid)], ops)
+    return cond_words(bytes(int(v, 16) for v in cond.split()), ch)
+
+
+def api_arrival(b, q):
+    """A character arrives on the map, as one undo step: {ch, unit, side, slot?, orders?, x, y, entrance, fx?, fy?,
+    when, talk?}.  side 'join' = into your army at once (as Azel and Lex do), 'army' = into another army of
+    the chapter (enemy or neutral; recruit them by talking)."""
+    p = need_project()
+    ch = int(b['ch'])
+    dt = p.table('deploy')
+    old = [dict(r) for r in dt.rows]
+    rows = [dict(r) for r in dt.rows]
+    ops = {'list': []}
+    cmds = arrival_cmds(ch, b, ops, rows)
+    words = trigger_scene_ops(ch, b.get('when') or {}, cmds, ops)
+    if len(rows) != len(old):
+        rows = _renumber(rows)
+        ops['list'].insert(0, ('rows', 'deploy', 0, old, rows))
+    p.edit(ops['list'])
+    return {'ok': True, 'when': words, 'lists': ops.get('_lists', [])}
+
+
 def api_newchar(b, q):
     """Add a new first-generation character as one undo step: a units_playable row (a copy of the character
     whose place it takes: the game keeps 24 character places, and every one is used) and its name.
@@ -6071,7 +6247,7 @@ def api_newchar(b, q):
 
 API = {('GET', 'session'): api_session, ('POST', 'ping'): api_ping, ('GET', 'table'): api_table,
        ('POST', 'tables'): api_tables, ('POST', 'set'): api_set, ('POST', 'undo'): api_undo,
-       ('GET', 'chaptitle'): api_chaptitle, ('POST', 'sites'): api_sites, ('POST', 'newchar'): api_newchar, ('POST', 'newarmy'): api_newarmy, ('GET', 'opening'): api_opening, ('POST', 'opening'): api_opening, ('POST', 'chaptitle'): api_chaptitle_set,
+       ('GET', 'chaptitle'): api_chaptitle, ('POST', 'sites'): api_sites, ('POST', 'newchar'): api_newchar, ('POST', 'newarmy'): api_newarmy, ('POST', 'arrival'): api_arrival, ('GET', 'opening'): api_opening, ('POST', 'opening'): api_opening, ('POST', 'chaptitle'): api_chaptitle_set,
        ('POST', 'redo'): api_redo, ('POST', 'save'): api_save, ('POST', 'open'): api_open,
        ('POST', 'rom'): api_set_rom, ('POST', 'new'): api_new_project, ('GET', 'job'): api_job,
        ('POST', 'build'): api_build, ('GET', 'battleanims'): api_battleanims, ('GET', 'battleinfo'): api_battleinfo,

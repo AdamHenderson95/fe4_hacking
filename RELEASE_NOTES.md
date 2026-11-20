@@ -1,3 +1,37 @@
+# Builder of the Holy War 1.3
+
+Making story events easier: characters who come onto the map during a chapter, more ways to win a chapter, and
+chapters where your army starts without a castle. The PC port is unchanged (1.0.1).
+
+### New
+- **A character arrives here:** right-click an empty cell on the Maps page. Pick who arrives and whether
+  they **join your army at once** (as Azel and Lex do in the Prologue) or **arrive in another army**, enemy or
+  neutral (as Dew does), optionally to be recruited by talking to them. They **walk in** from a cell you pick
+  or **appear** on the spot, **when** the opening scene ends, a turn starts, someone reaches an area or a
+  castle is taken. A short conversation over the map can follow.
+- **More win conditions** in **★ Win condition**:
+  - **Boss:** the chapter ends when someone you pick is defeated.
+  - **Rout:** the chapter ends when every unit of the armies you tick is gone.
+  - **Defend:** survive until a turn starts (the "survive" choice from 1.2, under a clearer name).
+  - **Seize** a castle, as before.
+- **Chapters without a castle:** on the Armies & AI page, untick all your army's castles and the chapter
+  starts with your units in the field. The page explains what that means.
+
+### Fixed
+- A colon (`:`) in event text no longer stops the card with "no FE4 text code".
+
+### Good to know
+- Rout is checked as each army's phase starts, so the chapter ends at the start of the next phase after the
+  last unit falls. An army with no one on the map yet counts as gone: don't tick armies that arrive later,
+  or your allies.
+- Boss can only pick characters used by one unit on the map. Most soldiers share theirs with others.
+- Defend can't make losing a castle a game over yet.
+- Without a castle there are no shops, arena or retreating until your army takes one, and characters who
+  join have no home castle. Tested in the Prologue.
+
+Download **BuilderOfTheHolyWar-1.3.zip** and replace your old editor folder's files with it; your projects
+keep working.
+
 # Builder of the Holy War 1.2
 
 Everything a brand-new chapter needs. Most of it is on the **Maps** page: in the buttons above the map and in

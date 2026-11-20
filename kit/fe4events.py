@@ -51,7 +51,7 @@ CHAPTERS = ['prologue', 'ch01', 'ch02', 'ch03', 'ch04', 'ch05', 'ch06', 'ch07', 
 
 # Names ending in '?' are inferred from argument patterns, not yet confirmed in-game.
 EV_NAMES = {
-    0x00: 'BLOCK_END?', 0x01: 'COND_TURN_START', 0x02: 'COND_SEIZE', 0x04: 'COND_TALK', 0x05: 'COND_05?', 0x07: 'COND_07?',
+    0x00: 'BLOCK_END?', 0x01: 'COND_TURN_START', 0x02: 'COND_SEIZE', 0x03: 'COND_ROUT', 0x04: 'COND_TALK', 0x05: 'COND_05?', 0x07: 'COND_07?',
     0x0A: 'COND_VISIT', 0x0B: 'COND_IN_AREA', 0x0C: 'COND_NEXT_TO?', 0x0D: 'COND_BATTLE',
     0x0E: 'COND_DEFEAT?', 0x0F: 'COND_UNIT?', 0x16: 'COND_TALK2', 0x1A: 'COND_DEATH',
     0x20: 'NOP2', 0x25: 'NOP2', 0x2E: 'NOP2', 0x21: 'ARMY_ORDER?', 0x2B: 'GOTO',
@@ -230,6 +230,7 @@ for _i in range(10):
     _CH[0x50 + _i] = chr(48 + _i)
 _CH.update({0xBF: ' ', 0x44: '.', 0x45: ',', 0x46: '?', 0x47: '!', 0x48: "'", 0x49: '-'})
 _CH_INV = {v: k for k, v in _CH.items()}
+_CH_INV.setdefault(':', 0x4C)            # Naga's colon ("Prologue:" in the turn record); decodes as {4C}
 
 # Control-code lengths in bytes, measured by running the text renderer's own
 # handlers ($91:8A01) on every code in the game's dialogue.

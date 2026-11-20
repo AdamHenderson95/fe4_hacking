@@ -120,6 +120,9 @@ export async function armiesPage(root) {
     };
     sec.append(h('div', { class: 'itgrid wide' }, h('label', { class: 'lbl' }, h('span', {}, 'Name (shown on the map)'), nameSel)),
       h('h4', {}, 'Castles it holds'), castleChips.children.length ? castleChips : h('p', { class: 'hint' }, 'No castles in this chapter.'),
+      a.slot === 0 ? h('p', { class: 'hint' }, a.castles.length
+        ? 'To start this chapter in the field with no castle, turn off every castle above: your units start where the Maps page places them, and characters who join get no home castle. Without a castle your army can\'t shop, use the arena or retreat into a castle until it takes one.'
+        : 'Your army holds no castle in this chapter: it starts in the field where the Maps page places its units. It gets a castle by taking one.') : null,
       h('h4', {}, 'Members'), h('p', { class: 'hint' }, 'Units that join when the chapter sets this army up (your starting units, allies who arrive with the army). Enemies on the map come from deploy lists, below.'),
       members, h('div', { class: 'aradd' }, addIn));
     sheet.append(sec);

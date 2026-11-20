@@ -846,3 +846,4 @@ textarea.fe4box.bad { border-color: #E1606F; }
 .opadd-row { display: flex; gap: 8px; align-items: end; flex-wrap: wrap; }
 .opadd-row .lbl { flex: 1 1 140px; margin: 0; }
 .opadd-row textarea { width: 100%; }
+.mcard-sub { margin: 0 0 8px 26px; padding: 8px 10px; border-left: 2px solid var(--line, #0002); }

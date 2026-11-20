@@ -345,6 +345,15 @@ and 785 messages, with every script decoded to its end.
     flag (`$86:99D6` sets, `$86:9A50` tests); `$80|n` = needs flag n, then
     clears it. Each condition handler also checks the event mode in `$0EBC`
     (talk = `$0A`).
+  - **Condition handlers (V, 1.3):** entered with Y at the flag byte, carry
+    set when the VM only steps over. A handler sets `$0EB6` = its length
+    after the op byte and `$0EAB` = a matcher, loads A = the mode it answers
+    to and jumps to `$86:84ED`, which compares the mode, checks the flag and
+    calls the matcher (carry set = match). The generic matcher `$86:9BD4`
+    compares `$0EBD`/`$0EBF` with the condition's two words (`$FFFF` = any).
+    Modes seen: 1 castle taken (`$87:C1E8`), `$18` a unit dies (`$0EBD` =
+    the unit), `$20` a turn starts (`$81:AD08`), `$21` an army's phase starts
+    (`$81:A9AC`/`$81:ADB3`; `$0EBD` = turn, `$0EBF` = slot).
   - Ops `$20`/`$25`/`$2E`/`$21` start the list's structured tail; the editor
     adds new events before it.
   - **One action per trigger, first match wins (V, 1.1):** every condition
@@ -370,12 +379,13 @@ and 785 messages, with every script decoded to its end.
 |---|---|---|
 | `$01` | start of a turn `[flag][turn word]`: fires as turn n+1 starts (mode `$20`) | V (1.1) |
 | `$02` | castle taken `[flag][army slot word][location word]`: fires when that army (0 = yours) takes the castle (mode 1) | V (1.2): every chapter's ending but chapter 2's |
+| `$03` | unused by the game (handler `$86:898A`: mode 2, 5 bytes). The editor (1.3) repoints it to its **rout** test when a chapter uses one: `[flag][slot mask word][0000]`, true when every army slot in the mask has no units (`$7E:2180 + 2·slot` → list, count at +4), checked in mode `$21` | V (1.3): rout of an empty slot ends the Prologue as the first phase starts; rout of Verdane doesn't |
 | `$0B` | unit in rectangle `[?][unit][x1 y1 x2 y2][?]` | |
 | `$04` | talk: unit A talks to unit B `[flag][unit A word][unit B word][FFFF]` | V: Quan → Finn runs scene 426, Finn's talk boosts |
 | `$16` | talk, same layout as `$04`; used from chapter 6 on (also enemy recruits) | V: Lana → Julia runs Lana's "Julia, right? Hello there!" |
 | `$0C` | unit A next to unit B? `[flag][unit A][unit B][?][?]` | both orders listed, also between enemies |
 | `$0D` | battle starts between units | boss quotes (Gerrard "Go to hell…") |
-| `$1A` | unit dies | Midir's dying line |
+| `$1A` | unit dies `[flag][dying unit word][other word]` (mode `$18`, raised at `$84:B981`; `$FFFF` = anyone) | Midir's dying line; the editor's "boss" win (1.3) is `1A flag uu uu FF FF` |
 | `$2B` | go-to (word address) | |
 | `$30` | run scene `[once-bit][scene word]` via `$80:C1CB` | fails (carry set) while a scene runs (`$171A` ≠ 0): one scene per pass |
 | `$31`/`$32` | show message `[speaker][ptr24][…]` | |
@@ -1610,6 +1620,21 @@ editor's opening builder writes (each verified on the Prologue in lsrun):
 
 - Free space at `$xx:0000` is never handed out: the decompression queue takes a `$xx:0000` source for
   "no job", and the first new message used to land at `$70:0000`.
+
+### Characters arriving mid-chapter (editor 1.3)
+
+Verified in lsrun on the Prologue (Finn joining, Dew arriving with Verdane):
+
+| Command | Meaning |
+|---|---|
+| `4A 49 uu uu` | load unit uu into your army, off the map (`$84:8603`) |
+| `24 uu uu 00 sx sy dx dy 04 02 00`, `29`, `2A`, `FD` | walk unit uu from (sx, sy) to (dx, dy); start = end makes it appear (scene handler `$91:C241`) |
+| `4A 68 uu cc` | set unit uu's home castle to location cc (unit +0E; `$84:9EF7` sets, `$84:9EA3` reads, `$84:D1B8` clears it when that castle falls). Azel and Lex use `68 uu 01` |
+| `23 ll ee ee sx sy 04 04`, `29`, `2A`, `FD` | walk a picture of deploy list ll, entry ee (1-based), from (sx, sy) to its cell. Only a picture (`$91:C191`): `4A 4E ll` then deploys the list for real |
+
+Up to 4 walks run at once (slots at `$17C4`). Each chapter has its own player army record (Prologue 0,
+chapter 1 4, 2 10, 3 16, 4 21, 5 26, 6 35…); clearing its castles in `armies.csv` starts the chapter
+without a castle (tested on the Prologue for two turns, Azel and Lex still join).
 
 ## Chapter title cards (editor 1.2)
 Traced on the Prologue's card (frames ~15186-15600 of a New Game). `$80:F390-$80:F412` draws it:

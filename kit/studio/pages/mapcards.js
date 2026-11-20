@@ -174,6 +174,7 @@ export function mapActions(ctx) {
       if (site?.kind === 'castle' && !(M.endings || []).some(e => e.kind === 'seize' && e.loc === Number(site.index))) {
         add(`Taking ${site.name || 'this castle'} wins the chapter`, () => setWin({ kind: 'seize', loc: Number(site.index) }));
       }
+      if (!site && inArea(x, y)) add('A character arrives here…', () => arrivalCard(x, y));
       if (site) add(`Remove this ${site.kind === 'castle' ? (site.name || 'castle') : 'village'}`, () => removeSite(site), { danger: true });
       else if (inArea(x, y)) {
         add('Add a castle here…', () => siteCard('castle', x, y));
@@ -643,31 +644,52 @@ export function mapActions(ctx) {
     const editable = w.endings.filter(e => e.kind !== 'other');
     if (!editable.length) {
       const m = card('How this chapter is won', ctx.M().title, h('div', { class: 'mcard-body' },
-        h('p', {}, w.endings.length ? `This chapter ends with: ${w.endings.map(e => e.words).join('; ')}. The editor can only change endings that are "take a castle" or "survive until a turn".`
-          : 'This chapter ends through its scripted story sequence (not one event the editor can change). The Prologue and chapters 1 and 3-11 end when you take a castle, and those can be changed here.')),
+        h('p', {}, w.endings.length ? `This chapter ends with: ${w.endings.map(e => e.words).join('; ')}. The editor can only change endings it understands (take a castle, defeat someone, rout armies, survive until a turn).`
+          : 'This chapter ends through its scripted story sequence (not one event the editor can change). The Prologue and chapters 1 and 3-11 end with one event, and those can be changed here.')),
       [h('button', { class: 'btn btn-gilt', onclick: () => m.remove() }, 'OK')]);
       return;
     }
     const e = editable[0];
-    const seize = h('input', { type: 'radio', name: 'mcwin', checked: e.kind === 'seize' });
-    const turn = h('input', { type: 'radio', name: 'mcwin', checked: e.kind === 'turn' });
+    const radio = k => h('input', { type: 'radio', name: 'mcwin', checked: e.kind === k });
+    const seize = radio('seize'), boss = radio('boss'), rout = radio('rout'), turn = radio('turn');
     const castleSel = select(w.castles.map(c => [c.index, `${c.name}${c.holder ? ' (held by ' + c.holder + ')' : ''}`]), e.loc ?? w.castles[w.castles.length - 1]?.index, 'Castle');
+    const people = w.people.filter(p => !p.shared);
+    const bossSel = select(people.map(p => [p.id, `${p.name} (${p.army})`]), e.unit ?? people[0]?.id, 'Who');
+    const sel = new Set(e.slots || w.armies.filter(a => a.units).slice(0, 1).map(a => a.slot));
+    const boxes = w.armies.map(a => {
+      const c = h('input', { type: 'checkbox', checked: sel.has(a.slot) });
+      c.dataset.slot = a.slot;
+      c.onchange = () => { rout.checked = true; };
+      return h('label', { class: 'mcard-radio' }, c, ' ' + a.name + (a.units ? ` (${a.units} unit${a.units > 1 ? 's' : ''} placed)` : ' (no units placed)'));
+    });
     const turnIn = num(e.turn ?? 10, 'Turn', 2, 99);
+    const sub = (...k) => h('div', { class: 'mcard-sub' }, ...k);
     const ok = h('button', { class: 'btn btn-gilt' }, 'Save');
     const m = card('How this chapter is won', `Now: ${e.words}`, h('div', { class: 'mcard-body' },
-      h('label', { class: 'mcard-radio' }, seize, ' Take a castle'),
-      h('div', { class: 'mcard-grid', style: 'margin-left:26px' }, h('div', { class: 'mcard-wide' }, field('Castle', castleSel))),
-      h('label', { class: 'mcard-radio' }, turn, ' Survive until a turn starts'),
-      h('div', { class: 'mcard-grid', style: 'margin-left:26px' }, field('Turn', turnIn),
-        h('p', { class: 'hint', style: 'align-self:end;margin:0' }, 'The chapter ends as your phase of that turn begins.')),
-      h('p', { class: 'hint' }, 'Either way the chapter\'s own ending scene plays, then the Save Game screen and the next chapter. Change the scene\'s words on the Events page.'),
+      h('label', { class: 'mcard-radio' }, seize, ' Take a castle (seize)'),
+      sub(field('Castle', castleSel)),
+      h('label', { class: 'mcard-radio' }, boss, ' Defeat a commander (boss)'),
+      sub(people.length ? field('Who', bossSel) : h('p', { class: 'hint', style: 'margin:0' }, 'No one on this map can be chosen: every enemy here shares a character with another unit.'),
+        h('p', { class: 'hint', style: 'margin:6px 0 0' }, 'The chapter ends the moment they fall, whoever defeats them.')),
+      h('label', { class: 'mcard-radio' }, rout, ' Rout: defeat every unit of these armies'),
+      sub(w.armies.length ? h('div', {}, ...boxes) : h('p', { class: 'hint', style: 'margin:0' }, 'This chapter has no other armies.'),
+        h('p', { class: 'hint', style: 'margin:6px 0 0' }, 'Checked as each army\'s phase begins, so the chapter ends at the start of the next phase after the last of them falls. An army with no one on the map yet counts as gone, so leave out armies that only arrive later, and your allies.')),
+      h('label', { class: 'mcard-radio' }, turn, ' Defend: survive until a turn starts'),
+      sub(field('Turn', turnIn), h('p', { class: 'hint', style: 'margin:6px 0 0' }, 'The chapter ends as your phase of that turn begins.')),
+      h('p', { class: 'hint' }, 'Whichever you pick, the chapter\'s own ending scene plays, then the Save Game screen and the next chapter. Change the scene\'s words on the Events page.'),
       w.endings.length > 1 ? h('p', { class: 'hint' }, `This chapter has ${w.endings.length} ending events; the card changes the first.`) : null),
     [h('button', { class: 'btn btn-line', onclick: () => m.remove() }, 'Cancel'), ok]);
     castleSel.onfocus = () => { seize.checked = true; };
+    bossSel.onfocus = () => { boss.checked = true; };
     turnIn.onfocus = () => { turn.checked = true; };
     ok.onclick = async () => {
+      let spec;
+      if (seize.checked) spec = { kind: 'seize', loc: Number(castleSel.value) };
+      else if (boss.checked) spec = { kind: 'boss', unit: Number(bossSel.value) };
+      else if (rout.checked) spec = { kind: 'rout', slots: [...m.querySelectorAll('input[type=checkbox][data-slot]')].filter(c => c.checked).map(c => Number(c.dataset.slot)) };
+      else spec = { kind: 'turn', turn: Number(turnIn.value) };
       ok.disabled = true;
-      if (await setWin(seize.checked ? { kind: 'seize', loc: Number(castleSel.value) } : { kind: 'turn', turn: Number(turnIn.value) }, e.line)) m.remove();
+      if (await setWin(spec, e.line)) m.remove();
       else ok.disabled = false;
     };
   }
@@ -686,6 +708,106 @@ export function mapActions(ctx) {
       toast(`The chapter is won: ${r.endings.find(x => x.line === line)?.words || 'changed'} (Ctrl+Z undoes it)`);
       return true;
     } catch (er) { toast(er.message, true); return false; }
+  }
+
+  // ------------------------------------------------------------ a character arrives
+  // Someone comes onto the map during the chapter: into your army at once (as Azel and Lex do), or into
+  // another army (enemy or neutral) to be recruited by talking. They walk in from a cell you pick or
+  // just appear, at the end of the opening, as a turn starts, when someone reaches an area, or when a
+  // castle is taken. An optional conversation follows.
+  async function arrivalCard(x, y) {
+    try { await load(true); } catch (e) { toast(e.message, true); return; }
+    const M = ctx.M();
+    const [ax, ay, aw, ah] = M.area || [0, 0, M.width, M.height];
+    const edges = [[ax, y, x - ax], [ax + aw - 1, y, ax + aw - 1 - x], [x, ay, y - ay], [x, ay + ah - 1, ay + ah - 1 - y]];
+    const near = edges.sort((a, b) => a[2] - b[2])[0];
+    let from = { x: near[0], y: near[1] };
+    const area = { x1: Math.max(ax, x - 3), y1: Math.max(ay, y - 3), x2: Math.min(ax + aw - 1, x + 3), y2: Math.min(ay + ah - 1, y + 3) };
+    const whoIn = h('input', { class: 'in', list: 'mcpeople', 'aria-label': 'Who arrives', placeholder: 'e.g. Azel' });
+    const join = h('input', { type: 'radio', name: 'arrside', checked: true });
+    const other = h('input', { type: 'radio', name: 'arrside' });
+    const others = info.armies.filter(([sl]) => sl !== 0);
+    const armySel = select(others.map(([sl, n]) => [sl, `${n} (slot ${sl})`]), others[0]?.[0], 'Army');
+    const ordersSel = select(programs(Number(armySel.value)), 0, 'What it does');
+    armySel.addEventListener('change', () => ordersSel.replaceChildren(...programs(Number(armySel.value)).map(([v, t]) => h('option', { value: v }, t))));
+    const recruit = h('input', { type: 'checkbox', checked: true });
+    const talker = h('input', { class: 'in', list: 'mcpeople', 'aria-label': 'Who recruits them', value: personLabel(info.lord ?? 1) });
+    const otherBox = h('div', { class: 'mcard-sub', hidden: true },
+      h('div', { class: 'mcard-grid' }, field('Army', armySel), field('What it does', ordersSel)),
+      h('label', { class: 'mcard-radio' }, recruit, ' Can be recruited by talking to them'), field('Who talks to them', talker));
+    const sideSync = () => { otherBox.hidden = !other.checked; };
+    join.onchange = other.onchange = sideSync;
+    const walk = h('input', { type: 'radio', name: 'arrent', checked: true });
+    const appear = h('input', { type: 'radio', name: 'arrent' });
+    const fromTxt = h('span', { class: 'note' });
+    const showFrom = () => { fromTxt.textContent = `from (${from.x}, ${from.y}) to (${x}, ${y})`; };
+    showFrom();
+    const fromBtn = h('button', { type: 'button', class: 'btn btn-line', onclick: async () => {
+      const r = await pickArea(ctx.ch(), { rect: { x1: from.x, y1: from.y, x2: from.x, y2: from.y }, unitName: 'where they come from (one cell)' });
+      if (r) { from = { x: r.x1, y: r.y1 }; showFrom(); }
+    } }, 'Pick on map…');
+    const whenSel = select([['opening', 'At the end of the chapter\'s opening'], ['turn', 'As a turn starts'], ['area', 'When someone reaches an area'], ['seize', 'When a castle is taken']], 'turn', 'When');
+    const turnIn = num(2, 'Turn', 2, 99);
+    const castles = M.locations.filter(L => L.kind === 'castle');
+    const castleSel = select(castles.map(L => [L.index, L.name || `Castle ${L.index}`]), castles[0]?.index, 'Castle');
+    const bySel = select(info.armies.map(([sl, n]) => [sl, sl === 0 ? `${n} (you)` : n]), 0, 'Taken by');
+    const areaWho = h('input', { class: 'in', list: 'mcpeople', 'aria-label': 'Who reaches it', value: 'anyone' });
+    const areaTxt = h('span', { class: 'note' });
+    const showArea = () => { areaTxt.textContent = `(${area.x1}, ${area.y1}) to (${area.x2}, ${area.y2})`; };
+    showArea();
+    const whenBoxes = {
+      turn: h('div', { class: 'mcard-grid' }, field('Turn', turnIn)),
+      area: h('div', { class: 'mcard-grid' }, field('Who reaches it', areaWho), h('div', { class: 'lbl' }, h('span', {}, 'Area'),
+        h('div', { class: 'mcard-inline' }, areaTxt, h('button', { type: 'button', class: 'btn btn-line', onclick: async () => {
+          const r = await pickArea(ctx.ch(), { rect: area, unitName: areaWho.value.replace(/\s*\(\d+\)$/, '') || 'someone' });
+          if (r) { Object.assign(area, r); showArea(); }
+        } }, 'Pick on map…')))),
+      seize: h('div', { class: 'mcard-grid' }, field('Castle', castleSel), field('Taken by', bySel)),
+    };
+    const whenSync = () => { for (const [k, el] of Object.entries(whenBoxes)) el.hidden = whenSel.value !== k; };
+    whenSel.addEventListener('change', whenSync);
+    const aIn = h('input', { class: 'in', list: 'mcpeople', 'aria-label': 'First speaker', placeholder: 'the newcomer' });
+    const bIn = h('input', { class: 'in', list: 'mcpeople', 'aria-label': 'Second speaker', placeholder: 'nobody' });
+    const talkIn = h('textarea', { class: 'in', rows: 3, 'aria-label': 'What they say', placeholder: 'Optional. One line each; start a line with 2: for the second speaker.' });
+    const ok = h('button', { class: 'btn btn-gilt' }, 'Add');
+    const m = card('A character arrives', `At (${x}, ${y})`, h('div', { class: 'mcard-body' },
+      field('Who', whoIn),
+      h('label', { class: 'mcard-radio' }, join, ' Joins your army at once'),
+      h('label', { class: 'mcard-radio' }, other, ' Arrives in another army (enemy or neutral)'), otherBox,
+      h('label', { class: 'mcard-radio' }, walk, ' Walks in ', fromTxt, ' ', fromBtn),
+      h('label', { class: 'mcard-radio' }, appear, ' Just appears there'),
+      field('When', whenSel), ...Object.values(whenBoxes),
+      h('div', { class: 'mcard-grid' }, field('Speaker 1', aIn), field('Speaker 2', bIn)),
+      field('Conversation', talkIn),
+      h('p', { class: 'hint' }, 'Units in your army walk from where you pick to this cell. Someone arriving in another army is placed here and is shown walking in first. A character should arrive only once per chapter.')),
+    [h('button', { class: 'btn btn-line', onclick: () => m.remove() }, 'Cancel'), ok], 'mcard-wide');
+    whenSync();
+    ok.onclick = async () => {
+      const uid = parsePerson(whoIn.value);
+      if (uid === null) { toast('Who arrives?', true); return; }
+      const body = { ch: ctx.ch(), unit: uid, x, y, side: join.checked ? 'join' : 'army', entrance: walk.checked ? 'walk' : 'appear', fx: from.x, fy: from.y, when: { kind: whenSel.value } };
+      if (!join.checked) { body.slot = Number(armySel.value); body.orders = Number(ordersSel.value); }
+      if (whenSel.value === 'turn') body.when.turn = Number(turnIn.value);
+      if (whenSel.value === 'area') Object.assign(body.when, area, { unit: parsePerson(areaWho.value, true) ?? 0xFFFF });
+      if (whenSel.value === 'seize') Object.assign(body.when, { loc: Number(castleSel.value), by: Number(bySel.value) });
+      if (talkIn.value.trim()) {
+        const a = aIn.value.trim() ? parsePerson(aIn.value) : uid, b2 = bIn.value.trim() ? parsePerson(bIn.value) : null;
+        if (a === null) { toast('Who is the first speaker?', true); return; }
+        const lines = talkIn.value.split('\n').map(t => t.trim()).filter(Boolean).map(t => /^2\s*:/.test(t) ? { who: 'b', text: t.replace(/^2\s*:\s*/, '') } : { who: 'a', text: t.replace(/^1\s*:\s*/, '') });
+        body.talk = { a, b: b2 ?? undefined, lines };
+      }
+      ok.disabled = true;
+      try {
+        const r = await api('arrival', body);
+        if (!join.checked && recruit.checked) {
+          const t = parsePerson(talker.value);
+          if (t !== null) await api('newevent', { ch: ctx.ch(), kind: 'recruit', a: t, b: uid });
+        }
+        await refreshSession(); await ctx.reload(); m.remove();
+        toast(`${personLabel(uid)} arrives: ${r.when} (Ctrl+Z undoes it)`);
+      } catch (e) { toast(e.message, true); ok.disabled = false; }
+    };
+    whoIn.focus();
   }
 
   // ------------------------------------------------------------ add or take away castles and villages
@@ -966,6 +1088,6 @@ export function mapActions(ctx) {
     for (const i of at) if (!mv.has(i)) c2d.fillRect((i % M.width) * s, ((i / M.width) | 0) * s, s, s);
   }
 
-  return { menu, unitCard, eventCard, winCard, setWin, titleCard, siteCard, removeSite, openingCard, copy, paste, duplicate, remove, toggleDanger, drawDanger, closeMenu, danger,
+  return { menu, unitCard, eventCard, winCard, setWin, titleCard, siteCard, removeSite, openingCard, arrivalCard, copy, paste, duplicate, remove, toggleDanger, drawDanger, closeMenu, danger,
     load, hasClip: () => !!clip?.units.length, unitAt };
 }

@@ -1,11 +1,14 @@
 # fe4kit: FE4 hacking toolkit (Project Naga ROM)
 
-**Builder of the Holy War 1.2** (1.0 was the first public release; test
+**Builder of the Holy War 1.3** (1.0 was the first public release; test
 builds were numbered up to v57, and the "kit vNN" notes below refer to those).
 1.1 added right-click cards on the Maps page for placing units, reinforcements
 and events, danger zones, and testing a chapter in the PC port. 1.2 adds what
 a whole new chapter needs: its win condition, title card, opening scene,
-castles and villages, new armies and new first-generation characters. Free software
+castles and villages, new armies and new first-generation characters. 1.3
+adds characters who arrive during a chapter (as Azel and Lex do), more win
+conditions (defeat a boss, rout armies) and chapters where your army starts
+without a castle. Free software
 under the MIT license (`licenses/`).
 
 Make hacks and randomized games of Fire Emblem: Genealogy of the Holy War
@@ -129,13 +132,38 @@ default browser). The editor runs on your PC only: nothing is sent anywhere.
        chapter. They are numbered without gaps, so removing one that isn't
        the last gives the last one its number, and that one's events, army
        and enemy orders follow. The removed one's own events stop playing.
+     - **A character arrives here…** (1.3) on an empty cell: someone comes
+       onto the map during the chapter and ends up on that cell.
+       - **Joins your army at once** (as Azel and Lex do in the Prologue):
+         they are yours from that moment, and their home castle is your
+         army's first castle (none in a chapter without one).
+       - **Arrives in another army** (enemy or neutral, as Dew does): pick
+         the army and what its units do. "Can be recruited by talking to
+         them" also adds a Recruit-by-talking event for the person you pick.
+       - **Walks in** from a cell you pick (the nearest map edge to start
+         with) or **appears** on the spot.
+       - **When**: at the end of the opening scene, as a turn starts, when
+         someone reaches an area you pick, or when a castle is taken.
+       - An optional conversation over the map follows (two people, `2:` at
+         the start of the second person's lines).
      - Everything is one undo step (Ctrl+Z).
    - **★ Win condition…** (1.2, also on the right-click menu and a castle's
-     panel): the chapter ends when you take a castle (any of its castles) or
-     when a turn starts (survive until turn N). The chapter's own ending
-     scene still plays, then the Save Game screen and the next chapter. A
-     castle's label shows ★ when taking it wins. Chapter 2 ends through its
-     story sequence and can't be changed here.
+     panel). The chapter's own ending scene still plays, then the Save Game
+     screen and the next chapter. Chapter 2 ends through its story sequence
+     and can't be changed here. The chapter ends when:
+     - **Seize**: you take a castle you pick. Its label shows ★.
+     - **Boss** (1.3): someone you pick is defeated, by anyone. Only
+       characters used by one unit on the map can be picked (most soldiers
+       share theirs).
+     - **Rout** (1.3): every unit of the armies you tick is gone. It is
+       checked as each army's phase starts, so the chapter ends at the next
+       phase after the last one falls. An army with no one on the map yet
+       counts as gone: leave out armies that arrive later, and allies.
+       The game has no rout condition; the editor adds one when a chapter
+       uses it (it takes the place of event condition $03, which no chapter
+       uses).
+     - **Defend** (survive until turn N): the chapter ends as your phase of
+       that turn begins.
    - **Chapter title…** (1.2): the title card shown as the chapter starts
      ("Prologue / Birth of a Crusader") is a picture Project Naga drew. Type a
      new title (up to 30 letters); the editor draws it in a font from your
@@ -278,6 +306,10 @@ default browser). The editor runs on your PC only: nothing is sent anywhere.
    slot, working like an army you pick (side, colour, AI programs).
    - **The army**: its name on the map, the castles it holds and its
      members (units that join when it's set up).
+   - **A chapter without a castle** (1.3): untick all the castles of your
+     army (slot 0). Your units start in the field: no shops, arena or
+     retreating to a castle until you take one, and characters who join
+     have no home castle. Tested in the Prologue (Azel and Lex still join).
    - **What its units do**: each AI program in words (*Seize Jungby*,
      *From turn 3 on, go to step 4*, *Attack anyone*…), with fields for the
      castle, turn or target. **Change what it does…** rewrites a program:
