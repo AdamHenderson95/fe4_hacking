@@ -1,6 +1,6 @@
 // Maps: paint chapter maps with the game's own tiles; drag castles, villages and units into place.
 import { api, h, app, toast, refreshSession, go, setField, watchJob } from '../app.js';
-import { openEventAt } from './events.js';
+import { openEventAt, openTimeline } from './events.js';
 import { mapActions } from './mapcards.js';
 
 const TOOLS = [
@@ -80,6 +80,7 @@ export async function mapsPage(root) {
     h('button', { class: 'btn btn-line mtileset2', title: 'Draw the whole map as one picture, or give the chapter a whole new set of tiles', onclick: () => tilesetDialog() }, 'Map picture & tile set…'),
     h('button', { class: 'btn btn-line', title: 'How this chapter is won', onclick: () => acts.winCard() }, '★ Win condition…'),
     h('button', { class: 'btn btn-line', title: 'How this chapter is lost', onclick: () => acts.loseCard() }, 'Lose conditions…'),
+    h('button', { class: 'btn btn-line', title: 'The chapter\'s story in order, on the Events page', onclick: () => { openTimeline(st.ch); go('events'); } }, 'Timeline'),
     h('button', { class: 'btn btn-line', title: 'The title shown when the chapter starts', onclick: () => acts.titleCard() }, 'Chapter title…'),
     h('button', { class: 'btn btn-line', title: 'What plays when the chapter starts', onclick: () => acts.openingCard() }, 'Opening scene…'),
     h('button', { class: 'btn btn-gilt mtest', title: 'Build the game and open the PC port with New Game going straight to this chapter', onclick: () => testChapter() }, '▶ Test this chapter'));

@@ -54,7 +54,7 @@ import fe4skillanim                # noqa: E402
 from fe4project import Project, load_settings, save_settings   # noqa: E402
 
 APP = 'Builder of the Holy War'
-VERSION = '1.4'
+VERSION = '1.5'
 STATIC = os.path.join(KIT, 'studio')
 
 # ---------------------------------------------------------------- state
@@ -4488,6 +4488,184 @@ def api_check(b, q):
             'counts': {k: sum(1 for f in found if f['level'] == k) for k in ('error', 'warn', 'info')}}
 
 
+# ---------------------------------------------------------------- chapter timeline (1.5)
+_PNAMES = {}
+
+
+def _speaker_names():
+    """Character ID -> name for everyone who can speak (cached: people() reads every portrait)."""
+    key = id(need_project())
+    if _PNAMES.get('key') != key:
+        _PNAMES.update(key=key, names={x['id']: x['name'] for x in people() if x['name']})
+    return _PNAMES['names']
+
+
+def _msg_beat(key):
+    """A message as a timeline line: who speaks and its first words."""
+    d = need_project().dialogue()
+    t = d.text.get(key, '') if d else ''
+    names = _speaker_names()
+    who = []
+    for m in re.finditer(r'\{00 3F ([0-9A-F]{2}) ([0-9A-F]{2})\}', t):
+        n = names.get(int(m.group(1), 16) | int(m.group(2), 16) << 8)
+        if n and n not in who:
+            who.append(n)
+    plain = t
+    for code, ch in (('4A', '"'), ('4C', ':'), ('89', 'á'), ('91', 'é'), ('9E', 'ö')):
+        plain = plain.replace('{%s}' % code, ch)
+    plain = ' '.join(re.sub(r'\{[0-9A-F ]+\}', ' ', plain).split())
+    if sum(c.isalpha() for c in plain) < 4:          # pictures and credits drawn with text codes, not words
+        return None
+    first = plain[:90] + ('…' if len(plain) > 90 else '')
+    return {'kind': 'talk', 'text': first, 'who': who[:4], 'key': key}
+
+
+def _deploy_beat(ch, lst):
+    """A deploy group as 'units come onto the map', counted per army with the named ones."""
+    rows = [r for _i, r, l, _e, _s in chapter_deploy(ch) if l == lst]
+    names = army_names(ch)
+    per = {}
+    for r in rows:
+        per.setdefault(_num(r.get('army_slot'), 0), []).append(r)
+    parts = []
+    for a in sorted(per, key=lambda a: (a == 0, a)):
+        rs = per[a]
+        named = []
+        for r in rs:
+            cid = _num(r.get('char_id'), -1)
+            t, rec = unit_lookup().get(cid, (None, None))
+            alone = sum(1 for x in rows if x.get('char_id') == r.get('char_id')) == 1
+            if t != 'units_generic' or alone:
+                nm = unit_label(cid)
+                if nm and nm not in named and nm.lower() != 'unit':
+                    named.append(nm)
+        army = 'your army' if a == 0 else names.get(a, f'army slot {a}')
+        parts.append(f'{army} {len(rs)}' + (f" ({', '.join(named[:4])}{'…' if len(named) > 4 else ''})" if named else ''))
+    text = f'Units come onto the map (group {lst}): ' + ('; '.join(parts) if parts else 'none placed yet')
+    return {'kind': 'units', 'text': text, 'list': lst}
+
+
+def _gift_beat(g):
+    who = 'whoever triggers it' if g.get('unit') is None else unit_label(g['unit'])
+    if g['kind'] == 'item':
+        it = need_project().table('item_instances')
+        r = next((r for r in (it.rows if it else []) if _num(r.get('instance'), -1) == g['instance']), None)
+        return {'kind': 'gift', 'text': f"{who} gets {r.get('_item_name') if r else 'item #%d' % g['instance']}"}
+    st = fe4events.STATS[g['stat']] if g.get('stat', 99) < len(fe4events.STATS) else 'a stat'
+    return {'kind': 'gift', 'text': f"{who}: {st} +{g['amount']}"}
+
+
+def scene_beats(ch, sid, idx, seen=None):
+    """What a scene (and the scenes it starts) does, in order: talks, arrivals, joins, gifts, endings."""
+    seen = seen if seen is not None else set()
+    if sid in seen or sid not in idx['scenes']:
+        return []
+    seen.add(sid)
+    out = []
+    for c in idx['scenes'][sid]['block']['cmds']:
+        b = cmd_bytes(c)
+        if not b:
+            continue
+        for k, _kind in message_refs('scenes.evt', b, c['hex'].split()):
+            mb = _msg_beat(k)
+            if mb:
+                out.append(mb)
+        if c['hex'].upper() == GAME_OVER_CALL:
+            out.append({'kind': 'lose', 'text': 'Game over'})
+        if b[0] == 0x4A and len(b) >= 2:
+            if b[1] == 0x4E and len(b) >= 3:
+                out.append(_deploy_beat(ch, b[2]))
+            elif b[1] in (0x49, 0x53) and len(b) >= 4:
+                out.append({'kind': 'join', 'text': f'{unit_label(b[2] | b[3] << 8)} joins your army'})
+            elif b[1] == 0x78:
+                out.append({'kind': 'win', 'text': 'The chapter ends (Save Game, then the next chapter)'})
+        g = gift_of('scenes.evt', c)
+        if g:
+            out.append(_gift_beat(g))
+        for t in scene_refs('scenes.evt', b):
+            out += scene_beats(ch, t, idx, seen)
+    return out
+
+
+def step_beats(ch, name, steps, idx):
+    out = []
+    for c in steps:
+        b = cmd_bytes(c)
+        if not b:
+            continue
+        for t in scene_refs(name, b):
+            out += scene_beats(ch, t, idx)
+        for k, _kind in message_refs(name, b, c['hex'].split()):
+            mb = _msg_beat(k)
+            if mb:
+                out.append(mb)
+        if b[0] == 0x4E and len(b) >= 2:
+            out.append(_deploy_beat(ch, b[1]))
+        elif b[0] == 0x78:
+            out.append({'kind': 'win', 'text': 'The chapter ends (Save Game, then the next chapter)'})
+        g = gift_of(name, c)
+        if g:
+            out.append(_gift_beat(g))
+    return out
+
+
+TIMELINE_SECTIONS = [('castle', 'When a castle is taken'), ('area', 'When someone reaches a place'),
+                     ('talk', 'Talks'), ('battle', 'Battles and deaths'), ('visit', 'Villages'),
+                     ('other', 'Other events')]
+
+
+def api_timeline(b, q):
+    """GET ?ch: the chapter's story in order: the opening, each turn, what happens when, how it ends."""
+    p = need_project()
+    ch = int(q.get('ch', ['0'])[0])
+    name = chapter_file(ch)
+    idx = story_index()
+    out = {'ch': ch, 'title': chapter_title(ch), 'opening': [], 'turns': [], 'when': {k: [] for k, _ in TIMELINE_SECTIONS},
+           'sections': [{'key': k, 'title': t} for k, t in TIMELINE_SECTIONS]}
+    for blk in p.evt(name).blocks():
+        if blk['label'] == 'init':
+            out['opening'] = step_beats(ch, name, blk['cmds'], idx)
+            out['openingLine'] = blk['cmds'][0]['line'] if blk['cmds'] else None
+    loses = {r['scene'] for r in chapter_loses(ch)}
+    ends = {e['line'] for e in chapter_endings(ch)}
+    for cnd, steps in chapter_triggers(name):
+        cb = cmd_bytes(cnd)
+        if not cb:
+            continue
+        w = lambda i: cb[i] | cb[i + 1] << 8 if i + 1 < len(cb) else 0  # noqa: E731
+        beats = step_beats(ch, name, steps, idx)
+        sids = [t for c in steps for t in scene_refs(name, cmd_bytes(c))]
+        if len(beats) > 10:                                  # long story sequences: the start, and how they end
+            keep = beats[:8]
+            tail = [x for x in beats[8:] if x['kind'] in ('win', 'lose', 'join')]
+            more = len(beats) - len(keep) - len(tail)
+            beats = keep + ([{'kind': 'other', 'text': f'… and {more} more'}] if more else []) + tail
+        e = {'line': cnd['line'], 'when': cond_words(cb, ch), 'beats': beats,
+             'ends': cnd['line'] in ends, 'loses': any(t in loses for t in sids)}
+        if not beats and not e['ends']:
+            e['beats'] = [{'kind': 'other', 'text': 'Game steps the editor has no words for'}]
+        op = cb[0]
+        if op == 0x01:
+            e['turn'] = None if w(2) == 0xFFFF else w(2) + 1
+            out['turns'].append(e)
+            continue
+        sec = {0x02: 'castle', 0x07: 'castle', 0x0B: 'area', 0x04: 'talk', 0x16: 'talk', 0x0C: 'talk',
+               0x0A: 'visit', 0x0D: 'battle', 0x0E: 'battle', 0x1A: 'battle'}.get(op, 'other')
+        if op == 0x02 and e['ends'] or op == 0x03:
+            sec = 'castle' if op == 0x02 else 'other'
+        out['when'][sec].append(e)
+    out['turns'].sort(key=lambda e: (e['turn'] is None, e['turn'] or 0))
+    out['endings'] = [{'line': e['line'], 'words': e['words']} for e in chapter_endings(ch)]
+    leader = 'Seliph' if ch >= 6 else 'Sigurd'
+    lt = p.table('locations')
+    base = next((r.get('_castle_name') for r in (lt.rows if lt else [])
+                 if _num(r.get('chapter'), -1) == ch and _num(r.get('index'), -1) == 0 and r.get('kind') == 'castle'), None)
+    out['loses'] = [{'words': f'{leader} is defeated', 'game': True}] + (
+        [{'words': f'An enemy takes {base}', 'game': True}] if base else []) + \
+        [{'words': r['words'], 'line': r['lines'][0]} for r in chapter_loses(ch)]
+    return out
+
+
 def api_wincond(b, q):
     """GET ?ch: how the chapter is won and what can win it.  POST {ch, line, kind: 'seize', loc},
     {ch, line, kind: 'turn', turn}, {kind: 'boss', unit} or {kind: 'rout', slots}: rewrites that ending's condition (its flag and action stay)."""
@@ -6626,7 +6804,7 @@ API = {('GET', 'session'): api_session, ('POST', 'ping'): api_ping, ('GET', 'tab
        ('GET', 'chapters'): api_chapters, ('GET', 'scene'): api_scene, ('POST', 'messages'): api_messages,
        ('POST', 'msg'): api_msg, ('POST', 'evtcmd'): api_evtcmd, ('GET', 'dsearch'): api_dsearch, ('GET', 'villages'): api_villages, ('GET', 'itemuse'): api_itemuse, ('POST', 'newevent'): api_newevent, ('POST', 'talkmenu'): api_talkmenu, ('POST', 'delstep'): api_delstep,
        ('POST', 'addstep'): api_addstep, ('GET', 'eventinfo'): api_eventinfo, ('GET', 'maps'): api_maps, ('GET', 'map'): api_map, ('POST', 'paint'): api_paint,
-       ('GET', 'armies'): api_armies, ('GET', 'portraits'): api_portraits, ('GET', 'mapsprites'): api_mapsprites, ('GET', 'skills'): api_skills, ('POST', 'gen2check'): api_gen2check, ('POST', 'newchild'): api_newchild, ('GET', 'mapinfo'): api_mapinfo, ('GET', 'unitshare'): api_unitshare, ('POST', 'mapunit'): api_mapunit, ('POST', 'testchapter'): api_testchapter, ('GET', 'wincond'): api_wincond, ('POST', 'wincond'): api_wincond, ('GET', 'losecond'): api_losecond, ('GET', 'check'): api_check, ('POST', 'losecond'): api_losecond, ('POST', 'skillcheck'): api_skillcheck, ('POST', 'skilledit'): api_skilledit, ('POST', 'spriteentry'): api_spriteentry, ('GET', 'tileinfo'): api_tileinfo, ('POST', 'tiledraw'): api_tiledraw, ('POST', 'mapsprite'): api_mapsprite, ('POST', 'mapwalk'): api_mapwalk, ('GET', 'mapbattle'): api_mapbattle, ('GET', 'mbplayer'): api_mbplayer, ('GET', 'mapspells'): api_mapspells, ('POST', 'mapspellset'): api_mapspellset, ('POST', 'mapspellsheet'): api_mapspellsheet, ('POST', 'mapspellbg'): api_mapspellbg, ('POST', 'mapspellcolour'): api_mapspellcolour, ('POST', 'mapspellpreview'): api_mapspellpreview, ('POST', 'mapbattleset'): api_mapbattleset, ('POST', 'mapbattlesheet'): api_mapbattlesheet, ('POST', 'mapbattlepreview'): api_mapbattlepreview, ('POST', 'portrait'): api_portrait, ('POST', 'aicmd'): api_aicmd, ('POST', 'airecipe'): api_airecipe, ('GET', 'music'): api_music, ('POST', 'musicfile'): api_musicfile,
+       ('GET', 'armies'): api_armies, ('GET', 'portraits'): api_portraits, ('GET', 'mapsprites'): api_mapsprites, ('GET', 'skills'): api_skills, ('POST', 'gen2check'): api_gen2check, ('POST', 'newchild'): api_newchild, ('GET', 'mapinfo'): api_mapinfo, ('GET', 'unitshare'): api_unitshare, ('POST', 'mapunit'): api_mapunit, ('POST', 'testchapter'): api_testchapter, ('GET', 'wincond'): api_wincond, ('POST', 'wincond'): api_wincond, ('GET', 'losecond'): api_losecond, ('GET', 'check'): api_check, ('GET', 'timeline'): api_timeline, ('POST', 'losecond'): api_losecond, ('POST', 'skillcheck'): api_skillcheck, ('POST', 'skilledit'): api_skilledit, ('POST', 'spriteentry'): api_spriteentry, ('GET', 'tileinfo'): api_tileinfo, ('POST', 'tiledraw'): api_tiledraw, ('POST', 'mapsprite'): api_mapsprite, ('POST', 'mapwalk'): api_mapwalk, ('GET', 'mapbattle'): api_mapbattle, ('GET', 'mbplayer'): api_mbplayer, ('GET', 'mapspells'): api_mapspells, ('POST', 'mapspellset'): api_mapspellset, ('POST', 'mapspellsheet'): api_mapspellsheet, ('POST', 'mapspellbg'): api_mapspellbg, ('POST', 'mapspellcolour'): api_mapspellcolour, ('POST', 'mapspellpreview'): api_mapspellpreview, ('POST', 'mapbattleset'): api_mapbattleset, ('POST', 'mapbattlesheet'): api_mapbattlesheet, ('POST', 'mapbattlepreview'): api_mapbattlepreview, ('POST', 'portrait'): api_portrait, ('POST', 'aicmd'): api_aicmd, ('POST', 'airecipe'): api_airecipe, ('GET', 'music'): api_music, ('POST', 'musicfile'): api_musicfile,
        ('GET', 'title'): api_title, ('POST', 'titleset'): api_title_set,
        ('POST', 'skillicon'): api_skillicon,
        ('GET', 'tileset'): api_tileset, ('POST', 'tilesetset'): api_tileset_set, ('POST', 'mapsize'): api_mapsize}

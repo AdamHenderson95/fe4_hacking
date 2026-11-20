@@ -1,3 +1,13 @@
+# Builder of the Holy War 1.5
+
+### New
+- **Chapter timeline** (Events & dialogue, the button under the chapter list; also **Timeline** on the Maps
+  page): a chapter's whole story in order. It starts with the opening, then each turn's events, then what
+  happens when a castle is taken, someone reaches a place, talks, fights or dies, or visits a village. It ends
+  with how the chapter is won and lost. Each entry says in plain words who talks, which units come onto the
+  map, who joins your army, what is given, and whether it wins or loses the chapter. **Open** jumps to that
+  event to change it.
+
 # Builder of the Holy War 1.4
 
 Chapters can now be lost as well as won, and **Check my hack** looks the whole project over for mistakes

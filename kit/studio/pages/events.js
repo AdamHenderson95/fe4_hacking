@@ -18,6 +18,8 @@ let people = null, text = null;
 
 /** Open the events page on the event whose condition or step is on that line of the chapter script. */
 export function openEventAt(ch, line) { st.ch = ch; st.q = ''; st.pendingLine = line; }
+/** Open the events page on a chapter's timeline. */
+export function openTimeline(ch) { st.ch = ch; st.q = ''; st.view = 'timeline'; }
 
 export async function eventsPage(root) {
   forgetMaps();
@@ -44,9 +46,11 @@ export async function eventsPage(root) {
   const filters = h('div', { class: 'evfilters', role: 'group', 'aria-label': 'Show' });
   const list = h('div', { class: 'evlist' });
   const newBtn = h('button', { class: 'btn btn-gilt', title: 'Add a talk, turn, village, area, battle or death event to this chapter', onclick: () => newEventDialog() }, '+ New event');
+  const tlBtn = h('button', { class: 'btn btn-line evtl-btn', title: 'The whole chapter in order: opening, turns, what happens when, and how it ends', 'aria-pressed': String(st.view === 'timeline'),
+    onclick: () => { st.view = st.view === 'timeline' ? 'event' : 'timeline'; tlBtn.setAttribute('aria-pressed', String(st.view === 'timeline')); drawDetail(); } }, 'Chapter timeline');
   const detail = h('div', { class: 'evdetail' });
   root.append(h('div', { class: 'evedit' },
-    h('div', { class: 'evside' }, h('div', { class: 'evside-tools' }, h('div', { class: 'evside-row' }, chapterSel, newBtn), search, filters), list),
+    h('div', { class: 'evside' }, h('div', { class: 'evside-tools' }, h('div', { class: 'evside-row' }, chapterSel, newBtn), tlBtn, search, filters), list),
     detail));
 
   chapterSel.onchange = () => { st.ch = Number(chapterSel.value); st.sel = null; st.q = ''; search.value = ''; load(); };
@@ -163,7 +167,7 @@ export async function eventsPage(root) {
     const shown = groups.filter(g => st.filter === 'all' || (g.kind === 'start' ? 'other' : g.kind) === st.filter);
     list.replaceChildren(...shown.map(g => {
       const fl = firstLine(g);
-      return h('button', { class: `evitem k-${g.kind}`, 'aria-pressed': String(g.id === st.sel), onclick: () => { st.sel = g.id; drawList(); drawDetail(); } },
+      return h('button', { class: `evitem k-${g.kind}`, 'aria-pressed': String(g.id === st.sel), onclick: () => { st.sel = g.id; st.view = 'event'; tlBtn.setAttribute('aria-pressed', 'false'); drawList(); drawDetail(); } },
         h('span', { class: 'evicon', 'aria-hidden': 'true' }, ICON[g.kind] || '•'),
         h('span', { class: 'evtext' }, h('b', {}, groupTitle(g)),
           fl ? h('span', { class: 'sub' }, fl.who ? h('i', {}, fl.who + ': ') : null, fl.said) : null));
@@ -230,7 +234,47 @@ export async function eventsPage(root) {
   }
 
   // ------------------------------------------------------------ detail
+  // ------------------------------------------------------------ the chapter as a timeline (1.5)
+  async function drawTimeline() {
+    detail.replaceChildren(h('div', { class: 'empty' }, 'Putting the chapter in order…'));
+    let T;
+    try { T = await api('timeline?ch=' + st.ch); } catch (e) { detail.replaceChildren(h('div', { class: 'empty' }, e.message)); return; }
+    if (st.view !== 'timeline' || T.ch !== st.ch) return;
+    const open = line => {
+      const g = groups.find(x => x.cond?.line === line || x.steps.some(c => c.line === line));
+      if (!g) return;
+      st.sel = g.id; st.view = 'event'; tlBtn.setAttribute('aria-pressed', 'false'); drawList(); drawDetail();
+    };
+    const BEAT = { talk: '❝', units: '⚑', join: '+', gift: '◆', win: '★', lose: '✕', other: '•' };
+    const beats = bs => h('ul', { class: 'tl-beats' }, bs.map(b => h('li', { class: 'tl-' + b.kind },
+      h('span', { class: 'tl-ico', 'aria-hidden': 'true' }, BEAT[b.kind] || '•'),
+      h('span', {}, b.who?.length ? h('b', {}, b.who.join(', ') + ': ') : null, b.text))));
+    const entry = (when, e, extra) => h('div', { class: 'tl-entry' + (e.ends ? ' tl-ends' : '') + (e.loses ? ' tl-loses' : '') },
+      h('div', { class: 'tl-when' }, h('span', {}, when), e.ends ? h('span', { class: 'tl-tag tl-tag-win' }, 'Wins the chapter') : null,
+        e.loses ? h('span', { class: 'tl-tag tl-tag-lose' }, 'Loses the chapter') : null, extra,
+        e.line !== undefined && e.line !== null ? h('button', { class: 'btn btn-line btn-sm', onclick: () => open(e.line) }, 'Open') : null),
+      beats(e.beats || []));
+    const sec = (title, kids, note) => kids.length ? h('section', { class: 'tl-sec' }, h('h3', {}, title), note ? h('p', { class: 'hint' }, note) : null, kids) : null;
+    const turns = T.turns.map(e => entry(e.turn === null ? 'Every turn' : `Turn ${e.turn}`, e));
+    detail.replaceChildren(h('article', { class: 'evcard tl' },
+      h('div', { class: 'evhead' }, h('span', { class: 'evicon big k-turn', 'aria-hidden': 'true' }, '⧗'), h('h2', {}, T.title + ': timeline')),
+      h('p', { class: 'sub' }, 'The chapter in the order a player meets it. Open any entry to change it; nothing here changes the chapter.'),
+      sec('Opening', T.opening.length ? [entry('As the chapter starts', { beats: T.opening, line: T.openingLine })] : []),
+      sec('Turns', turns),
+      ...T.sections.map(x => sec(x.title, T.when[x.key].map(e => entry(e.when, e)),
+        x.key === 'visit' ? null : x.key === 'other' ? 'Story events the game checks for itself (the editor names only some of them).' : null)),
+      h('section', { class: 'tl-sec tl-end' }, h('h3', {}, 'How it ends'),
+        h('ul', { class: 'tl-beats' },
+          T.endings.length ? T.endings.map(e => h('li', { class: 'tl-win' }, h('span', { class: 'tl-ico' }, '★'), h('span', {}, 'Won when: ' + e.words),
+            h('button', { class: 'btn btn-line btn-sm', onclick: () => open(e.line) }, 'Open')))
+            : [h('li', { class: 'tl-win' }, h('span', { class: 'tl-ico' }, '★'), h('span', {}, 'Won through its story sequence (not one event).'))],
+          T.loses.map(e => h('li', { class: 'tl-lose' }, h('span', { class: 'tl-ico' }, '✕'),
+            h('span', {}, 'Lost when: ' + e.words + (e.game ? ' (always, the game\'s own rule)' : '')),
+            e.line !== undefined ? h('button', { class: 'btn btn-line btn-sm', onclick: () => open(e.line) }, 'Open') : null))))));
+  }
+
   function drawDetail() {
+    if (st.view === 'timeline') { drawTimeline(); return; }
     detail.replaceChildren();
     const g = groups.find(x => x.id === st.sel);
     if (!g) { detail.append(h('div', { class: 'empty' }, 'Pick an event on the left.')); return; }

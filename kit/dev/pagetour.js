@@ -83,6 +83,18 @@ const fs = require('fs');
     }
   }
   await closeCards();
+  // the chapter timeline for every chapter
+  await go('events');
+  const evSel = await p.$$eval('select', ss => ss.findIndex(s => [...s.options].some(o => /Prologue/.test(o.text))));
+  const nEv = await p.$$eval('select', (ss, i) => ss[i].options.length, evSel);
+  await p.click('button:has-text("Chapter timeline")'); await p.waitForTimeout(3000);
+  for (let k = 0; k < nEv; k++) {
+    where = `events timeline chapter option ${k}`;
+    await p.$$eval('select', (ss, [i, k]) => { ss[i].selectedIndex = k; ss[i].dispatchEvent(new Event('change', { bubbles: true })); }, [evSel, k]);
+    await p.waitForSelector('.tl', { timeout: 120000 }).catch(() => problems.push(`${where}: no timeline`));
+    await p.waitForTimeout(500);
+  }
+  await p.screenshot({ path: `${shots}/timeline.png` });
   // Check my hack
   where = 'Check my hack';
   await p.click('#btnCheck');

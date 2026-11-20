@@ -95,7 +95,7 @@ def reads(rom, work):
     check('read battlemotions', lambda: S.api_battlemotions({}, q(row=0)))
     check('read mbplayer', lambda: S.api_mbplayer({}, q(fig=0)))
     for ch in range(nch):
-        for fn in ('events', 'map', 'mapinfo', 'armies', 'villages', 'wincond', 'losecond', 'opening', 'chaptitle', 'tileset'):
+        for fn in ('events', 'map', 'mapinfo', 'armies', 'villages', 'wincond', 'losecond', 'timeline', 'opening', 'chaptitle', 'tileset'):
             check(f'read {fn} ch{ch}', lambda fn=fn, ch=ch: getattr(S, 'api_' + fn)({}, q(ch=ch)))
         check(f'read tileinfo ch{ch}', lambda ch=ch: S.api_tileinfo({}, q(ch=ch, k=5)))
     def clean_check():
@@ -212,6 +212,14 @@ def edits(rom, work):
         texts = [f['text'] for f in r['findings']]
         assert any("can't use" in t for t in texts), texts      # the soldier added above (class 2, item 3)
     check('edit: Check my hack finds the added soldier\'s unusable weapon', e_check)
+
+    def e_timeline():
+        T = S.api_timeline({}, q(ch=0))
+        beats = [b['text'] for e in T['turns'] for b in e['beats']] + [b['text'] for b in T['opening']]
+        assert any('joins your army' in t for t in beats), beats[:5]            # Finn's arrival at turn 2
+        assert any(e.get('loses') for sec in T['when'].values() for e in sec), 'lose rules not marked'
+        assert len(T['loses']) >= 4, T['loses']
+    check('edit: the timeline shows arrivals and lose rules', e_timeline)
 
     def e_undo_redo():
         n = len(p.table('deploy').rows)

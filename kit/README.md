@@ -1,6 +1,6 @@
 # fe4kit: FE4 hacking toolkit (Project Naga ROM)
 
-**Builder of the Holy War 1.4** (1.0 was the first public release; test
+**Builder of the Holy War 1.5** (1.0 was the first public release; test
 builds were numbered up to v57, and the "kit vNN" notes below refer to those).
 1.1 added right-click cards on the Maps page for placing units, reinforcements
 and events, danger zones, and testing a chapter in the PC port. 1.2 adds what
@@ -9,7 +9,8 @@ castles and villages, new armies and new first-generation characters. 1.3
 adds characters who arrive during a chapter (as Azel and Lex do), more win
 conditions (defeat a boss, rout armies) and chapters where your army starts
 without a castle. 1.4 adds lose conditions and **Check my hack**, which looks
-the whole project over for mistakes. Free software
+the whole project over for mistakes. 1.5 adds the **chapter timeline**: a
+chapter's story in order, from its opening to how it ends. Free software
 under the MIT license (`licenses/`).
 
 Make hacks and randomized games of Fire Emblem: Genealogy of the Holy War
@@ -261,6 +262,15 @@ default browser). The editor runs on your PC only: nothing is sent anywhere.
    *Midir fights Gerrard*, *Sigurd reaches (12, 38)–(17, 43)*, … with the
    first line of what's said. Filter by talks, turns, villages, battles and
    areas, or **search all dialogue** in the game.
+   - **Chapter timeline** (1.5, also **Timeline** on the Maps page): the
+     whole chapter in the order a player meets it. The opening, then each
+     turn, then what happens when a castle is taken, someone reaches a place,
+     talks, fights or dies, or visits a village, and finally how the chapter
+     is won and lost. Each entry says what happens in plain words: who talks
+     (with their first words), which units come onto the map and for which
+     army, who joins your army, what is given, and whether it wins or loses
+     the chapter. **Open** goes to that event. Nothing in the timeline
+     changes the chapter.
    - **When**: the condition's settings as fields (the turn, who talks to
      whom, which village, the area's corners, who fights whom). Pick people
      from a list of names.
