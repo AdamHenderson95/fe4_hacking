@@ -1,6 +1,6 @@
 # fe4kit: FE4 hacking toolkit (Project Naga ROM)
 
-**Builder of the Holy War 1.3** (1.0 was the first public release; test
+**Builder of the Holy War 1.3.1** (1.0 was the first public release; test
 builds were numbered up to v57, and the "kit vNN" notes below refer to those).
 1.1 added right-click cards on the Maps page for placing units, reinforcements
 and events, danger zones, and testing a chapter in the PC port. 1.2 adds what
@@ -1393,6 +1393,12 @@ Only one scene plays per event check, so an event should start one scene.
 - **`cpu65816.py`:** a small 65816 CPU emulator. It measures command lengths by running the game's own handlers.
 - **`dis65816.py`:** a 65816 disassembler for reading the game's code: `python dis65816.py rom.smc 848397 40 --m16 --x16`.
 - **`dev/`:** the headless test harness used to verify edits, `ch6start.py` (see "Generation 2"), plus `snes9x_trace.patch`.
+  - `selftest.py` (1.3.1): `python dev/selftest.py ROM WORKDIR` extracts your ROM and checks that an unedited
+    build is byte-identical, that every page's data loads for every chapter, and that one edit of each kind
+    (characters, items, classes, map units, win conditions, arriving characters, talks, castle-less
+    chapters, undo/redo) survives a build and a re-extract. It prints one line per check.
+  - `pagetour.js` (1.3.1): `node dev/pagetour.js URL SHOTS` (needs Playwright) opens every page and every
+    chapter in a running editor, clicks through the map's right-click cards and reports any errors.
   - The patch adds read, write and exec tracing to Snes9x (upstream commit `1bcc369`).
   - It's how the engine routines in `ROM_MAP.md` were located.
   - To build it, apply the patch, then run `make` in `snes9x/libretro`.

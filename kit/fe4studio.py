@@ -54,7 +54,7 @@ import fe4skillanim                # noqa: E402
 from fe4project import Project, load_settings, save_settings   # noqa: E402
 
 APP = 'Builder of the Holy War'
-VERSION = '1.3'
+VERSION = '1.3.1'
 STATIC = os.path.join(KIT, 'studio')
 
 # ---------------------------------------------------------------- state
@@ -2740,6 +2740,13 @@ def api_map(b, q):
         endings = chapter_endings(ch)
     except KeyError:
         whens, endings = {}, []
+    try:
+        held = castle_holders(ch)
+    except KeyError:
+        held = {}
+    for lc in locs:
+        if lc.get('kind') == 'castle':
+            lc['holderSlot'] = held.get(_num(lc.get('index')), -1)
     return {'ch': ch, 'title': chapter_title(ch) if ch < len(CHAPTER_TITLES) else '', 'width': m.WIDTH,
             'height': (len(m.words) + m.WIDTH - 1) // m.WIDTH, 'words': m.words, 'terrain': terrain,
             'terrainNames': {str(k): v for k, v in TERRAIN_NAMES.items()}, 'impassable': sorted(IMPASSABLE),
@@ -3727,6 +3734,12 @@ def unit_label(cid):
     t, r = unit_lookup().get(cid, (None, None))
     if r is not None and r.get('_name'):
         return r['_name']
+    if r is not None and str(r.get('name_id', '')).isdigit():
+        nt = need_project().table('names')
+        nm = next((x.get('name') for x in (nt.rows if nt else [])
+                   if x.get('kind') == 'character' and x.get('id') == str(r['name_id'])), '')
+        if nm:
+            return nm
     if cid in (0, 0xFFFF):
         return 'anyone'
     try:
@@ -4123,20 +4136,27 @@ def chapter_endings(ch):
     return out
 
 
+def castle_holders(ch):
+    """{castle index: army slot holding it} at the start of chapter ch."""
+    at = need_project().table('armies')
+    out = {}
+    for slot, army in _chapter_slots(ch).items():
+        row = next((r for r in at.rows if r.get('army') == str(army)), None) if at else None
+        for c in (row.get('castles') or '').split(';') if row else []:
+            if c.strip().isdigit():
+                out[int(c)] = slot
+    return out
+
+
 def api_wincond(b, q):
     """GET ?ch: how the chapter is won and what can win it.  POST {ch, line, kind: 'seize', loc},
     {ch, line, kind: 'turn', turn}, {kind: 'boss', unit} or {kind: 'rout', slots}: rewrites that ending's condition (its flag and action stay)."""
     p = need_project()
     ch = int((b or {}).get('ch', q.get('ch', ['0'])[0]))
     name = chapter_file(ch)
-    lt, at = p.table('locations'), p.table('armies')
-    holders = {}
+    lt = p.table('locations')
     names = army_names(ch)
-    for slot, army in _chapter_slots(ch).items():
-        row = next((r for r in at.rows if r.get('army') == str(army)), None) if at else None
-        for c in (row.get('castles') or '').split(';') if row else []:
-            if c.strip().isdigit():
-                holders[int(c)] = names.get(slot, f'army slot {slot}')
+    holders = {k: names.get(sl, f'army slot {sl}') for k, sl in castle_holders(ch).items()}
     castles = [{'index': _num(r['index']), 'name': r.get('_castle_name') or f"castle {r['index']}", 'x': r.get('x'), 'y': r.get('y'),
                 'holder': holders.get(_num(r['index']), '')}
                for r in (lt.rows if lt else []) if r.get('chapter') == str(ch) and r.get('kind') == 'castle']

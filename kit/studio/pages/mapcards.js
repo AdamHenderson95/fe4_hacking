@@ -114,9 +114,11 @@ export function mapActions(ctx) {
 
   // defaults for a new unit: copy the nearest enemy (not your army) in this chapter
   function nearestTemplate(x, y) {
+    // the nearest soldier: a named character's class and items (a boss, a prince) make a poor default
     let best = null, bd = 1e9;
-    for (const u of units()) {
-      if (Number(u.army_slot) === 0) continue;
+    const all = units().filter(u => Number(u.army_slot) !== 0);
+    const soldiers = all.filter(u => u.table === 'units_generic');
+    for (const u of soldiers.length ? soldiers : all) {
       const d = Math.abs(Number(u.x) - x) + Math.abs(Number(u.y) - y);
       if (d < bd) { bd = d; best = u; }
     }
@@ -171,7 +173,7 @@ export function mapActions(ctx) {
       sep();
       add('Event when someone reaches here…', () => eventCard('area', { x1: Math.max(0, x - 1), y1: Math.max(0, y - 1), x2: x + 1, y2: y + 1 }));
       if (site?.kind === 'village') add('Village visit event…', () => eventCard('visit', { loc: Number(site.index) }));
-      if (site?.kind === 'castle' && !(M.endings || []).some(e => e.kind === 'seize' && e.loc === Number(site.index))) {
+      if (site?.kind === 'castle' && site.holderSlot !== 0 && !(M.endings || []).some(e => e.kind === 'seize' && e.loc === Number(site.index))) {
         add(`Taking ${site.name || 'this castle'} wins the chapter`, () => setWin({ kind: 'seize', loc: Number(site.index) }));
       }
       if (!site && inArea(x, y)) add('A character arrives here…', () => arrivalCard(x, y));

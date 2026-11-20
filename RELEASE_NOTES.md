@@ -1,3 +1,19 @@
+# Builder of the Holy War 1.3.1
+
+A full test pass of the editor (every page, every chapter, the map cards, builds on Linux and Windows, the
+new 1.3 features in the game) and the fixes it led to.
+
+### Fixed
+- Unnamed enemy commanders (Kinbaith, Gandolf, Elliot…) showed as "unit" in win conditions and event
+  descriptions; they now show their names.
+- **Place a unit** no longer copies a nearby boss's class and weapons as the starting choice: it starts from
+  the nearest ordinary soldier.
+- The right-click menu no longer offers "Taking this castle wins the chapter" on a castle you already hold.
+
+### New for people working on the editor
+- `dev/selftest.py` and `dev/pagetour.js`: an automatic check of the editor (see "Also included" in the
+  manual).
+
 # Builder of the Holy War 1.3
 
 Making story events easier: characters who come onto the map during a chapter, more ways to win a chapter, and

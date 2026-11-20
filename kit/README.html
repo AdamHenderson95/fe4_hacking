@@ -9,7 +9,7 @@ th{background:#f6f6f8}
 </style></head>
 <body>
 <h1>fe4kit: FE4 hacking toolkit (Project Naga ROM)</h1>
-<p><strong>Builder of the Holy War 1.3</strong> (1.0 was the first public release; test
+<p><strong>Builder of the Holy War 1.3.1</strong> (1.0 was the first public release; test
 builds were numbered up to v57, and the "kit vNN" notes below refer to those).
 1.1 added right-click cards on the Maps page for placing units, reinforcements
 and events, danger zones, and testing a chapter in the PC port. 1.2 adds what
@@ -2028,6 +2028,12 @@ Only one scene plays per event check, so an event should start one scene.</p>
 <li><strong><code>cpu65816.py</code>:</strong> a small 65816 CPU emulator. It measures command lengths by running the game's own handlers.</li>
 <li><strong><code>dis65816.py</code>:</strong> a 65816 disassembler for reading the game's code: <code>python dis65816.py rom.smc 848397 40 --m16 --x16</code>.</li>
 <li><strong><code>dev/</code>:</strong> the headless test harness used to verify edits, <code>ch6start.py</code> (see "Generation 2"), plus <code>snes9x_trace.patch</code>.</li>
+<li><code>selftest.py</code> (1.3.1): <code>python dev/selftest.py ROM WORKDIR</code> extracts your ROM and checks that an unedited
+    build is byte-identical, that every page's data loads for every chapter, and that one edit of each kind
+    (characters, items, classes, map units, win conditions, arriving characters, talks, castle-less
+    chapters, undo/redo) survives a build and a re-extract. It prints one line per check.</li>
+<li><code>pagetour.js</code> (1.3.1): <code>node dev/pagetour.js URL SHOTS</code> (needs Playwright) opens every page and every
+    chapter in a running editor, clicks through the map's right-click cards and reports any errors.</li>
 <li>The patch adds read, write and exec tracing to Snes9x (upstream commit <code>1bcc369</code>).</li>
 <li>It's how the engine routines in <code>ROM_MAP.md</code> were located.</li>
 <li>To build it, apply the patch, then run <code>make</code> in <code>snes9x/libretro</code>.</li>
