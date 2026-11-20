@@ -1,27 +1,41 @@
 # Builder of the Holy War 1.2
 
-Everything a brand-new chapter needs, from the **Maps** page and its right-click menu. Each change is one
-Ctrl+Z. The PC port is unchanged (1.0.1).
+Everything a brand-new chapter needs. Most of it is on the **Maps** page: in the buttons above the map and in
+the right-click menu. Every change is one Ctrl+Z. The PC port is unchanged (1.0.1).
 
+### New
 - **★ Win condition:** the chapter ends when you take a castle you pick, or when a turn starts ("survive
   until turn 8"). The chapter's own ending scene, the Save Game screen and the next chapter follow as before.
-  Castles that win show a ★.
-- **Chapter title:** type a new title and the editor draws the title card in the game's style (light letters,
-  black outline), with a preview of the card. The name in the game's text changes too.
+  The winning castle shows a ★ on the map.
+- **Chapter title:** type a new title and the editor draws the title card in the game's style (light letters
+  with a black outline), with a preview of the card. Pick the font, size and width. The chapter's name in the
+  game's text and in the editor's chapter list changes too.
 - **Opening scene:** build what plays when the chapter starts from simple steps: music, camera, units
   arrive, a conversation over the map, a pause, fade the music. Replace the game's opening (its map set-up is
-  kept) or play your steps after it.
-- **Add and remove castles and villages:** right-click an empty cell. A new one can copy the map tiles of one
-  of the chapter's own; a castle gets a name and the army that holds it. Removing one keeps the numbering in
-  order and moves events, armies and enemy orders along with it.
+  always kept) or keep it and play your steps after it.
+- **Add and remove castles and villages:** right-click an empty cell to add one, or right-click one to
+  remove it. A new one can copy the map tiles of one of the chapter's own castles or villages; a castle gets a
+  name and the army that holds it, a village its gold. Removing one keeps the numbering in order and updates
+  the events, armies and enemy orders that point at the others. Up to 16 per chapter.
 - **New first-generation characters:** **+ New character** on the Characters page. The game has 24
   character places and all are used, so a new character takes the place of someone your story leaves out
   (their love and children rules come with it). It can start in Sigurd's army instead of them.
-- **New armies:** **+ New army** on the Armies & AI page adds an army to the chapter in the next free slot,
-  working like one you pick (side, relations, AI programs).
-- **Fix:** new things written to free space never start at an address ending in `0000` (the game reads that
-  as "nothing" in places).
-- The step-by-step guide "Your first chapter" now uses all of these.
+- **New armies:** **+ New army** on the Armies & AI page adds an army to the chapter in its next free slot,
+  with its own phase, working like an army you pick (its side, allies and enemies, and AI orders).
+
+### Fixed
+- New data the build puts in free space never starts at an address ending in `0000`, which the game reads
+  as "nothing" in places.
+- Map cards close when you go to another page, and Esc closes any card even before you click in it.
+
+### Good to know
+- A new character's name can show blank in unit lists that have no room left for drawn names (new
+  children have the same limit).
+- A new army shares the AI orders of the army it copies: changing one changes both.
+- Win conditions are "take a castle" and "survive until a turn" for now. Chapter 2's ending is part of its
+  story sequence and can't be changed.
+
+The guide **Your first chapter** walks through making a chapter with all of this.
 
 Download **BuilderOfTheHolyWar-1.2.zip** and replace your old editor folder's files with it; your projects
 are kept.
