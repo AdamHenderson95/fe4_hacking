@@ -230,6 +230,18 @@ def edits(rom, work):
         expect.append(('chapter 1 narration edited', lambda dd: 'Sigurd the Test' in open(os.path.join(dd, 'events', 'dialogue.txt'), encoding='utf-8').read()))
     check('edit: world map narration text', e_narration)
 
+    def e_caption():
+        C = S.api_captions({}, {})
+        assert len(C['captions']) == 13, len(C['captions'])
+        px = ['0'] * 4096
+        for y in range(4, 12):                       # a bar in the middle of the strip
+            for x in range(96, 160):
+                px[y * 256 + x] = 'f'
+        S.api_captions({'i': 4, 'text': 'A test caption', 'px': ''.join(px)}, {})
+        captions_px.append(''.join(px))
+    captions_px = []
+    check('edit: an opening caption', e_caption)
+
     def e_undo_redo():
         n = len(p.table('deploy').rows)
         S.api_mapunit({'op': 'add', 'ch': 0, 'x': 51, 'y': 13, 'list': 0, 'slot': 1, 'orders': 1, 'char_id': 69}, {})
@@ -251,6 +263,17 @@ def edits(rom, work):
     check('edits: re-extract the built ROM', reextract)
     for desc, fn in expect:
         check(f'kept: {desc}', lambda fn=fn: _assert(fn(back)))
+
+    def caption_kept():
+        import fe4captions
+        rom2 = open(out, 'rb').read()
+        pics = fe4captions.read(rom2)
+        got = ''.join('%x' % v for v in pics[4])
+        assert got == captions_px[0], 'caption 5 differs in the built ROM'
+        o = fe4captions._fo(fe4captions.SCROLLS) + 4
+        assert rom2[o] == fe4captions.CENTRED, rom2[o]
+    if captions_px:
+        check('kept: caption 5 in the built ROM, centred', caption_kept)
 
     def rebuild_same():
         out2 = os.path.join(work, 'edit2.smc')

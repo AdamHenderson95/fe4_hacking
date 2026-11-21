@@ -12,6 +12,41 @@ const LAYERS = {
     limits: 'Two palettes of 15 colours, at most 128 sprites (16 × 16 squares) and 356 sprite tiles: roughly a picture the size of the original emblem.' },
 };
 
+const CAP_FONTS = ['Georgia', 'Palatino Linotype', 'Book Antiqua', 'Garamond', 'Times New Roman', 'Cambria', 'Constantia', 'serif'];
+const CAP_GREYS = [0, 0, 8, 16, 40, 48, 56, 64, 72, 80, 88, 104, 120, 144, 168, 200];
+
+/** Words as a caption picture: 256 x 16 colour numbers 0-15 (hex digits), light grey on black, centred. */
+export function renderCaption(text, { font = 'Georgia', size = 12 } = {}) {
+  const S = 4, c = document.createElement('canvas'), g = c.getContext('2d');
+  const f = `${size * S}px "${font}", serif`;
+  g.font = f;
+  const tw = Math.ceil(g.measureText(text).width);
+  c.width = tw + 8 * S; c.height = 16 * S;
+  g.font = f; g.fillStyle = '#fff'; g.strokeStyle = '#fff'; g.lineWidth = 0.45 * S; g.lineJoin = 'round';
+  g.textBaseline = 'alphabetic';
+  g.fillText(text, 4 * S, 12 * S);
+  g.strokeText(text, 4 * S, 12 * S);            // a little heavier, like Naga's letters
+  const w = Math.max(1, Math.round(c.width / S));
+  const d = document.createElement('canvas'); d.width = w; d.height = 16;
+  const dg = d.getContext('2d');
+  dg.imageSmoothingEnabled = true; dg.imageSmoothingQuality = 'high';
+  dg.drawImage(c, 0, 0, w, 16);
+  const a = dg.getImageData(0, 0, w, 16).data;
+  let x0 = w, x1 = -1;
+  for (let x = 0; x < w; x++) for (let y = 0; y < 16; y++) if (a[(y * w + x) * 4 + 3] > 16) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); }
+  const out = new Array(4096).fill('0');
+  if (x1 < 0) return { px: out.join(''), wide: false };
+  const tw2 = x1 - x0 + 1, ox = Math.floor((256 - tw2) / 2);
+  for (let y = 0; y < 16; y++) for (let x = x0; x <= x1; x++) {
+    const v = a[(y * w + x) * 4 + 3] * 200 / 255, X = ox + x - x0;
+    if (X < 0 || X >= 256 || v < 6) continue;
+    let best = 0;
+    for (let k = 2; k < 16; k++) if (Math.abs(CAP_GREYS[k] - v) < Math.abs(CAP_GREYS[best] - v)) best = k;
+    out[y * 256 + X] = best.toString(16);
+  }
+  return { px: out.join(''), wide: tw2 > 256 };
+}
+
 export async function titlePage(root) {
   let T = await api('title');
   const k = Date.now().toString(36);
@@ -22,12 +57,13 @@ export async function titlePage(root) {
   const big = h('img', { class: 'tibig', width: 512, height: 448, alt: 'The title screen' });
   const viewSel = h('div', { class: 'mlayers', role: 'group', 'aria-label': 'Show' });
   const cards = h('div', { class: 'ticards' });
+  const capsBox = h('section', { class: 'sheet ticaps' }, h('p', { class: 'hint' }, 'Loading the opening\'s captions…'));
   root.append(h('div', { class: 'tipage' },
     h('section', { class: 'tishow' },
       h('div', { class: 'tihead' }, h('span', { class: 'hint' }, 'Show'), viewSel),
       big,
       h('p', { class: 'hint' }, 'This is the title after Start or after the opening. The menu and the Jugdral Chronology screens keep the game\'s own picture of the knights; the logo\'s moving shine works with any logo.')),
-    cards));
+    h('div', { class: 'ticol' }, cards, capsBox)));
 
   function drawView() {
     viewSel.replaceChildren(...[['project', 'Your title'], ['game', 'The game\'s']].map(([v, label]) =>
@@ -120,10 +156,62 @@ export async function titlePage(root) {
     im.src = u;
   }
 
-  drawView(); drawCards();
+  // ------------------------------------------------------------ the opening's captions (1.7)
+  async function drawCaptions() {
+    let C;
+    try { C = await api('captions'); } catch (e) { capsBox.replaceChildren(h('p', { class: 'hint' }, e.message)); return; }
+    const grey = C.greys;
+    const paint = (cv, px) => {
+      const g = cv.getContext('2d'), im = g.createImageData(256, 16);
+      for (let i = 0; i < 4096; i++) { const v = grey[parseInt(px[i], 16)]; im.data.set([v, v, v, 255], i * 4); }
+      g.putImageData(im, 0, 0);
+    };
+    capsBox.replaceChildren(
+      h('h3', {}, 'The opening\'s captions'),
+      h('p', { class: 'hint' }, 'The line of words under each story picture of the opening, before the title. Project Naga drew them as pictures; type new words and the editor draws them in the same style (light letters on black, 256 × 16 pixels).'),
+      ...C.captions.map(c => {
+        const look = { font: 'Georgia', size: 12, ...(c.look || {}) };
+        const cv = h('canvas', { class: 'ticap-cv', width: 256, height: 16, 'aria-label': `Caption ${c.i + 1}` });
+        const textIn = h('input', { class: 'in', value: c.text, placeholder: 'New words for this caption', 'aria-label': `Words for caption ${c.i + 1}` });
+        const fontSel = h('select', { class: 'in', 'aria-label': 'Font' }, CAP_FONTS.map(f => h('option', { value: f, selected: f === look.font }, f)));
+        const sizeIn = h('input', { class: 'in', type: 'number', min: 8, max: 16, value: look.size, 'aria-label': 'Size' });
+        const warn = h('span', { class: 'hint ticap-warn' });
+        let cur = null;
+        const show = () => {
+          const t = textIn.value.trim();
+          if (!t) { cur = null; warn.textContent = ''; paint(cv, c.custom ? c.px : c.orig); return; }
+          const r = renderCaption(t, { font: fontSel.value, size: Number(sizeIn.value) });
+          cur = r.px; paint(cv, r.px);
+          warn.textContent = r.wide ? 'Too wide: it is cut at the edges. Use fewer words or a smaller size.' : '';
+        };
+        for (const el of [textIn, fontSel, sizeIn]) el.addEventListener('input', show);
+        const save = h('button', { class: 'btn btn-gilt btn-sm', onclick: async () => {
+          if (!cur) { toast('Type the new words first.', true); return; }
+          try {
+            await api('captions', { i: c.i, text: textIn.value.trim(), px: cur, look: { font: fontSel.value, size: Number(sizeIn.value) } });
+            await refreshSession(); toast(`Caption ${c.i + 1} saved (Ctrl+Z undoes it)`); drawCaptions();
+          } catch (e) { toast(e.message, true); }
+        } }, 'Save');
+        const reset = c.custom ? h('button', { class: 'btn btn-line btn-sm', onclick: async () => {
+          try { await api('captions', { i: c.i, reset: true }); await refreshSession(); toast(`Caption ${c.i + 1}: the game's own again`); drawCaptions(); }
+          catch (e) { toast(e.message, true); }
+        } }, 'Use the original') : null;
+        const orig = h('canvas', { class: 'ticap-cv ticap-orig', width: 256, height: 16, title: 'The game\'s own caption' });
+        paint(orig, c.orig);
+        if (c.custom) paint(cv, c.px); else paint(cv, c.orig);
+        return h('div', { class: 'ticap' },
+          h('div', { class: 'ticap-num' }, String(c.i + 1)),
+          h('div', { class: 'ticap-main' },
+            h('div', { class: 'ticap-pics' }, h('div', {}, h('span', { class: 'hint' }, c.custom ? 'Yours' : 'Now'), cv),
+              c.custom ? h('div', {}, h('span', { class: 'hint' }, 'The game\'s'), orig) : null),
+            h('div', { class: 'ticap-row' }, textIn, fontSel, sizeIn, save, reset), warn));
+      }));
+  }
+
+  drawView(); drawCards(); drawCaptions();
   return {
     async refresh(change) {
-      if (!change || change.files?.length) { T = await api('title'); drawView(); drawCards(); }
+      if (!change || change.files?.length) { T = await api('title'); drawView(); drawCards(); drawCaptions(); }
     },
   };
 }

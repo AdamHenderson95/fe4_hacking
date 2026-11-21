@@ -38,6 +38,7 @@ import fe4maps                     # noqa: E402
 import fe4events                   # noqa: E402
 import fe4locations                # noqa: E402
 import fe4conds                    # noqa: E402
+import fe4captions                 # noqa: E402
 import fe4sprites                  # noqa: E402
 import fe4walk                     # noqa: E402
 import fe4mapbattle                # noqa: E402
@@ -54,7 +55,7 @@ import fe4skillanim                # noqa: E402
 from fe4project import Project, load_settings, save_settings   # noqa: E402
 
 APP = 'Builder of the Holy War'
-VERSION = '1.6'
+VERSION = '1.7'
 STATIC = os.path.join(KIT, 'studio')
 
 # ---------------------------------------------------------------- state
@@ -392,6 +393,52 @@ def chaptitle_data():
     p = project()
     blob = p.blob(fe4chaptitle.FILE).data if p else None
     return fe4chaptitle.parse(blob)
+
+
+# ---------------------------------------------------------------- opening captions (1.7)
+_CAPS = {}
+
+
+def captions_data():
+    p = project()
+    blob = p.blob(fe4captions.FILE).data if p else None
+    return fe4captions.parse(blob)
+
+
+def api_captions(b, q):
+    """GET: the opening's 13 captions: the game's pictures and the project's new ones (256 x 16 colour numbers
+    as hex digits).  POST {i, text, px, look?} or {i, reset: true}: one undo step."""
+    rom = rom_data()
+    if rom is None:
+        raise ValueError('Choose your FE4 ROM on the Project page first.')
+    if not fe4captions.known(rom):
+        raise ValueError("This ROM's opening is not the one the editor knows.")
+    data = captions_data()
+    if not b:
+        key = id(rom)
+        if _CAPS.get('key') != key:
+            _CAPS.update(key=key, orig=[''.join('%x' % v for v in pic) for pic in fe4captions.read(rom)])
+        orig = _CAPS['orig']
+        return {'greys': fe4captions.GREYS, 'captions': [
+            {'i': i, 'orig': o, 'custom': i in data, 'text': data.get(i, {}).get('text', ''),
+             'px': data.get(i, {}).get('px'), 'look': data.get(i, {}).get('look')} for i, o in enumerate(orig)]}
+    p = need_project()
+    i = int(b.get('i', -1))
+    if not 0 <= i < 13:
+        raise ValueError('No such caption.')
+    if b.get('reset'):
+        data.pop(i, None)
+    else:
+        text = ' '.join(str(b.get('text', '')).split())
+        if not text:
+            raise ValueError('Type the caption first.')
+        px = str(b.get('px', ''))
+        fe4captions.parse_px(px)
+        data[i] = {'text': text, 'px': px.lower()}
+        if b.get('look'):
+            data[i]['look'] = {k: b['look'][k] for k in ('font', 'size', 'width') if k in b['look']}
+    p.set_blob(fe4captions.FILE, fe4captions.dump(data))
+    return {'ok': True}
 
 
 def api_chaptitle(b, q):
@@ -6806,7 +6853,7 @@ def api_newchar(b, q):
 
 API = {('GET', 'session'): api_session, ('POST', 'ping'): api_ping, ('GET', 'table'): api_table,
        ('POST', 'tables'): api_tables, ('POST', 'set'): api_set, ('POST', 'undo'): api_undo,
-       ('GET', 'chaptitle'): api_chaptitle, ('POST', 'sites'): api_sites, ('POST', 'newchar'): api_newchar, ('POST', 'newarmy'): api_newarmy, ('POST', 'arrival'): api_arrival, ('GET', 'opening'): api_opening, ('POST', 'opening'): api_opening, ('POST', 'chaptitle'): api_chaptitle_set,
+       ('GET', 'chaptitle'): api_chaptitle, ('POST', 'sites'): api_sites, ('POST', 'newchar'): api_newchar, ('POST', 'newarmy'): api_newarmy, ('POST', 'arrival'): api_arrival, ('GET', 'opening'): api_opening, ('POST', 'opening'): api_opening, ('POST', 'chaptitle'): api_chaptitle_set, ('GET', 'captions'): api_captions, ('POST', 'captions'): api_captions,
        ('POST', 'redo'): api_redo, ('POST', 'save'): api_save, ('POST', 'open'): api_open,
        ('POST', 'rom'): api_set_rom, ('POST', 'new'): api_new_project, ('GET', 'job'): api_job,
        ('POST', 'build'): api_build, ('GET', 'battleanims'): api_battleanims, ('GET', 'battleinfo'): api_battleinfo,

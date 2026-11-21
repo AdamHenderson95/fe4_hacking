@@ -22,7 +22,7 @@ the Project Naga translation is recommended (headerless SHA-1
 3. Read `START HERE.txt` in the folder for the keys and the menu (F1).
 
 The editor is in the `fe4kit` folder of the port's zip, and the newest one is on
-its own as the latest **BuilderOfTheHolyWar** zip (1.6). Run
+its own as the latest **BuilderOfTheHolyWar** zip (1.7). Run
 `BuilderOfTheHolyWar.exe`; its manual is `README.html`.
 
 Both are Windows programs. They aren't signed yet, so Windows may show

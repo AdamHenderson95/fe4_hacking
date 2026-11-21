@@ -1,3 +1,11 @@
+# Builder of the Holy War 1.7
+
+### New
+- **The opening's captions** (Title screen page): the line of words under each of the 13 story pictures in the
+  opening ("In an age beyond living memory…"). Project Naga drew these as pictures, so the editor draws new ones
+  in the same style from the words you type, with a choice of font and size. The new caption is centred under
+  its picture in the game.
+
 # Builder of the Holy War 1.6
 
 ### New

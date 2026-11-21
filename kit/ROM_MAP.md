@@ -1621,6 +1621,22 @@ editor's opening builder writes (each verified on the Prologue in lsrun):
 - Free space at `$xx:0000` is never handed out: the decompression queue takes a `$xx:0000` source for
   "no job", and the first new message used to land at `$70:0000`.
 
+### The opening's captions (editor 1.7)
+
+Verified in lsrun (captions 1 and 3 replaced, both centred):
+
+- The opening's graphics script table ($97:F1xx-$97:F4xx, 11-byte records [source 24][destination 24][VRAM
+  word][size][flag]) has 13 caption records: destination `$7E:8B88`, VRAM `$7800`, sources `$41:5780` ..
+  `$41:8DC0` and `$42:0010` (compressed, `$80:AA02` format, 2,048 bytes = 64 4bpp tiles). The queue at
+  `$0448` (`$80:A63x` adds, `$80:A5E9` runs) unpacks them.
+- Tile t of a strip is drawn at x = (t % 16) * 8 + (t // 32) * 128, y = (t // 16 % 2) * 8; the BG1 map (rows
+  25-26 of `$7C00`, from the shared record at `$41:5710`) turns the strip by 64 px.
+- Each caption's BG1 scroll: byte k of `$99:FFE7` (`$9B:F159` copies it to `$7F:D8AC`, counting with
+  `$7F:D8AB`). Screen x shows strip x (scroll + 64) mod 256; Naga's captions sit off-centre in their strips
+  and the scroll centres them. The editor draws centred strips and writes 192.
+- Colours: palette 0, black to light grey (8-bit 0, 0, 8, 16, 40, 48, 56, 64, 72, 80, 88, 104, 120, 144, 168,
+  200) at full brightness; the opening fades it.
+
 ### World map narration (editor 1.6)
 
 Verified in lsrun (chapter 1's narration edited, shown in game):

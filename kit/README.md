@@ -1,6 +1,6 @@
 # fe4kit: FE4 hacking toolkit (Project Naga ROM)
 
-**Builder of the Holy War 1.6** (1.0 was the first public release; test
+**Builder of the Holy War 1.7** (1.0 was the first public release; test
 builds were numbered up to v57, and the "kit vNN" notes below refer to those).
 1.1 added right-click cards on the Maps page for placing units, reinforcements
 and events, danger zones, and testing a chapter in the PC port. 1.2 adds what
@@ -11,7 +11,8 @@ conditions (defeat a boss, rout armies) and chapters where your army starts
 without a castle. 1.4 adds lose conditions and **Check my hack**, which looks
 the whole project over for mistakes. 1.5 adds the **chapter timeline**: a
 chapter's story in order, from its opening to how it ends. 1.6 makes the
-world-map narration before each chapter editable. Free software
+world-map narration before each chapter editable, and 1.7 the captions of the
+opening's story pictures. Free software
 under the MIT license (`licenses/`).
 
 Make hacks and randomized games of Fire Emblem: Genealogy of the Holy War
@@ -642,6 +643,15 @@ default browser). The editor runs on your PC only: nothing is sent anywhere.
    can also draw them in any paint program. The menu and the Jugdral
    Chronology keep the game's knights; the logo's moving shine works with any
    logo, and the old logo's drop shadow is removed with it.
+
+   **The opening's captions** (1.7, further down the same page): the line of
+   words under each of the 13 story pictures of the opening ("In an age
+   beyond living memory…"). Project Naga drew them as pictures, so the editor
+   draws new ones: type the words, pick a font and size, and the preview
+   shows the 256 × 16 strip as the game will (light letters on black, 16
+   greys). **Save** keeps it, **Use the original** goes back. The build
+   centres each new caption under its picture. Kept in
+   `story_captions.json`.
 17. On the Project page, **Add unit stats to the map box** puts the PC port's
    MT / HIT / AS / AVO box into the ROMs and patches you build, so players
    on emulators get it too (the port can still switch it off).
