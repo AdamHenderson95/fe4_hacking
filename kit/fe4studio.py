@@ -56,7 +56,7 @@ import fe4skillanim                # noqa: E402
 from fe4project import Project, load_settings, save_settings   # noqa: E402
 
 APP = 'Builder of the Holy War'
-VERSION = '1.8'
+VERSION = '1.9'
 STATIC = os.path.join(KIT, 'studio')
 
 # ---------------------------------------------------------------- state
@@ -426,8 +426,9 @@ def api_storypics(b, q):
         out = []
         for sc in fe4story.SCENES:
             _layer, custom, note = story_layer(sc['key'])
-            out.append({'key': sc['key'], 'title': sc['title'], 'when': sc['when'], 'custom': custom, 'note': note,
-                        'tile_limit': sc['limit'], 'colour_limit': 15 * len(sc['rows'])})
+            out.append({'key': sc['key'], 'scene': sc['scene'], 'title': sc['title'], 'when': sc['when'],
+                        'custom': custom, 'note': note, 'w': sc['w'], 'h': sc['h'], 'bpp': sc['bpp'],
+                        'tile_limit': sc['limit'], 'colour_limit': fe4story.colour_limit(sc)})
         return {'scenes': out, 'w': fe4story.W, 'h': fe4story.H}
     p = need_project()
     key = b.get('key')
@@ -836,7 +837,7 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 with lock:
                     data = fe4story.png(story_layer(key, q.get('src', ['project'])[0])[0],
-                                        max(1, min(int(q.get('s', ['1'])[0]), 2)))
+                                        max(1, min(int(q.get('s', ['1'])[0]), 2)), fe4story.BY_KEY[key])
             except (ValueError, RuntimeError):
                 return self._send(404, 'no')
             return self._send(200, data, 'image/png', cache='c' in q)

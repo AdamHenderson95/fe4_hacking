@@ -1621,26 +1621,39 @@ editor's opening builder writes (each verified on the Prologue in lsrun):
 - Free space at `$xx:0000` is never handed out: the decompression queue takes a `$xx:0000` source for
   "no job", and the first new message used to land at `$70:0000`.
 
-### The opening's story pictures (editor 1.8)
+### The opening's story layers (editor 1.9; the paintings 1.8)
 
-Verified in lsrun (three scenes replaced at once, then the fourth; each shown in place):
+Verified in lsrun (1.8: the four paintings; 1.9: the five other layers replaced at once, each shown in place; the
+title screen after the opening unharmed). Every stream below was checked against VRAM dumps of its scene.
 
-| scene | BG1 tiles (compressed) | BG1 map (64 x 32) | tiles | rows | palette load |
-|---|---|---|---|---|---|
-| the devil's fire | `$F3:426A`, code `$9B:E1E3` (LDX #/LDA #) | `$F4:0F1E`, code `$9B:E20C` | 768 (VRAM $0000) | 3 | `$9B:E286 LDA $E0:2299,X` (15 colours) |
-| the tower | `$F6:4799`, record `$97:F1F4` | `$F5:222D`, record `$97:F1FF` | 512 | 3-4 | `$95:EADD LDA $E0:23ED,X` (31) |
-| the devil | `$F4:1F38`, record `$97:F2C5` | `$F4:3803`, record `$97:F2D0` | 448 (416 used) | 3-5 | `$95:EC93 LDA $E0:2315,X` (47) |
-| the holy dragon | `$F3:0E6F`, record `$97:F307` | `$F3:39EB`, record `$97:F312` | 512 (VRAM $4000) | 3-4 | `$95:ED11 LDA $E0:221D,X` (31) |
+| scene, layer | BG, bpp, map | tiles (compressed) | map (compressed) | tiles | colours | palette load |
+|---|---|---|---|---|---|---|
+| devil's fire, painting | BG1, 4, 64 x 32 | `$F3:426A`, code `$9B:E1E3` (LDX #/LDA #) | `$F4:0F1E`, code `$9B:E20C` | 768 | row 3 | `$9B:E286 LDA $E0:2299,X` (15) |
+| devil's fire, red clouds | BG2 (sub-screen, added), 4, 32 x 32 | `$F4:68D3`, code `$9B:E235` | `$F4:7CBD`, code `$9B:E25E` | 256 (VRAM $6000) | row 2 | `$9B:E28D LDA $E0:23B1,X` (15) |
+| tower, painting | BG1, 4, 64 x 32 | `$F6:4799`, record `$97:F1F4` | `$F5:222D`, record `$97:F1FF` | 512 | rows 3-4 | `$95:EADD LDA $E0:23ED,X` (31) |
+| tower, cliff | BG2, 4, 64 x 32 | `$F6:76FE`, record `$97:F1B2` | `$F5:24B7`, record `$97:F1BD` | 512 (VRAM $4000) | rows 6-7 | `$95:EAE4 LDA $E0:242B,X` (31) |
+| tower, dark clouds | BG3, 2, 64 x 32 | `$F4:7E55`, record `$97:F20A` | `$F5:27E5`, record `$97:F215` | 256 (VRAM $2000) | 2bpp palettes 4-7 (colours 17-31) | `$95:EB0C LDA $E0:23CF,X` (15) |
+| devil, painting | BG1, 4, 64 x 32 | `$F4:1F38`, record `$97:F2C5` | `$F4:3803`, record `$97:F2D0` | 448 | rows 3-5 | `$95:EC93 LDA $E0:2315,X` (47) |
+| holy dragon, painting | BG1, 4, 64 x 32 | `$F3:0E6F`, record `$97:F307` | `$F3:39EB`, record `$97:F312` | 512 | rows 3-4 | `$95:ED11 LDA $E0:221D,X` (31) |
+| time flows on, seal | BG1 (mode 3), 8, 32 x 32 | `$F5:2B03`, record `$97:F38B` | `$F5:580C`, record `$97:F396` | 128 (VRAM $3000) | 194 | `$9B:F405/F410/F41B LDA $E0:24E3,X` (a fade, 194) |
+| time flows on, sky | BG2, 4, 32 x 32 | `$94:E9EE`, record `$97:F35F` and code `$95:EE93` | `$F5:597A`, record `$97:F36A` and code `$95:EECB` | 256 (VRAM $1000) | row 7 | `$95:ED9D LDA $E0:2667,X` and `$95:F0A4` (halved, a later scene) (15) |
 
-- Palette loads copy colours 1-15 of the first row and on through the next rows into the buffer at `$0100`
-  (row r at `$0100 + 32r`), which is sent to CGRAM every frame. Row 0 (`$E0:2787`: black and greys) is shared by
-  all layers. The scenes' other palette rows are loaded next to these (e.g. `$95:EAE4 $E0:242B` the tower's
-  clouds, rows 6-7).
-- Other layers: the fire is BG2 on the sub-screen (added), the tower's clouds BG2 and BG3, the devil's light BG2;
-  the blue flames and the sparks are sprites. Later scenes (the light burst, the weapons, the mandala in mode 3)
-  are not replaceable yet.
+- Palette loads copy colours into the buffer at `$0100` (colour n at `$0100 + 2n`), which is sent to CGRAM every
+  frame. Row 0 (`$E0:2787`: black and greys) is shared by all layers and the captions.
+- The seal's table: entry i is colour 16 + i for i < 97, else colour 31 + i (found by writing i + 1 into the
+  table and reading CGRAM). Colours 113-127 are the sky's row 7, 225-255 the weapons' sprite palettes
+  (`$95:EDAE LDA $E0:2685,X`). `$9B:F3F3` fades the table in through `$7E:8B88/8D88/8F88` (red, green, blue).
+- The seal can't take more tiles: a 256-tile seal (record size $4000) showed garbage in its lower half; VRAM
+  $4000 is used during that scene.
 - The first scene is loaded by code at `$9B:E1D0`-`$9B:E2A3`; the rest by the opening's graphics script
-  (`$97:F1xx`). `$97:B2xx`-`$97:B6xx` (another script) loads some of the same pictures and keeps the game's.
+  (`$97:F1xx`, decompressed to `$7E:8B88`, then sent to VRAM). `$97:B2xx`-`$97:B6xx` (another script) loads some
+  of the same pictures and keeps the game's.
+- Not replaceable (their colours are made by code each frame): the burst scene's sun ring (BG1 `$F0:19F4` /
+  map `$F5:299B`, row 4 animated), its rays (BG2 `$F0:2266` at tile $200 / map `$F0:3141`, row 2 built by
+  `$7F:D8B6`'s task from row 1 `$E0:20FC`), the streaks (BG3 `$F0:2FC1` / `$F0:39A2`, shared with the devil's
+  scene), the devil's rays (BG2 `$F0:3A1C` / `$F0:6B78`, row 2), the holy dragon's golden burst (BG2 `$F2:7E72` /
+  `$F3:3663`, row 2 cycling `$E0:225B`). Sprites: the twelve gods' flames (`$F5:0A88` at VRAM $6000), the
+  weapons and sparks (`$F5:47D4` at $2000).
 
 ### The opening's captions (editor 1.7)
 

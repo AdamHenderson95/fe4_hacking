@@ -94,6 +94,15 @@ def reads(rom, work):
     check('read scene 1', lambda: S.api_scene({}, q(id=1)))
     check('read battlemotions', lambda: S.api_battlemotions({}, q(row=0)))
     check('read mbplayer', lambda: S.api_mbplayer({}, q(fig=0)))
+
+    def r_story():
+        import fe4story
+        res = S.api_storypics({}, {})
+        assert len(res['scenes']) == len(fe4story.SCENES) and not any(x['custom'] for x in res['scenes'])
+        for sc in fe4story.SCENES:
+            px = fe4story.render(S.story_layer(sc['key'])[0], sc)
+            assert len(px) == sc['w'] * sc['h'] and sum(c is not None for c in px) > 500, sc['key']
+    check('read storypics: every layer draws', r_story)
     for ch in range(nch):
         for fn in ('events', 'map', 'mapinfo', 'armies', 'villages', 'wincond', 'losecond', 'timeline', 'opening', 'chaptitle', 'tileset'):
             check(f'read {fn} ch{ch}', lambda fn=fn, ch=ch: getattr(S, 'api_' + fn)({}, q(ch=ch)))
@@ -242,26 +251,28 @@ def edits(rom, work):
     captions_px = []
     check('edit: an opening caption', e_caption)
 
-    def e_story():
+    def e_story(key):
         import base64
         import fe4story
         import fe4gfx
-        lay = fe4story.read_scene(open(rom, 'rb').read(), fe4story.BY_KEY['tower'])
-        png = fe4story.png(lay)
+        sc = fe4story.BY_KEY[key]
+        lay = fe4story.read_scene(open(rom, 'rb').read(), sc)
+        png = fe4story.png(lay, 1, sc)
         w, h, px = fe4gfx.read_png(png)
         rows = []
-        for y in range(h):                      # a red box in the corner, the rest as the game has it
+        for y in range(h):                      # a red box near the middle, the rest as the game has it
             r = bytearray()
             for x in range(w):
                 c = px[y * w + x]
-                r += bytes((200, 30, 30, 255) if x < 64 and y < 48 else c)
+                r += bytes((200, 30, 30, 255) if 96 <= x < 160 and 96 <= y < 144 else c)
             rows.append(bytes(r))
         data = fe4gfx.png(w, h, rows)
-        res = S.api_storypics({'key': 'tower', 'png': base64.b64encode(data).decode()}, {})
-        story.append(fe4story.converted(proj, 'tower', data)[0])
-        assert res['note']['tiles'] <= 512, res['note']
-    story = []
-    check('edit: an opening story picture', e_story)
+        res = S.api_storypics({'key': key, 'png': base64.b64encode(data).decode()}, {})
+        story[key] = fe4story.converted(proj, key, data)[0]
+        assert res['note']['tiles'] <= sc['limit'], res['note']
+    story = {}
+    for key in ('tower', 'tower_clouds', 'seal', 'sky'):
+        check(f'edit: an opening story picture ({key})', lambda key=key: e_story(key))
 
     def e_undo_redo():
         n = len(p.table('deploy').rows)
@@ -296,16 +307,22 @@ def edits(rom, work):
     if captions_px:
         check('kept: caption 5 in the built ROM, centred', caption_kept)
 
-    def story_kept():
+    def story_kept(key):
         import fe4story
         import fe4lz
         rom2 = open(out, 'rb').read()
-        sc = fe4story.BY_KEY['tower']
+        sc = fe4story.BY_KEY[key]
+        want = story[key]
         tiles = fe4lz.decompress(rom2, fe4story._ptr(rom2, sc['tiles'][1][0]))
-        assert tiles[:len(story[0]['tiles'])] == story[0]['tiles'], 'the tower tiles differ in the built ROM'
-        assert fe4story._ptr(rom2, sc['tiles'][1][0]) != sc['tiles'][0], 'the tower still points at the game\'s tiles'
-    if story:
-        check('kept: the tower picture in the built ROM', story_kept)
+        assert tiles[:len(want['tiles'])] == want['tiles'], f'the {key} tiles differ in the built ROM'
+        for part in ('tiles', 'map'):
+            got = {fe4story._ptr(rom2, ref) for ref in sc[part][1]}
+            assert len(got) == 1 and sc[part][0] not in got, f'the {key} {part} references: {got}'
+        built = fe4story.read_scene(rom2, sc)
+        assert fe4story.render(built, sc) == fe4story.render({**want, 'pals': {**built['pals'], **want['pals']}}, sc), \
+            f'the {key} picture draws differently from the built ROM'
+    for key in story:
+        check(f'kept: the {key} picture in the built ROM', lambda key=key: story_kept(key))
 
     def rebuild_same():
         out2 = os.path.join(work, 'edit2.smc')

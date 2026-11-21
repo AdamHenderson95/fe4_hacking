@@ -1,3 +1,16 @@
+# Builder of the Holy War 1.9
+
+### New
+- **The opening's story pictures** now cover the layers around the paintings too (Title screen page, grouped by
+  scene): the devil's fire's red clouds, the tower's cliff and dark clouds, and the last scene's seal and sky.
+  The seal can have up to 194 colours. The sky and the red clouds repeat as they scroll, so make their edges
+  meet.
+
+### Not replaceable
+- The burst of light and its sun ring, the rays and streaks, and the holy dragon's golden burst: the game makes
+  their colours as they play (cycling and fading), so a new picture would not keep its colours. The flames,
+  weapons and sparks are sprites.
+
 # Builder of the Holy War 1.8
 
 ### New

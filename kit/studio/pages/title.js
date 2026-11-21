@@ -215,48 +215,56 @@ export async function titlePage(root) {
     let P;
     try { P = await api('storypics'); } catch (e) { picsBox.replaceChildren(h('p', { class: 'hint' }, e.message)); return; }
     const purl = (key, src) => `/gfx/story/${key}.png?src=${src}&c=${picVer}`;
+    const card = sc => {
+      const file = h('input', { type: 'file', accept: 'image/*', hidden: true });
+      file.onchange = () => { const f = file.files[0]; file.value = ''; if (f) importPicture(sc, f); };
+      const note = sc.note ? `${sc.note.tiles} of ${sc.note.tile_limit} tiles, ${sc.note.colours} of ${sc.note.colour_limit} colours${sc.note.exact ? '' : ' (reduced)'}.` : `${sc.w} × ${sc.h}; up to ${sc.tile_limit} tiles and ${sc.colour_limit} colours.`;
+      return h('article', { class: 'tipic' + (sc.w < 512 ? ' tipic-sq' : '') },
+        h('div', { class: 'ticard-head' }, h('h4', {}, sc.title), sc.custom ? h('span', { class: 'chip ptchip' }, 'Replaced in this project') : null),
+        h('p', { class: 'hint', style: 'margin:0 0 6px' }, sc.when),
+        h('img', { class: 'tipic-img checker', src: purl(sc.key, 'project'), width: sc.w, height: sc.h, alt: `${sc.scene}: ${sc.title}` }),
+        h('p', { class: 'hint' }, note),
+        h('div', { class: 'ticap-row' },
+          h('button', { class: 'btn btn-gilt btn-sm', onclick: () => file.click() }, 'Replace with a picture…'),
+          h('a', { class: 'btn btn-line btn-sm', href: purl(sc.key, 'project'), download: `story_${sc.key}.png` }, 'Download PNG'),
+          sc.custom ? h('button', { class: 'btn btn-line btn-sm danger', onclick: async () => {
+            try { await api('storypics', { key: sc.key, reset: true }); picVer = Date.now().toString(36); await refreshSession(); toast(`${sc.scene}, ${sc.title.toLowerCase()}: the game's own again`); drawPictures(); }
+            catch (e) { toast(e.message, true); }
+          } }, 'Use the original') : null),
+        file);
+    };
+    const scenes = [];
+    for (const sc of P.scenes) {
+      let g = scenes.find(x => x.name === sc.scene);
+      if (!g) scenes.push(g = { name: sc.scene, layers: [] });
+      g.layers.push(sc);
+    }
     picsBox.replaceChildren(
       h('h3', {}, 'The opening\'s story pictures'),
-      h('p', { class: 'hint' }, `The main painting of four scenes of the opening. Each is ${P.w} × ${P.h}: the camera pans across it, so the screen shows part of it at a time. Transparent parts show the layers behind (fire, clouds, light), which stay the game's. Download one to see its layout, paint over it and put it back.`),
-      ...P.scenes.map(sc => {
-        const file = h('input', { type: 'file', accept: 'image/*', hidden: true });
-        file.onchange = () => { const f = file.files[0]; file.value = ''; if (f) importPicture(sc, f); };
-        const note = sc.note ? `${sc.note.tiles} of ${sc.note.tile_limit} tiles, ${sc.note.colours} of ${sc.note.colour_limit} colours${sc.note.exact ? '' : ' (reduced)'}.` : `Up to ${sc.tile_limit} tiles and ${sc.colour_limit} colours.`;
-        return h('article', { class: 'tipic' },
-          h('div', { class: 'ticard-head' }, h('h3', {}, sc.title), sc.custom ? h('span', { class: 'chip ptchip' }, 'Replaced in this project') : null),
-          h('p', { class: 'hint', style: 'margin:0 0 6px' }, sc.when),
-          h('img', { class: 'tipic-img checker', src: purl(sc.key, 'project'), width: P.w, height: P.h, alt: sc.title }),
-          h('p', { class: 'hint' }, note),
-          h('div', { class: 'ticap-row' },
-            h('button', { class: 'btn btn-gilt btn-sm', onclick: () => file.click() }, 'Replace with a picture…'),
-            h('a', { class: 'btn btn-line btn-sm', href: purl(sc.key, 'project'), download: `story_${sc.key}.png` }, 'Download PNG'),
-            sc.custom ? h('button', { class: 'btn btn-line btn-sm danger', onclick: async () => {
-              try { await api('storypics', { key: sc.key, reset: true }); picVer = Date.now().toString(36); await refreshSession(); toast(`${sc.title}: the game's own again`); drawPictures(); }
-              catch (e) { toast(e.message, true); }
-            } }, 'Use the original') : null),
-          file);
-      }));
+      h('p', { class: 'hint' }, 'The background layers of the opening\'s scenes, front layer first. The camera pans across the wide ones, so the screen shows part of each at a time. Transparent parts show the layers behind. Download one to see its layout, paint over it and put it back. The burst of light, the rays, the flames and the weapons stay the game\'s: their colours are made as they play.'),
+      ...scenes.map(g => h('section', { class: 'tiscene' }, h('h3', { class: 'tiscene-h' }, g.name), ...g.layers.map(card))));
 
     function importPicture(sc, f) {
       const u = URL.createObjectURL(f);
       const im = new Image();
       im.onload = () => {
-        const cv = h('canvas', { class: 'tipic-img checker', width: P.w, height: P.h });
+        const W = sc.w, H = sc.h;
+        const cv = h('canvas', { class: 'tipic-img checker', width: W, height: H });
         const fitSel = h('select', { class: 'in', 'aria-label': 'Fit' },
           [['fill', 'Fill the picture (crop)'], ['fit', 'Fit inside (transparent around)'], ['as', 'As it is (top left)']].map(([v, t]) => h('option', { value: v }, t)));
-        if (im.width === P.w && im.height === P.h) fitSel.value = 'as';
+        if (im.width === W && im.height === H) fitSel.value = 'as';
         const draw = () => {
-          const g = cv.getContext('2d'); g.clearRect(0, 0, P.w, P.h); g.imageSmoothingQuality = 'high';
-          const k = fitSel.value === 'as' ? 1 : fitSel.value === 'fill' ? Math.max(P.w / im.width, P.h / im.height) : Math.min(P.w / im.width, P.h / im.height);
+          const g = cv.getContext('2d'); g.clearRect(0, 0, W, H); g.imageSmoothingQuality = 'high';
+          const k = fitSel.value === 'as' ? 1 : fitSel.value === 'fill' ? Math.max(W / im.width, H / im.height) : Math.min(W / im.width, H / im.height);
           const w = im.width * k, hh = im.height * k;
-          const x = fitSel.value === 'as' ? 0 : (P.w - w) / 2, y = fitSel.value === 'as' ? 0 : (P.h - hh) / 2;
+          const x = fitSel.value === 'as' ? 0 : (W - w) / 2, y = fitSel.value === 'as' ? 0 : (H - hh) / 2;
           g.drawImage(im, x, y, w, hh);
         };
         fitSel.onchange = draw;
         const cancel = h('button', { class: 'btn btn-line' }, 'Cancel');
         const ok = h('button', { class: 'btn btn-gilt' }, 'Use this picture');
-        const modal = h('div', { class: 'modal', role: 'dialog', 'aria-modal': 'true', 'aria-label': `Replace ${sc.title}` },
-          h('div', { class: 'modal-box tipic-dlg' }, h('h2', {}, `Replace "${sc.title}"`),
+        const modal = h('div', { class: 'modal', role: 'dialog', 'aria-modal': 'true', 'aria-label': `Replace ${sc.scene}: ${sc.title}` },
+          h('div', { class: 'modal-box tipic-dlg' }, h('h2', {}, `Replace "${sc.scene}: ${sc.title.toLowerCase()}"`),
             cv, h('div', { class: 'itgrid wide' }, h('label', { class: 'lbl' }, h('span', {}, 'Fit'), fitSel)),
             h('p', { class: 'hint' }, `The editor reduces it to ${sc.colour_limit} colours and ${sc.tile_limit} different 8 × 8 tiles (mirrored tiles count once; similar ones are merged when there are too many).`),
             h('div', { class: 'modal-actions' }, cancel, ok)));
@@ -269,7 +277,7 @@ export async function titlePage(root) {
             const r = await api('storypics', { key: sc.key, png });
             modal.remove(); picVer = Date.now().toString(36);
             await refreshSession(); drawPictures();
-            toast(`${sc.title} replaced: ${r.note.tiles} tiles, ${r.note.colours} colours (Ctrl+Z undoes it)`);
+            toast(`${sc.scene}, ${sc.title.toLowerCase()} replaced: ${r.note.tiles} tiles, ${r.note.colours} colours (Ctrl+Z undoes it)`);
           } catch (e) { ok.disabled = false; ok.textContent = 'Use this picture'; toast(e.message, true); }
         };
         document.body.append(modal); draw(); ok.focus();

@@ -1,6 +1,6 @@
 # fe4kit: FE4 hacking toolkit (Project Naga ROM)
 
-**Builder of the Holy War 1.8** (1.0 was the first public release; test
+**Builder of the Holy War 1.9** (1.0 was the first public release; test
 builds were numbered up to v57, and the "kit vNN" notes below refer to those).
 1.1 added right-click cards on the Maps page for placing units, reinforcements
 and events, danger zones, and testing a chapter in the PC port. 1.2 adds what
@@ -12,7 +12,8 @@ without a castle. 1.4 adds lose conditions and **Check my hack**, which looks
 the whole project over for mistakes. 1.5 adds the **chapter timeline**: a
 chapter's story in order, from its opening to how it ends. 1.6 makes the
 world-map narration before each chapter editable, 1.7 the captions of the
-opening's story pictures, and 1.8 the pictures themselves. Free software
+opening's story pictures, 1.8 the pictures themselves and 1.9 the layers
+around them (clouds, the cliff, the sky, the seal). Free software
 under the MIT license (`licenses/`).
 
 Make hacks and randomized games of Fire Emblem: Genealogy of the Holy War
@@ -644,18 +645,34 @@ default browser). The editor runs on your PC only: nothing is sent anywhere.
    Chronology keep the game's knights; the logo's moving shine works with any
    logo, and the old logo's drop shadow is removed with it.
 
-   **The opening's story pictures** (1.8, further down the same page): the
-   main painting of four scenes of the opening, the devil's fire, the tower,
-   the devil and the holy dragon. Each is 512 × 256; the camera pans across
-   it, so the screen shows part of it at a time. **Download PNG** gives the
-   painting as it is (use it as the layout to paint over), **Replace with a
-   picture…** fits a picture to 512 × 256 and reduces it to what the scene
-   allows: 15 colours for the fire (30 for the tower and the holy dragon, 45
-   for the devil) and 768 / 512 / 448 / 512 different 8 × 8 tiles (mirrored
+   **The opening's story pictures** (1.8; 1.9 adds the layers around them;
+   further down the same page): the background layers of the opening's
+   scenes, grouped by scene, front layer first:
+
+   | scene | layer | size | colours | different tiles |
+   |---|---|---|---|---|
+   | The devil's fire | the painting | 512 × 256 | 15 | 768 |
+   | | the red clouds (added on top: black adds nothing) | 256 × 256 | 15 | 256 |
+   | The tower | the painting | 512 × 256 | 30 | 512 |
+   | | the cliff | 512 × 256 | 30 | 512 |
+   | | the dark clouds | 512 × 256 | 12 (four sets of 3) | 256 |
+   | The devil | the painting | 512 × 256 | 45 | 448 |
+   | The holy dragon | the painting | 512 × 256 | 30 | 512 |
+   | Time flows on | the seal | 256 × 256 | 194 | 128 |
+   | | the sky | 256 × 256 | 15 | 256 |
+
+   The camera pans across the 512-wide ones, so the screen shows part of
+   each at a time; the red clouds and the sky scroll and repeat on all sides,
+   so make their edges meet. **Download PNG** gives a layer as it is (use it
+   as the layout to paint over), **Replace with a picture…** fits a picture
+   to the layer's size and reduces it to what the layer allows (mirrored
    tiles count once; similar ones are merged when there are too many).
-   Transparent parts show the layers behind it (the fire, the clouds, the
-   light), which stay the game's, as do the flames and sparks. **Use the
-   original** goes back. Kept as `story/<scene>.png`.
+   Transparent parts show the layers behind. The seal has room for only 128
+   tiles, so keep it about the size of the game's. **Use the original** goes
+   back. Kept as `story/<layer>.png`. Not replaceable: the burst of light
+   and its sun ring, the rays and streaks, the holy dragon's golden burst
+   (their colours are made by the game as they play), and the sprites: the
+   twelve gods' flames, the weapons and the sparks.
 
    **The opening's captions** (1.7, further down the same page): the line of
    words under each of the 13 story pictures of the opening ("In an age
