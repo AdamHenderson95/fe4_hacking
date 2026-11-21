@@ -1,3 +1,11 @@
+# Builder of the Holy War 1.8
+
+### New
+- **The opening's story pictures** (Title screen page): replace the main painting of four scenes of the opening:
+  the devil's fire, the tower, the devil and the holy dragon. **Download PNG** gives each painting to paint over.
+  **Replace with a picture…** fits yours and reduces it to the colours and tiles the scene allows. Transparent
+  parts show the scene's other layers (fire, clouds, light, the flames and sparks), which stay the game's.
+
 # Builder of the Holy War 1.7
 
 ### New

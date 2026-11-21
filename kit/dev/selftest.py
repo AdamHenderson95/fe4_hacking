@@ -242,6 +242,27 @@ def edits(rom, work):
     captions_px = []
     check('edit: an opening caption', e_caption)
 
+    def e_story():
+        import base64
+        import fe4story
+        import fe4gfx
+        lay = fe4story.read_scene(open(rom, 'rb').read(), fe4story.BY_KEY['tower'])
+        png = fe4story.png(lay)
+        w, h, px = fe4gfx.read_png(png)
+        rows = []
+        for y in range(h):                      # a red box in the corner, the rest as the game has it
+            r = bytearray()
+            for x in range(w):
+                c = px[y * w + x]
+                r += bytes((200, 30, 30, 255) if x < 64 and y < 48 else c)
+            rows.append(bytes(r))
+        data = fe4gfx.png(w, h, rows)
+        res = S.api_storypics({'key': 'tower', 'png': base64.b64encode(data).decode()}, {})
+        story.append(fe4story.converted(proj, 'tower', data)[0])
+        assert res['note']['tiles'] <= 512, res['note']
+    story = []
+    check('edit: an opening story picture', e_story)
+
     def e_undo_redo():
         n = len(p.table('deploy').rows)
         S.api_mapunit({'op': 'add', 'ch': 0, 'x': 51, 'y': 13, 'list': 0, 'slot': 1, 'orders': 1, 'char_id': 69}, {})
@@ -274,6 +295,17 @@ def edits(rom, work):
         assert rom2[o] == fe4captions.CENTRED, rom2[o]
     if captions_px:
         check('kept: caption 5 in the built ROM, centred', caption_kept)
+
+    def story_kept():
+        import fe4story
+        import fe4lz
+        rom2 = open(out, 'rb').read()
+        sc = fe4story.BY_KEY['tower']
+        tiles = fe4lz.decompress(rom2, fe4story._ptr(rom2, sc['tiles'][1][0]))
+        assert tiles[:len(story[0]['tiles'])] == story[0]['tiles'], 'the tower tiles differ in the built ROM'
+        assert fe4story._ptr(rom2, sc['tiles'][1][0]) != sc['tiles'][0], 'the tower still points at the game\'s tiles'
+    if story:
+        check('kept: the tower picture in the built ROM', story_kept)
 
     def rebuild_same():
         out2 = os.path.join(work, 'edit2.smc')

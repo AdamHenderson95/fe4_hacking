@@ -26,6 +26,7 @@ import fe4title as TITLE
 import fe4chaptitle as CT
 import fe4conds as CONDS
 import fe4captions as CAPS
+import fe4story as STORY
 import fe4mapbattle as MBT
 import fe4mapfx as MFX
 import fe4battle as BA
@@ -413,6 +414,7 @@ def build(rom_path, proj, out_path, ips=None, hover=False, msu=False):
     n += CT.apply(rom, proj, far, space)
     n += CONDS.apply(rom, proj, space)
     n += CAPS.apply(rom, proj, far)
+    n += STORY.apply(rom, proj, far)
     n += SPR.apply(rom, proj, space)
     n += WK.apply(rom, proj, far)
     n += MBT.apply(rom, proj, far, 72)

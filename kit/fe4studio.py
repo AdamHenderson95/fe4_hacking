@@ -39,6 +39,7 @@ import fe4events                   # noqa: E402
 import fe4locations                # noqa: E402
 import fe4conds                    # noqa: E402
 import fe4captions                 # noqa: E402
+import fe4story                    # noqa: E402
 import fe4sprites                  # noqa: E402
 import fe4walk                     # noqa: E402
 import fe4mapbattle                # noqa: E402
@@ -55,7 +56,7 @@ import fe4skillanim                # noqa: E402
 from fe4project import Project, load_settings, save_settings   # noqa: E402
 
 APP = 'Builder of the Holy War'
-VERSION = '1.7'
+VERSION = '1.8'
 STATIC = os.path.join(KIT, 'studio')
 
 # ---------------------------------------------------------------- state
@@ -385,6 +386,62 @@ def api_title_set(b, q):
         except (KeyError, ValueError):
             raise ValueError('That file could not be read as a PNG picture.')
     note = fe4title.converted(p.path, name, data)[1]       # ValueError: the reason it doesn't fit
+    p.set_blob(rel, data)
+    return {'ok': True, 'note': note}
+
+
+# ---------------------------------------------------------------- opening story pictures (1.8)
+_STORY = {}
+
+
+def story_layer(key, src='project'):
+    """(layer, custom, note) of a scene's painting, from the project's picture or the game."""
+    rom = rom_data()
+    if rom is None:
+        raise ValueError('Choose your FE4 ROM on the Project page first.')
+    sc = fe4story.BY_KEY[key]
+    ck = (id(rom), key)
+    if ck not in _STORY:
+        _STORY[ck] = fe4story.read_scene(rom, sc)
+    base = _STORY[ck]
+    p = project()
+    if src == 'project' and p is not None:
+        data = p.blob(f'{fe4story.FOLDER}/{key}.png').data
+        if data:
+            layer, note = fe4story.converted(p.path, key, data)
+            pals = dict(base['pals'])
+            pals.update(layer['pals'])
+            return {'tiles': layer['tiles'], 'map': layer['map'], 'pals': pals}, True, note
+    return base, False, None
+
+
+def api_storypics(b, q):
+    """GET: the opening's replaceable paintings.  POST {key, png (base64, 512x256)} or {key, reset: true}."""
+    rom = rom_data()
+    if rom is None:
+        raise ValueError('Choose your FE4 ROM on the Project page first.')
+    if not fe4story.known(rom):
+        raise ValueError("This ROM's opening is not the one the editor knows.")
+    if not b:
+        out = []
+        for sc in fe4story.SCENES:
+            _layer, custom, note = story_layer(sc['key'])
+            out.append({'key': sc['key'], 'title': sc['title'], 'when': sc['when'], 'custom': custom, 'note': note,
+                        'tile_limit': sc['limit'], 'colour_limit': 15 * len(sc['rows'])})
+        return {'scenes': out, 'w': fe4story.W, 'h': fe4story.H}
+    p = need_project()
+    key = b.get('key')
+    if key not in fe4story.BY_KEY:
+        raise ValueError('No such picture.')
+    rel = f'{fe4story.FOLDER}/{key}.png'
+    if b.get('reset'):
+        p.set_blob(rel, None)
+        return {'ok': True}
+    try:
+        data = base64.b64decode(b['png'])
+    except (KeyError, ValueError):
+        raise ValueError('That file could not be read as a PNG picture.')
+    note = fe4story.converted(p.path, key, data)[1]          # ValueError: why it doesn't fit
     p.set_blob(rel, data)
     return {'ok': True, 'note': note}
 
@@ -771,6 +828,18 @@ class Handler(BaseHTTPRequestHandler):
             except ValueError:
                 return self._send(404, 'no')
             return self._send(200, data, 'image/png', cache='c' in q) if data else self._send(404, 'no')
+        if path.startswith('/gfx/story/'):
+            q = parse_qs(u.query)
+            key = path.rsplit('/', 1)[1].split('.')[0]
+            if key not in fe4story.BY_KEY:
+                return self._send(404, 'no')
+            try:
+                with lock:
+                    data = fe4story.png(story_layer(key, q.get('src', ['project'])[0])[0],
+                                        max(1, min(int(q.get('s', ['1'])[0]), 2)))
+            except (ValueError, RuntimeError):
+                return self._send(404, 'no')
+            return self._send(200, data, 'image/png', cache='c' in q)
         if path.startswith('/gfx/title/'):
             q = parse_qs(u.query)
             which = path.rsplit('/', 1)[1].split('.')[0]
@@ -6853,7 +6922,7 @@ def api_newchar(b, q):
 
 API = {('GET', 'session'): api_session, ('POST', 'ping'): api_ping, ('GET', 'table'): api_table,
        ('POST', 'tables'): api_tables, ('POST', 'set'): api_set, ('POST', 'undo'): api_undo,
-       ('GET', 'chaptitle'): api_chaptitle, ('POST', 'sites'): api_sites, ('POST', 'newchar'): api_newchar, ('POST', 'newarmy'): api_newarmy, ('POST', 'arrival'): api_arrival, ('GET', 'opening'): api_opening, ('POST', 'opening'): api_opening, ('POST', 'chaptitle'): api_chaptitle_set, ('GET', 'captions'): api_captions, ('POST', 'captions'): api_captions,
+       ('GET', 'chaptitle'): api_chaptitle, ('POST', 'sites'): api_sites, ('POST', 'newchar'): api_newchar, ('POST', 'newarmy'): api_newarmy, ('POST', 'arrival'): api_arrival, ('GET', 'opening'): api_opening, ('POST', 'opening'): api_opening, ('POST', 'chaptitle'): api_chaptitle_set, ('GET', 'captions'): api_captions, ('GET', 'storypics'): api_storypics, ('POST', 'storypics'): api_storypics, ('POST', 'captions'): api_captions,
        ('POST', 'redo'): api_redo, ('POST', 'save'): api_save, ('POST', 'open'): api_open,
        ('POST', 'rom'): api_set_rom, ('POST', 'new'): api_new_project, ('GET', 'job'): api_job,
        ('POST', 'build'): api_build, ('GET', 'battleanims'): api_battleanims, ('GET', 'battleinfo'): api_battleinfo,

@@ -1621,6 +1621,27 @@ editor's opening builder writes (each verified on the Prologue in lsrun):
 - Free space at `$xx:0000` is never handed out: the decompression queue takes a `$xx:0000` source for
   "no job", and the first new message used to land at `$70:0000`.
 
+### The opening's story pictures (editor 1.8)
+
+Verified in lsrun (three scenes replaced at once, then the fourth; each shown in place):
+
+| scene | BG1 tiles (compressed) | BG1 map (64 x 32) | tiles | rows | palette load |
+|---|---|---|---|---|---|
+| the devil's fire | `$F3:426A`, code `$9B:E1E3` (LDX #/LDA #) | `$F4:0F1E`, code `$9B:E20C` | 768 (VRAM $0000) | 3 | `$9B:E286 LDA $E0:2299,X` (15 colours) |
+| the tower | `$F6:4799`, record `$97:F1F4` | `$F5:222D`, record `$97:F1FF` | 512 | 3-4 | `$95:EADD LDA $E0:23ED,X` (31) |
+| the devil | `$F4:1F38`, record `$97:F2C5` | `$F4:3803`, record `$97:F2D0` | 448 (416 used) | 3-5 | `$95:EC93 LDA $E0:2315,X` (47) |
+| the holy dragon | `$F3:0E6F`, record `$97:F307` | `$F3:39EB`, record `$97:F312` | 512 (VRAM $4000) | 3-4 | `$95:ED11 LDA $E0:221D,X` (31) |
+
+- Palette loads copy colours 1-15 of the first row and on through the next rows into the buffer at `$0100`
+  (row r at `$0100 + 32r`), which is sent to CGRAM every frame. Row 0 (`$E0:2787`: black and greys) is shared by
+  all layers. The scenes' other palette rows are loaded next to these (e.g. `$95:EAE4 $E0:242B` the tower's
+  clouds, rows 6-7).
+- Other layers: the fire is BG2 on the sub-screen (added), the tower's clouds BG2 and BG3, the devil's light BG2;
+  the blue flames and the sparks are sprites. Later scenes (the light burst, the weapons, the mandala in mode 3)
+  are not replaceable yet.
+- The first scene is loaded by code at `$9B:E1D0`-`$9B:E2A3`; the rest by the opening's graphics script
+  (`$97:F1xx`). `$97:B2xx`-`$97:B6xx` (another script) loads some of the same pictures and keeps the game's.
+
 ### The opening's captions (editor 1.7)
 
 Verified in lsrun (captions 1 and 3 replaced, both centred):

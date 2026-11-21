@@ -1,6 +1,6 @@
 # fe4kit: FE4 hacking toolkit (Project Naga ROM)
 
-**Builder of the Holy War 1.7** (1.0 was the first public release; test
+**Builder of the Holy War 1.8** (1.0 was the first public release; test
 builds were numbered up to v57, and the "kit vNN" notes below refer to those).
 1.1 added right-click cards on the Maps page for placing units, reinforcements
 and events, danger zones, and testing a chapter in the PC port. 1.2 adds what
@@ -11,8 +11,8 @@ conditions (defeat a boss, rout armies) and chapters where your army starts
 without a castle. 1.4 adds lose conditions and **Check my hack**, which looks
 the whole project over for mistakes. 1.5 adds the **chapter timeline**: a
 chapter's story in order, from its opening to how it ends. 1.6 makes the
-world-map narration before each chapter editable, and 1.7 the captions of the
-opening's story pictures. Free software
+world-map narration before each chapter editable, 1.7 the captions of the
+opening's story pictures, and 1.8 the pictures themselves. Free software
 under the MIT license (`licenses/`).
 
 Make hacks and randomized games of Fire Emblem: Genealogy of the Holy War
@@ -643,6 +643,19 @@ default browser). The editor runs on your PC only: nothing is sent anywhere.
    can also draw them in any paint program. The menu and the Jugdral
    Chronology keep the game's knights; the logo's moving shine works with any
    logo, and the old logo's drop shadow is removed with it.
+
+   **The opening's story pictures** (1.8, further down the same page): the
+   main painting of four scenes of the opening, the devil's fire, the tower,
+   the devil and the holy dragon. Each is 512 × 256; the camera pans across
+   it, so the screen shows part of it at a time. **Download PNG** gives the
+   painting as it is (use it as the layout to paint over), **Replace with a
+   picture…** fits a picture to 512 × 256 and reduces it to what the scene
+   allows: 15 colours for the fire (30 for the tower and the holy dragon, 45
+   for the devil) and 768 / 512 / 448 / 512 different 8 × 8 tiles (mirrored
+   tiles count once; similar ones are merged when there are too many).
+   Transparent parts show the layers behind it (the fire, the clouds, the
+   light), which stay the game's, as do the flames and sparks. **Use the
+   original** goes back. Kept as `story/<scene>.png`.
 
    **The opening's captions** (1.7, further down the same page): the line of
    words under each of the 13 story pictures of the opening ("In an age
